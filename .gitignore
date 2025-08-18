@@ -35,3 +35,10 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+node_modules/
+.expo/
+.expo-shared/
+*.log
+*.env
+.DS_Store
