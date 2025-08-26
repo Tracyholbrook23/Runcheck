@@ -2,6 +2,33 @@ import React from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ScrollView } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
 import { auth, db } from '../config/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { setDoc, doc } from 'firebase/firestore';
+
+const handleSignup = async () => {
+  try {
+    // Create user in Firebase Auth
+    const userCredential = await createUserWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
+    const user = userCredential.user;
+
+    // Store extra user data in Firestore
+    await setDoc(doc(db, 'users', user.uid), {
+      name,
+      age,
+      skillLevel,
+      email,
+    });
+
+    alert('Signup successful!');
+  } catch (error) {
+    console.error('Signup error:', error);
+    alert(error.message);
+  }
+};
 
 
 export default function SignupScreen({ navigation }) {
@@ -16,7 +43,7 @@ export default function SignupScreen({ navigation }) {
       <TextInput style={styles.input} placeholder="Password" secureTextEntry />
 
       <View style={styles.buttonContainer}>
-        <Button title="Sign Up" onPress={() => {}} />
+        <Button title="Sign Up" onPress={handleSignup} />
       </View>
 
       <View style={styles.buttonContainer}>
