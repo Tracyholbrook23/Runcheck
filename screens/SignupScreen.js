@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TextInput, Button, StyleSheet, ScrollView } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
+import { auth, db } from '../config/firebase';
 
 
 export default function SignupScreen({ navigation }) {
