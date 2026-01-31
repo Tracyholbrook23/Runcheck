@@ -20,7 +20,7 @@
     "expo-status-bar": "~2.2.3",
     "firebase": "^12.1.0",
     "react": "19.0.0",
-    "react-native": "0.79.2",
+    "react-native": "0.81.4",
     "react-native-dropdown-picker": "^5.4.6",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-reanimated": "~3.18.0",
