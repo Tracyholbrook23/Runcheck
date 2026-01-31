@@ -63,9 +63,9 @@ export default function SignupScreen({ navigation }) {
 
       <View style={styles.buttonContainer}>
         {loading ? (
-          <ActivityIndicator size="large" color="#0000ff" />
+          <ActivityIndicator size="large" color="#0000ff" testID="loading-indicator" />
         ) : (
-          <Button title="Sign Up" onPress={handleSignup} />
+          <Button title="Sign Up" onPress={handleSignup} testID="signup-button" />
         )}
       </View>
     </ScrollView>
