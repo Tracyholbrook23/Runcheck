@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
 
 import {
@@ -10,11 +10,15 @@ import {
   SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
+import { db, auth } from '../config/firebase';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 export default function CheckInScreen({ navigation }) {
   const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Dropdown state
   const [open, setOpen] = useState(false);
@@ -24,6 +28,49 @@ export default function CheckInScreen({ navigation }) {
     { label: 'YMCA - Midtown', value: 'YMCA - Midtown' },
     { label: 'Outdoor Park - Rivertown', value: 'Outdoor Park - Rivertown' },
   ]);
+
+  const handleCheckIn = async () => {
+    if (!name || !location) {
+      alert('Please enter your name and select a location');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Check if a run already exists at this location
+      const runsRef = collection(db, 'runs');
+      const q = query(runsRef, where('location', '==', location));
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        // Create new run
+        await addDoc(runsRef, {
+          location,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          players: 1,
+          checkedInUsers: [{ name, odId: auth.currentUser?.uid }],
+          createdAt: serverTimestamp(),
+        });
+      } else {
+        // Update existing run - increment players
+        const runDoc = querySnapshot.docs[0];
+        const runData = runDoc.data();
+        await updateDoc(doc(db, 'runs', runDoc.id), {
+          players: (runData.players || 0) + 1,
+          checkedInUsers: [...(runData.checkedInUsers || []), { name, odId: auth.currentUser?.uid }],
+        });
+      }
+
+      alert('Checked in successfully!');
+      navigation.navigate('ViewRuns');
+    } catch (error) {
+      console.error('Check-in error:', error);
+      alert('Failed to check in. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -61,7 +108,11 @@ export default function CheckInScreen({ navigation }) {
 
         <View style={styles.footer}>
           <View style={styles.button}>
-            <Button title="Check In" onPress={() => {}} />
+            {loading ? (
+              <ActivityIndicator size="small" color="#0000ff" />
+            ) : (
+              <Button title="Check In" onPress={handleCheckIn} />
+            )}
           </View>
           <View style={styles.button}>
             <Button title="Back to Home" onPress={() => navigation.navigate('Home')} />
