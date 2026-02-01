@@ -43,6 +43,7 @@ export default function SignupScreen({ navigation }) {
       });
 
       alert('Signup successful!');
+      navigation.navigate('Home');
     } catch (error) {
       console.error('Signup error:', error);
       alert(error.message);
