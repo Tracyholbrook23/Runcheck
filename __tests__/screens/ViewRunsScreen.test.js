@@ -2,37 +2,36 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import ViewRunsScreen from '../../screens/ViewRunsScreen';
 
-// Mock Firestore
-const mockRuns = [
-  { id: '1', location: '24 Hour Fitness - Midtown', time: '6:30 PM', players: 8 },
-  { id: '2', location: 'LA Fitness - Buckhead', time: '7:15 PM', players: 10 },
-  { id: '3', location: 'YMCA - West End', time: '8:00 PM', players: 5 },
+// Mock gym data
+const mockGyms = [
+  {
+    id: 'gym-1',
+    name: 'LA Fitness - Southside',
+    address: '123 Southside Ave',
+    currentPresenceCount: 5,
+  },
+  {
+    id: 'gym-2',
+    name: 'YMCA - Midtown',
+    address: '456 Midtown Blvd',
+    currentPresenceCount: 0,
+  },
+  {
+    id: 'gym-3',
+    name: 'Outdoor Park',
+    address: '789 Park Rd',
+    currentPresenceCount: 12,
+  },
 ];
 
-const mockUnsubscribe = jest.fn();
-let snapshotCallback = null;
-
-jest.mock('firebase/firestore', () => ({
-  collection: jest.fn(),
-  query: jest.fn(),
-  orderBy: jest.fn(),
-  onSnapshot: jest.fn((query, callback) => {
-    snapshotCallback = callback;
-    // Simulate async data fetch
-    setTimeout(() => {
-      callback({
-        docs: mockRuns.map(run => ({
-          id: run.id,
-          data: () => run,
-        })),
-      });
-    }, 0);
-    return mockUnsubscribe;
+// Mock the gym service
+jest.mock('../../services/gymService', () => ({
+  subscribeToGyms: jest.fn((callback) => {
+    setTimeout(() => callback(mockGyms), 0);
+    return jest.fn(); // unsubscribe function
   }),
-}));
-
-jest.mock('../../config/firebase', () => ({
-  db: {},
+  seedGyms: jest.fn(),
+  getAllGyms: jest.fn(() => Promise.resolve(mockGyms)),
 }));
 
 // Mock navigation
@@ -51,7 +50,7 @@ describe('ViewRunsScreen', () => {
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    expect(getByText('Loading runs...')).toBeTruthy();
+    expect(getByText('Loading gyms...')).toBeTruthy();
   });
 
   it('renders the title after loading', async () => {
@@ -60,31 +59,19 @@ describe('ViewRunsScreen', () => {
     );
 
     await waitFor(() => {
-      expect(getByText('Open Runs Near You')).toBeTruthy();
+      expect(getByText('Find a Run')).toBeTruthy();
     });
   });
 
-  it('renders all runs from Firestore', async () => {
+  it('renders all gyms from service', async () => {
     const { getByText } = render(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
     await waitFor(() => {
-      expect(getByText('24 Hour Fitness - Midtown')).toBeTruthy();
-      expect(getByText('LA Fitness - Buckhead')).toBeTruthy();
-      expect(getByText('YMCA - West End')).toBeTruthy();
-    });
-  });
-
-  it('displays run times', async () => {
-    const { getByText } = render(
-      <ViewRunsScreen navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText(/6:30 PM/)).toBeTruthy();
-      expect(getByText(/7:15 PM/)).toBeTruthy();
-      expect(getByText(/8:00 PM/)).toBeTruthy();
+      expect(getByText('LA Fitness - Southside')).toBeTruthy();
+      expect(getByText('YMCA - Midtown')).toBeTruthy();
+      expect(getByText('Outdoor Park')).toBeTruthy();
     });
   });
 
@@ -94,42 +81,40 @@ describe('ViewRunsScreen', () => {
     );
 
     await waitFor(() => {
-      expect(getByText(/8 players/)).toBeTruthy();
-      expect(getByText(/10 players/)).toBeTruthy();
-      expect(getByText(/5 players/)).toBeTruthy();
+      expect(getByText('5 players here now')).toBeTruthy();
+      expect(getByText('No one here yet')).toBeTruthy();
+      expect(getByText('12 players here now')).toBeTruthy();
     });
   });
 
-  it('navigates to RunDetails with correct params when a run is pressed', async () => {
+  it('displays activity badges', async () => {
+    const { getAllByText } = render(
+      <ViewRunsScreen navigation={mockNavigation} />
+    );
+
+    await waitFor(() => {
+      // Check that badges exist (using getAllByText since there could be multiple)
+      expect(getAllByText('Active').length).toBeGreaterThan(0); // 5 players (5-9 = Active)
+      expect(getAllByText('Empty').length).toBeGreaterThan(0); // 0 players
+      expect(getAllByText('Busy').length).toBeGreaterThan(0); // 12 players (10+ = Busy)
+    });
+  });
+
+  it('navigates to RunDetails with correct params when a gym is pressed', async () => {
     const { getByText } = render(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
     await waitFor(() => {
-      expect(getByText('24 Hour Fitness - Midtown')).toBeTruthy();
+      expect(getByText('LA Fitness - Southside')).toBeTruthy();
     });
 
-    fireEvent.press(getByText('24 Hour Fitness - Midtown'));
+    fireEvent.press(getByText('LA Fitness - Southside'));
 
     expect(mockNavigate).toHaveBeenCalledWith('RunDetails', {
-      runId: '1',
-      location: '24 Hour Fitness - Midtown',
-      time: '6:30 PM',
-      players: 8,
+      gymId: 'gym-1',
+      gymName: 'LA Fitness - Southside',
+      players: 5,
     });
-  });
-
-  it('cleans up subscription on unmount', async () => {
-    const { unmount, getByText } = render(
-      <ViewRunsScreen navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('Open Runs Near You')).toBeTruthy();
-    });
-
-    unmount();
-
-    expect(mockUnsubscribe).toHaveBeenCalled();
   });
 });

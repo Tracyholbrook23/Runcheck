@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent } from '@testing-library/react-native';
+import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import CheckInScreen from '../../screens/CheckInScreen';
 
 // Mock navigation
@@ -8,77 +8,114 @@ const mockNavigation = {
   navigate: mockNavigate,
 };
 
+// Mock firebase auth
+jest.mock('../../config/firebase', () => ({
+  auth: {
+    currentUser: { uid: 'test-user-123' },
+  },
+}));
+
+// Mock gyms data
+const mockGyms = [
+  { id: 'gym-1', name: 'LA Fitness', currentPresenceCount: 3 },
+  { id: 'gym-2', name: 'YMCA', currentPresenceCount: 0 },
+];
+
+// Mock services
+jest.mock('../../services/gymService', () => ({
+  getAllGyms: jest.fn(() => Promise.resolve(mockGyms)),
+  seedGyms: jest.fn(() => Promise.resolve()),
+}));
+
+jest.mock('../../services/presenceService', () => ({
+  getActivePresence: jest.fn(() => Promise.resolve(null)),
+  checkIn: jest.fn(() => Promise.resolve({ id: 'presence-1' })),
+}));
+
 describe('CheckInScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('renders the title', () => {
+  it('renders loading state initially', () => {
     const { getByText } = render(
       <CheckInScreen navigation={mockNavigation} />
     );
 
-    expect(getByText('Check Into a Run')).toBeTruthy();
+    expect(getByText('Loading gyms...')).toBeTruthy();
   });
 
-  it('renders the name input', () => {
-    const { getByPlaceholderText } = render(
-      <CheckInScreen navigation={mockNavigation} />
-    );
-
-    expect(getByPlaceholderText('Your Name')).toBeTruthy();
-  });
-
-  it('renders the location label', () => {
+  it('renders the title after loading', async () => {
     const { getByText } = render(
       <CheckInScreen navigation={mockNavigation} />
     );
 
-    expect(getByText('Select Location:')).toBeTruthy();
+    await waitFor(() => {
+      expect(getByText('Check Into a Gym')).toBeTruthy();
+    });
   });
 
-  it('renders the Check In button', () => {
+  it('renders the subtitle', async () => {
     const { getByText } = render(
       <CheckInScreen navigation={mockNavigation} />
     );
 
-    expect(getByText('Check In')).toBeTruthy();
+    await waitFor(() => {
+      expect(getByText("Let others know you're here to play")).toBeTruthy();
+    });
   });
 
-  it('renders the Back to Home button', () => {
+  it('renders the gym selection label', async () => {
     const { getByText } = render(
       <CheckInScreen navigation={mockNavigation} />
     );
 
-    expect(getByText('Back to Home')).toBeTruthy();
+    await waitFor(() => {
+      expect(getByText('Select Gym:')).toBeTruthy();
+    });
   });
 
-  it('updates name input when user types', () => {
-    const { getByPlaceholderText } = render(
-      <CheckInScreen navigation={mockNavigation} />
-    );
-
-    const nameInput = getByPlaceholderText('Your Name');
-    fireEvent.changeText(nameInput, 'John Doe');
-
-    expect(nameInput.props.value).toBe('John Doe');
-  });
-
-  it('navigates to Home when Back to Home is pressed', () => {
+  it('renders the Check In button', async () => {
     const { getByText } = render(
       <CheckInScreen navigation={mockNavigation} />
     );
+
+    await waitFor(() => {
+      expect(getByText('Check In')).toBeTruthy();
+    });
+  });
+
+  it('renders the Back to Home button', async () => {
+    const { getByText } = render(
+      <CheckInScreen navigation={mockNavigation} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Back to Home')).toBeTruthy();
+    });
+  });
+
+  it('navigates to Home when Back to Home is pressed', async () => {
+    const { getByText } = render(
+      <CheckInScreen navigation={mockNavigation} />
+    );
+
+    await waitFor(() => {
+      expect(getByText('Back to Home')).toBeTruthy();
+    });
 
     fireEvent.press(getByText('Back to Home'));
 
     expect(mockNavigate).toHaveBeenCalledWith('Home');
   });
 
-  it('renders the dropdown picker', () => {
-    const { getByTestId } = render(
+  it('renders info box about expiry', async () => {
+    const { getByText } = render(
       <CheckInScreen navigation={mockNavigation} />
     );
 
-    expect(getByTestId('dropdown-picker')).toBeTruthy();
+    await waitFor(() => {
+      expect(getByText(/automatically expire after 3 hours/)).toBeTruthy();
+    });
   });
 });

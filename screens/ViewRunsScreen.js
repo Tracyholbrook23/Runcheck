@@ -10,38 +10,56 @@ import {
   RefreshControl,
 } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
-import { db } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { subscribeToGyms, seedGyms, getAllGyms } from '../services/gymService';
 
 export default function ViewRunsScreen({ navigation }) {
-  const [runs, setRuns] = useState([]);
+  const [gyms, setGyms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    // Real-time listener for runs collection
-    const runsRef = collection(db, 'runs');
-    const q = query(runsRef, orderBy('createdAt', 'desc'));
+    let unsubscribe;
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const runsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setRuns(runsData);
-      setLoading(false);
-      setRefreshing(false);
-    }, (error) => {
-      console.error('Error fetching runs:', error);
-      setLoading(false);
-      setRefreshing(false);
-    });
+    const initializeGyms = async () => {
+      try {
+        // Check if gyms exist, seed if not
+        const existingGyms = await getAllGyms();
+        if (existingGyms.length === 0) {
+          await seedGyms();
+        }
 
-    return () => unsubscribe();
+        // Subscribe to real-time updates
+        unsubscribe = subscribeToGyms((gymsData) => {
+          setGyms(gymsData);
+          setLoading(false);
+          setRefreshing(false);
+        });
+      } catch (error) {
+        console.error('Error initializing gyms:', error);
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+
+    initializeGyms();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
   }, []);
 
   const onRefresh = () => {
     setRefreshing(true);
+    // The subscription will update automatically
+  };
+
+  const getActivityLevel = (count) => {
+    if (count === 0) return { label: 'Empty', color: '#9e9e9e' };
+    if (count < 5) return { label: 'Light', color: '#4caf50' };
+    if (count < 10) return { label: 'Active', color: '#ff9800' };
+    return { label: 'Busy', color: '#f44336' };
   };
 
   if (loading) {
@@ -49,7 +67,7 @@ export default function ViewRunsScreen({ navigation }) {
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>Loading runs...</Text>
+          <Text style={styles.loadingText}>Loading gyms...</Text>
         </View>
       </SafeAreaView>
     );
@@ -58,38 +76,60 @@ export default function ViewRunsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        <Text style={styles.title}>Open Runs Near You</Text>
+        <Text style={styles.title}>Find a Run</Text>
+        <Text style={styles.subtitle}>See who's playing right now</Text>
+
         <ScrollView
           contentContainerStyle={styles.scroll}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {runs.length === 0 ? (
+          {gyms.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No active runs right now</Text>
-              <Text style={styles.emptySubtext}>Be the first to check in!</Text>
+              <Text style={styles.emptyText}>No gyms available</Text>
+              <Text style={styles.emptySubtext}>
+                Pull down to refresh
+              </Text>
             </View>
           ) : (
-            runs.map((run) => (
-              <TouchableOpacity
-                key={run.id}
-                style={styles.runCard}
-                onPress={() =>
-                  navigation.navigate('RunDetails', {
-                    runId: run.id,
-                    location: run.location,
-                    time: run.time,
-                    players: run.players || 0,
-                  })
-                }
-              >
-                <Text style={styles.runLocation}>{run.location}</Text>
-                <Text style={styles.runDetails}>
-                  🕒 {run.time}  |  🙋 {run.players || 0} players
-                </Text>
-              </TouchableOpacity>
-            ))
+            gyms.map((gym) => {
+              const count = gym.currentPresenceCount || 0;
+              const activity = getActivityLevel(count);
+
+              return (
+                <TouchableOpacity
+                  key={gym.id}
+                  style={styles.gymCard}
+                  onPress={() =>
+                    navigation.navigate('RunDetails', {
+                      gymId: gym.id,
+                      gymName: gym.name,
+                      players: count,
+                    })
+                  }
+                >
+                  <View style={styles.gymHeader}>
+                    <Text style={styles.gymName}>{gym.name}</Text>
+                    <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
+                      <Text style={styles.activityText}>{activity.label}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.gymAddress}>{gym.address}</Text>
+
+                  <View style={styles.gymFooter}>
+                    <Text style={styles.playerCount}>
+                      {count === 0
+                        ? 'No one here yet'
+                        : count === 1
+                        ? '1 player here now'
+                        : `${count} players here now`}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })
           )}
         </ScrollView>
       </View>
@@ -120,8 +160,13 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
     color: COLORS.textDark,
-    marginBottom: SPACING.md,
     textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: FONT_SIZES.body,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    marginBottom: SPACING.lg,
   },
   scroll: {
     paddingBottom: SPACING.lg,
@@ -142,24 +187,51 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginTop: SPACING.sm,
   },
-  runCard: {
-    backgroundColor: '#f1f3f6',
+  gymCard: {
+    backgroundColor: '#fff',
     borderRadius: 12,
     padding: SPACING.md,
     marginBottom: SPACING.md,
     shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  runLocation: {
+  gymHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  gymName: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
     color: COLORS.textDark,
+    flex: 1,
   },
-  runDetails: {
+  activityBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  activityText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+  },
+  gymAddress: {
+    fontSize: FONT_SIZES.small,
+    color: COLORS.textLight,
+    marginBottom: SPACING.sm,
+  },
+  gymFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  playerCount: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textDark,
-    marginTop: 4,
+    color: COLORS.primary,
+    fontWeight: '500',
   },
 });
