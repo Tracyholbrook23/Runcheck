@@ -45,6 +45,13 @@ jest.mock('../../services/presenceService', () => ({
   }),
 }));
 
+jest.mock('../../services/intentService', () => ({
+  subscribeToGymIntents: jest.fn((gymId, callback) => {
+    setTimeout(() => callback([], {}), 0);
+    return jest.fn();
+  }),
+}));
+
 describe('RunDetailsScreen', () => {
   const mockRoute = {
     params: {

@@ -8,6 +8,7 @@ import LoginScreen from './screens/LoginScreen';
 import ViewRunsScreen from './screens/ViewRunsScreen';
 import CheckInScreen from './screens/CheckInScreen';
 import RunDetailsScreen from './screens/RunDetailsScreen';
+import PlanVisitScreen from './screens/PlanVisitScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -21,6 +22,7 @@ export default function App() {
         <Stack.Screen name="ViewRuns" component={ViewRunsScreen} />
         <Stack.Screen name="CheckIn" component={CheckInScreen} />
         <Stack.Screen name="RunDetails" component={RunDetailsScreen} />
+        <Stack.Screen name="PlanVisit" component={PlanVisitScreen} options={{ title: 'Plan a Visit' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

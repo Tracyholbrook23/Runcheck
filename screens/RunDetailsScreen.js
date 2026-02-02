@@ -11,17 +11,21 @@ import {
 import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
 import { subscribeToGym } from '../services/gymService';
 import { subscribeToGymPresences } from '../services/presenceService';
+import { subscribeToGymIntents } from '../services/intentService';
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
 
   const [gym, setGym] = useState(null);
   const [presences, setPresences] = useState([]);
+  const [intents, setIntents] = useState([]);
+  const [intentsBySlot, setIntentsBySlot] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let unsubscribeGym;
     let unsubscribePresences;
+    let unsubscribeIntents;
 
     // Subscribe to gym details
     unsubscribeGym = subscribeToGym(gymId, (gymData) => {
@@ -34,9 +38,16 @@ export default function RunDetailsScreen({ route, navigation }) {
       setPresences(presenceData);
     });
 
+    // Subscribe to intents at this gym
+    unsubscribeIntents = subscribeToGymIntents(gymId, (intentData, bySlot) => {
+      setIntents(intentData);
+      setIntentsBySlot(bySlot);
+    });
+
     return () => {
       if (unsubscribeGym) unsubscribeGym();
       if (unsubscribePresences) unsubscribePresences();
+      if (unsubscribeIntents) unsubscribeIntents();
     };
   }, [gymId]);
 
@@ -114,12 +125,49 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Action Button */}
+        {/* Upcoming Visitors */}
+        {intents.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Coming Soon</Text>
+            {Object.keys(intentsBySlot)
+              .sort()
+              .slice(0, 3)
+              .map((slot) => {
+                const slotIntents = intentsBySlot[slot];
+                const time = new Date(slot);
+                const now = new Date();
+                const isToday = time.toDateString() === now.toDateString();
+                const timeStr = time.toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                });
+                const label = isToday ? `Today ${timeStr}` : `Tomorrow ${timeStr}`;
+
+                return (
+                  <View key={slot} style={styles.intentSlot}>
+                    <Text style={styles.intentTime}>{label}</Text>
+                    <Text style={styles.intentCount}>
+                      {slotIntents.length} {slotIntents.length === 1 ? 'player' : 'players'} planning to come
+                    </Text>
+                  </View>
+                );
+              })}
+          </View>
+        )}
+
+        {/* Action Buttons */}
         <TouchableOpacity
           style={styles.checkInButton}
           onPress={() => navigation.navigate('CheckIn')}
         >
           <Text style={styles.checkInButtonText}>Check In Here</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.planButton}
+          onPress={() => navigation.navigate('PlanVisit')}
+        >
+          <Text style={styles.planButtonText}>Plan a Visit</Text>
         </TouchableOpacity>
 
         <View style={styles.bottomPadding} />
@@ -253,6 +301,22 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     marginTop: 2,
   },
+  intentSlot: {
+    backgroundColor: '#f3e5f5',
+    borderRadius: 8,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  intentTime: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: '600',
+    color: '#7b1fa2',
+  },
+  intentCount: {
+    fontSize: FONT_SIZES.small,
+    color: '#9c27b0',
+    marginTop: 2,
+  },
   checkInButton: {
     backgroundColor: COLORS.primary,
     marginHorizontal: SPACING.lg,
@@ -261,6 +325,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   checkInButtonText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.body,
+    fontWeight: '600',
+  },
+  planButton: {
+    backgroundColor: '#6c5ce7',
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    borderRadius: 10,
+    padding: SPACING.md,
+    alignItems: 'center',
+  },
+  planButtonText: {
     color: '#fff',
     fontSize: FONT_SIZES.body,
     fontWeight: '600',

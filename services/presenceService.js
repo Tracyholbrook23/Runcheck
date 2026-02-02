@@ -4,6 +4,7 @@
  */
 
 import { db, auth } from '../config/firebase';
+import { fulfillIntent } from './intentService';
 import {
   collection,
   doc,
@@ -112,6 +113,9 @@ export const checkIn = async (gymId, gymName) => {
   // Update gym presence count
   await updateGymPresenceCount(gymId, 1);
 
+  // Check if this fulfills a scheduled intent
+  await fulfillIntent(user.uid, gymId);
+
   return { id: presenceId, ...presenceData };
 };
 
@@ -166,6 +170,7 @@ export const updateGymPresenceCount = async (gymId, delta) => {
 
 /**
  * Subscribe to active presences at a gym (real-time)
+ * Filters out expired presences client-side
  */
 export const subscribeToGymPresences = (gymId, callback) => {
   const presencesRef = collection(db, 'presences');
@@ -177,12 +182,42 @@ export const subscribeToGymPresences = (gymId, callback) => {
   );
 
   return onSnapshot(q, (snapshot) => {
-    const presences = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const now = new Date();
+    const presences = snapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((presence) => {
+        // Filter out expired presences client-side
+        if (presence.expiresAt && presence.expiresAt.toDate() < now) {
+          // Optionally mark as expired in background
+          markPresenceExpired(presence.id);
+          return false;
+        }
+        return true;
+      });
     callback(presences);
   });
+};
+
+/**
+ * Mark a presence as expired (background cleanup)
+ */
+const markPresenceExpired = async (presenceId) => {
+  try {
+    const presenceRef = doc(db, 'presences', presenceId);
+    const presenceDoc = await getDoc(presenceRef);
+
+    if (presenceDoc.exists() && presenceDoc.data().status === 'active') {
+      const data = presenceDoc.data();
+      await updateDoc(presenceRef, { status: 'expired' });
+      // Decrement gym count
+      await updateGymPresenceCount(data.gymId, -1);
+    }
+  } catch (error) {
+    console.error('Error marking presence expired:', error);
+  }
 };
 
 /**

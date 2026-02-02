@@ -5,3 +5,4 @@
 
 export * from './gymService';
 export * from './presenceService';
+export * from './intentService';

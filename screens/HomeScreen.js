@@ -133,6 +133,13 @@ const HomeScreen = ({ navigation }) => {
         >
           <Text style={BUTTON.text}>Find Open Runs</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[BUTTON.base, styles.planButton]}
+          onPress={() => navigation.navigate('PlanVisit')}
+        >
+          <Text style={BUTTON.text}>Plan a Visit</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
@@ -225,6 +232,10 @@ const styles = StyleSheet.create({
   // Buttons
   accentButton: {
     backgroundColor: COLORS.accent,
+    marginTop: SPACING.md,
+  },
+  planButton: {
+    backgroundColor: '#6c5ce7',
     marginTop: SPACING.md,
   },
   buttonDisabled: {
