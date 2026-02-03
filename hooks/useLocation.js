@@ -17,8 +17,9 @@
 import { useState, useCallback } from 'react';
 import * as Location from 'expo-location';
 
-// Set to true during development to use a fake Atlanta location
-const DEV_SKIP_GPS = __DEV__;
+// Set to true to use a fake Atlanta location for testing
+// Change to false when you want real GPS validation
+const DEV_SKIP_GPS = true;
 
 export const useLocation = () => {
   const [location, setLocation] = useState(null);
