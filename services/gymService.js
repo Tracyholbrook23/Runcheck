@@ -127,17 +127,14 @@ export const seedGyms = async () => {
       });
       console.log(`Created gym: ${gym.name}`);
     } else {
-      // Always update existing gym with location data
-      const existingData = existingGym.data();
-      if (!existingData.location || !existingData.checkInRadiusMeters) {
-        await updateDoc(gymRef, {
-          location: gym.location,
-          checkInRadiusMeters: gym.checkInRadiusMeters,
-          autoExpireMinutes: gym.autoExpireMinutes,
-          updatedAt: serverTimestamp(),
-        });
-        console.log(`Updated gym location: ${gym.name}`);
-      }
+      // Always force update location data to ensure correct coordinates
+      await updateDoc(gymRef, {
+        location: gym.location,
+        checkInRadiusMeters: gym.checkInRadiusMeters,
+        autoExpireMinutes: gym.autoExpireMinutes,
+        updatedAt: serverTimestamp(),
+      });
+      console.log(`Updated gym location: ${gym.name}`);
     }
   }
 
