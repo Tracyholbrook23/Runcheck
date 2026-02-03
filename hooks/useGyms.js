@@ -28,13 +28,11 @@ export const useGyms = () => {
     return unsubscribe;
   }, []);
 
-  // Seed gyms if needed (first-time setup)
+  // Seed/update gyms (adds location data to existing gyms)
   const ensureGymsExist = useCallback(async () => {
     try {
-      const existingGyms = await getAllGyms();
-      if (existingGyms.length === 0) {
-        await seedGyms();
-      }
+      // Always run seedGyms to ensure locations are configured
+      await seedGyms();
     } catch (err) {
       setError(err.message);
     }

@@ -127,12 +127,13 @@ export const seedGyms = async () => {
       });
       console.log(`Created gym: ${gym.name}`);
     } else {
-      // Update existing gym with location if missing
+      // Always update existing gym with location data
       const existingData = existingGym.data();
-      if (!existingData.location) {
+      if (!existingData.location || !existingData.checkInRadiusMeters) {
         await updateDoc(gymRef, {
           location: gym.location,
           checkInRadiusMeters: gym.checkInRadiusMeters,
+          autoExpireMinutes: gym.autoExpireMinutes,
           updatedAt: serverTimestamp(),
         });
         console.log(`Updated gym location: ${gym.name}`);
