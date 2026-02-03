@@ -17,6 +17,9 @@
 import { useState, useCallback } from 'react';
 import * as Location from 'expo-location';
 
+// Set to true during development to use a fake Atlanta location
+const DEV_SKIP_GPS = __DEV__;
+
 export const useLocation = () => {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -53,6 +56,17 @@ export const useLocation = () => {
     setError(null);
 
     try {
+      // In dev mode, return a fake location near LA Fitness Southside in Atlanta
+      if (DEV_SKIP_GPS) {
+        const fakeCoords = {
+          latitude: 33.7120,  // Near LA Fitness - Southside
+          longitude: -84.3880,
+        };
+        console.log('DEV MODE: Using fake Atlanta location for testing');
+        setLocation(fakeCoords);
+        return fakeCoords;
+      }
+
       // Check/request permission first
       let hasPermission = permissionStatus === 'granted';
       if (!hasPermission) {
