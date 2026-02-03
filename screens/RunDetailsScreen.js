@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -9,47 +9,17 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
-import { subscribeToGym } from '../services/gymService';
-import { subscribeToGymPresences } from '../services/presenceService';
-import { subscribeToGymSchedules } from '../services/scheduleService';
+import { useGym, useGymPresences, useGymSchedules } from '../hooks';
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
 
-  const [gym, setGym] = useState(null);
-  const [presences, setPresences] = useState([]);
-  const [schedules, setSchedules] = useState([]);
-  const [schedulesBySlot, setSchedulesBySlot] = useState({});
-  const [loading, setLoading] = useState(true);
+  // Hooks
+  const { gym, loading: gymLoading } = useGym(gymId);
+  const { presences, loading: presencesLoading } = useGymPresences(gymId);
+  const { schedules, schedulesBySlot, loading: schedulesLoading } = useGymSchedules(gymId);
 
-  useEffect(() => {
-    let unsubscribeGym;
-    let unsubscribePresences;
-    let unsubscribeSchedules;
-
-    // Subscribe to gym details
-    unsubscribeGym = subscribeToGym(gymId, (gymData) => {
-      setGym(gymData);
-      setLoading(false);
-    });
-
-    // Subscribe to presences at this gym
-    unsubscribePresences = subscribeToGymPresences(gymId, (presenceData) => {
-      setPresences(presenceData);
-    });
-
-    // Subscribe to schedules at this gym
-    unsubscribeSchedules = subscribeToGymSchedules(gymId, (scheduleData, bySlot) => {
-      setSchedules(scheduleData);
-      setSchedulesBySlot(bySlot);
-    });
-
-    return () => {
-      if (unsubscribeGym) unsubscribeGym();
-      if (unsubscribePresences) unsubscribePresences();
-      if (unsubscribeSchedules) unsubscribeSchedules();
-    };
-  }, [gymId]);
+  const loading = gymLoading || presencesLoading || schedulesLoading;
 
   const getTimeAgo = (timestamp) => {
     if (!timestamp) return '';
@@ -105,7 +75,7 @@ export default function RunDetailsScreen({ route, navigation }) {
               </Text>
             </View>
           ) : (
-            presences.map((presence, index) => (
+            presences.map((presence) => (
               <View key={presence.id} style={styles.playerCard}>
                 <View style={styles.playerAvatar}>
                   <Text style={styles.playerInitial}>

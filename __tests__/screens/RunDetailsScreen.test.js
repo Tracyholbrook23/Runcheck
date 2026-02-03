@@ -30,26 +30,23 @@ const mockPresences = [
   },
 ];
 
-// Mock services
-jest.mock('../../services/gymService', () => ({
-  subscribeToGym: jest.fn((gymId, callback) => {
-    setTimeout(() => callback(mockGym), 0);
-    return jest.fn();
-  }),
-}));
-
-jest.mock('../../services/presenceService', () => ({
-  subscribeToGymPresences: jest.fn((gymId, callback) => {
-    setTimeout(() => callback(mockPresences), 0);
-    return jest.fn();
-  }),
-}));
-
-jest.mock('../../services/scheduleService', () => ({
-  subscribeToGymSchedules: jest.fn((gymId, callback) => {
-    setTimeout(() => callback([], {}), 0);
-    return jest.fn();
-  }),
+// Mock hooks
+jest.mock('../../hooks', () => ({
+  useGym: jest.fn(() => ({
+    gym: mockGym,
+    loading: false,
+  })),
+  useGymPresences: jest.fn(() => ({
+    presences: mockPresences,
+    loading: false,
+    count: mockPresences.length,
+  })),
+  useGymSchedules: jest.fn(() => ({
+    schedules: [],
+    schedulesBySlot: {},
+    loading: false,
+    count: 0,
+  })),
 }));
 
 describe('RunDetailsScreen', () => {
@@ -65,87 +62,82 @@ describe('RunDetailsScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('renders loading state initially', () => {
+  it('renders the gym name as title', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('Test Gym - Downtown')).toBeTruthy();
+  });
+
+  it('displays the gym address', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('123 Test St')).toBeTruthy();
+  });
+
+  it('displays the player count', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('3')).toBeTruthy();
+    expect(getByText('Players Here')).toBeTruthy();
+  });
+
+  it('displays the section title', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText("Who's Here Now")).toBeTruthy();
+  });
+
+  it('displays checked in players', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('John')).toBeTruthy();
+    expect(getByText('Jane')).toBeTruthy();
+  });
+
+  it('renders Check In Here button', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('Check In Here')).toBeTruthy();
+  });
+
+  it('navigates to CheckIn when button is pressed', () => {
+    const { getByText } = render(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    fireEvent.press(getByText('Check In Here'));
+
+    expect(mockNavigation.navigate).toHaveBeenCalledWith('CheckIn');
+  });
+
+  it('renders loading state when hooks are loading', () => {
+    // Override mock for this test
+    const hooks = require('../../hooks');
+    hooks.useGym.mockReturnValue({ gym: null, loading: true });
+    hooks.useGymPresences.mockReturnValue({ presences: [], loading: true, count: 0 });
+    hooks.useGymSchedules.mockReturnValue({ schedules: [], schedulesBySlot: {}, loading: true, count: 0 });
+
     const { getByText } = render(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
     expect(getByText('Loading...')).toBeTruthy();
-  });
 
-  it('renders the gym name as title', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('Test Gym - Downtown')).toBeTruthy();
-    });
-  });
-
-  it('displays the gym address', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('123 Test St')).toBeTruthy();
-    });
-  });
-
-  it('displays the player count', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('3')).toBeTruthy();
-      expect(getByText('Players Here')).toBeTruthy();
-    });
-  });
-
-  it('displays the section title', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText("Who's Here Now")).toBeTruthy();
-    });
-  });
-
-  it('displays checked in players', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('John')).toBeTruthy();
-      expect(getByText('Jane')).toBeTruthy();
-    });
-  });
-
-  it('renders Check In Here button', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('Check In Here')).toBeTruthy();
-    });
-  });
-
-  it('navigates to CheckIn when button is pressed', async () => {
-    const { getByText } = render(
-      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
-    );
-
-    await waitFor(() => {
-      expect(getByText('Check In Here')).toBeTruthy();
-    });
-
-    fireEvent.press(getByText('Check In Here'));
-
-    expect(mockNavigation.navigate).toHaveBeenCalledWith('CheckIn');
+    // Reset mocks
+    hooks.useGym.mockReturnValue({ gym: mockGym, loading: false });
+    hooks.useGymPresences.mockReturnValue({ presences: mockPresences, loading: false, count: mockPresences.length });
+    hooks.useGymSchedules.mockReturnValue({ schedules: [], schedulesBySlot: {}, loading: false, count: 0 });
   });
 });

@@ -13,60 +13,49 @@ import {
   Alert,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
-import * as Location from 'expo-location';
-import { auth } from '../config/firebase';
-import { checkIn, getActivePresence } from '../services/presenceService';
-import { getAllGyms, seedGyms } from '../services/gymService';
+import { usePresence, useGyms, useLocation } from '../hooks';
 
 export default function CheckInScreen({ navigation }) {
-  const [loading, setLoading] = useState(false);
-  const [gymsLoading, setGymsLoading] = useState(true);
-  const [activePresence, setActivePresence] = useState(null);
-
   // Dropdown state
   const [open, setOpen] = useState(false);
   const [selectedGym, setSelectedGym] = useState(null);
   const [gymItems, setGymItems] = useState([]);
 
-  // Load gyms and check for active presence on mount
+  // Hooks
+  const {
+    presence,
+    loading: presenceLoading,
+    isCheckedIn,
+    checkIn,
+    checkingIn,
+    getTimeRemaining,
+  } = usePresence();
+
+  const {
+    gyms,
+    loading: gymsLoading,
+    ensureGymsExist,
+  } = useGyms();
+
+  const {
+    getCurrentLocation,
+    loading: locationLoading,
+  } = useLocation();
+
+  // Ensure gyms exist on mount
   useEffect(() => {
-    loadInitialData();
-  }, []);
+    ensureGymsExist();
+  }, [ensureGymsExist]);
 
-  const loadInitialData = async () => {
-    try {
-      setGymsLoading(true);
-
-      // Check for active presence first
-      if (auth.currentUser) {
-        const presence = await getActivePresence(auth.currentUser.uid);
-        setActivePresence(presence);
-      }
-
-      // Load gyms
-      let gyms = await getAllGyms();
-
-      // If no gyms exist, seed them
-      if (gyms.length === 0) {
-        await seedGyms();
-        gyms = await getAllGyms();
-      }
-
-      // Format for dropdown
-      const items = gyms.map((gym) => ({
-        label: `${gym.name} (${gym.currentPresenceCount || 0} here)`,
-        value: gym.id,
-        gymName: gym.name,
-      }));
-
-      setGymItems(items);
-    } catch (error) {
-      console.error('Error loading data:', error);
-      Alert.alert('Error', 'Failed to load gyms. Please try again.');
-    } finally {
-      setGymsLoading(false);
-    }
-  };
+  // Update dropdown items when gyms change
+  useEffect(() => {
+    const items = gyms.map((gym) => ({
+      label: `${gym.name} (${gym.currentPresenceCount || 0} here)`,
+      value: gym.id,
+      gymName: gym.name,
+    }));
+    setGymItems(items);
+  }, [gyms]);
 
   const handleCheckIn = async () => {
     if (!selectedGym) {
@@ -74,40 +63,15 @@ export default function CheckInScreen({ navigation }) {
       return;
     }
 
-    if (!auth.currentUser) {
-      Alert.alert('Not Logged In', 'Please log in to check in.');
-      return;
-    }
-
-    setLoading(true);
-
     try {
-      // Request location permission
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Location Required',
-          'Please enable location services to check in. We use your location to verify you are at the gym.'
-        );
-        setLoading(false);
-        return;
-      }
-
       // Get current location
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      const userLocation = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      };
+      const userLocation = await getCurrentLocation();
 
       // Get the gym name from items
       const gymItem = gymItems.find((item) => item.value === selectedGym);
       const gymName = gymItem?.gymName || selectedGym;
 
-      await checkIn(auth.currentUser.uid, selectedGym, userLocation);
+      await checkIn(selectedGym, userLocation);
 
       Alert.alert(
         'Checked In!',
@@ -121,29 +85,32 @@ export default function CheckInScreen({ navigation }) {
       );
     } catch (error) {
       console.error('Check-in error:', error);
-      Alert.alert('Check-in Failed', error.message || 'Please try again.');
-    } finally {
-      setLoading(false);
+      if (error.message.includes('permission')) {
+        Alert.alert(
+          'Location Required',
+          'Please enable location services to check in. We use your location to verify you are at the gym.'
+        );
+      } else {
+        Alert.alert('Check-in Failed', error.message || 'Please try again.');
+      }
     }
   };
 
+  const loading = presenceLoading || gymsLoading;
+  const isProcessing = checkingIn || locationLoading;
+
   // If user already has an active presence, show that instead
-  if (activePresence) {
-    const expiresAt = activePresence.expiresAt?.toDate();
-    const timeRemaining = expiresAt
-      ? Math.max(0, Math.round((expiresAt - new Date()) / 60000))
-      : 0;
+  if (isCheckedIn && presence) {
+    const timeRemaining = getTimeRemaining();
 
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.activeContainer}>
           <Text style={styles.activeTitle}>You're Already Checked In</Text>
           <View style={styles.activeCard}>
-            <Text style={styles.activeGym}>{activePresence.gymName}</Text>
+            <Text style={styles.activeGym}>{presence.gymName}</Text>
             <Text style={styles.activeTime}>
-              {timeRemaining > 0
-                ? `Expires in ${timeRemaining} minutes`
-                : 'Expiring soon...'}
+              {timeRemaining ? `Expires in ${timeRemaining}` : 'Expiring soon...'}
             </Text>
           </View>
           <Text style={styles.activeHint}>
@@ -160,7 +127,7 @@ export default function CheckInScreen({ navigation }) {
     );
   }
 
-  if (gymsLoading) {
+  if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
@@ -211,11 +178,11 @@ export default function CheckInScreen({ navigation }) {
 
         <View style={styles.footer}>
           <TouchableOpacity
-            style={[styles.checkInButton, loading && styles.buttonDisabled]}
+            style={[styles.checkInButton, isProcessing && styles.buttonDisabled]}
             onPress={handleCheckIn}
-            disabled={loading}
+            disabled={isProcessing}
           >
-            {loading ? (
+            {isProcessing ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={styles.checkInButtonText}>Check In</Text>

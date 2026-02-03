@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
-import { auth } from '../config/firebase';
-import { getAllGyms } from '../services/gymService';
-import {
-  createSchedule,
-  cancelSchedule,
-  subscribeToUserSchedules,
-} from '../services/scheduleService';
+import { useSchedules, useGyms } from '../hooks';
 
 // Generate available time slots for the next 7 days
 const getAvailableTimeSlots = () => {
@@ -50,53 +44,34 @@ const getAvailableTimeSlots = () => {
 };
 
 export default function PlanVisitScreen({ navigation }) {
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [gyms, setGyms] = useState([]);
-  const [userSchedules, setUserSchedules] = useState([]);
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [step, setStep] = useState(1); // 1: view schedules, 2: select gym, 3: select time
 
   const timeSlots = getAvailableTimeSlots();
 
-  useEffect(() => {
-    loadData();
+  // Hooks
+  const {
+    schedules,
+    loading: schedulesLoading,
+    createSchedule,
+    cancelSchedule,
+    creating,
+    formatScheduleTime,
+  } = useSchedules();
 
-    let unsubscribe;
-    if (auth.currentUser) {
-      unsubscribe = subscribeToUserSchedules(auth.currentUser.uid, (schedules) => {
-        setUserSchedules(schedules);
-      });
-    }
+  const {
+    gyms,
+    loading: gymsLoading,
+  } = useGyms();
 
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
-
-  const loadData = async () => {
-    try {
-      const gymsData = await getAllGyms();
-      setGyms(gymsData);
-    } catch (error) {
-      console.error('Error loading gyms:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loading = schedulesLoading || gymsLoading;
 
   const handleCreateSchedule = async () => {
     if (!selectedGym || !selectedSlot) return;
 
-    setSubmitting(true);
     try {
-      await createSchedule(
-        auth.currentUser.uid,
-        selectedGym.id,
-        selectedGym.name,
-        selectedSlot.date
-      );
+      await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
 
       Alert.alert(
         'Visit Scheduled!',
@@ -108,8 +83,6 @@ export default function PlanVisitScreen({ navigation }) {
       setSelectedSlot(null);
     } catch (error) {
       Alert.alert('Error', error.message);
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -134,22 +107,6 @@ export default function PlanVisitScreen({ navigation }) {
     );
   };
 
-  const formatScheduleTime = (schedule) => {
-    const date = schedule.scheduledTime?.toDate();
-    if (!date) return '';
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const isTomorrow = date.toDateString() === tomorrow.toDateString();
-
-    const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-
-    if (isToday) return `Today ${time}`;
-    if (isTomorrow) return `Tomorrow ${time}`;
-    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ` ${time}`;
-  };
-
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -160,7 +117,7 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 1: View existing intents
+  // Step 1: View existing schedules
   if (step === 1) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -170,10 +127,10 @@ export default function PlanVisitScreen({ navigation }) {
             Schedule when you plan to play
           </Text>
 
-          {userSchedules.length > 0 ? (
+          {schedules.length > 0 ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Your Upcoming Visits</Text>
-              {userSchedules.map((schedule) => (
+              {schedules.map((schedule) => (
                 <View key={schedule.id} style={styles.intentCard}>
                   <View style={styles.intentInfo}>
                     <Text style={styles.intentGym}>{schedule.gymName}</Text>
@@ -310,12 +267,12 @@ export default function PlanVisitScreen({ navigation }) {
           <TouchableOpacity
             style={[
               styles.primaryButton,
-              (!selectedSlot || submitting) && styles.buttonDisabled,
+              (!selectedSlot || creating) && styles.buttonDisabled,
             ]}
             onPress={handleCreateSchedule}
-            disabled={!selectedSlot || submitting}
+            disabled={!selectedSlot || creating}
           >
-            {submitting ? (
+            {creating ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <Text style={styles.primaryButtonText}>Confirm</Text>

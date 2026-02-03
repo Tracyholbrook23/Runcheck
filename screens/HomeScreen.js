@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import {
   View,
   Text,
@@ -10,67 +10,39 @@ import {
   Alert,
 } from 'react-native';
 import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
-import { auth } from '../config/firebase';
-import { subscribeToUserPresence, checkOut } from '../services/presenceService';
+import { usePresence } from '../hooks';
 
 const HomeScreen = ({ navigation }) => {
-  const [activePresence, setActivePresence] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [checkingOut, setCheckingOut] = useState(false);
-
-  useEffect(() => {
-    let unsubscribe;
-
-    if (auth.currentUser) {
-      unsubscribe = subscribeToUserPresence(auth.currentUser.uid, (presence) => {
-        setActivePresence(presence);
-        setLoading(false);
-      });
-    } else {
-      setLoading(false);
-    }
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, []);
+  const {
+    presence,
+    loading,
+    isCheckedIn,
+    checkOut,
+    checkingOut,
+    getTimeRemaining,
+  } = usePresence();
 
   const handleCheckOut = async () => {
     Alert.alert(
       'Check Out',
-      `Are you sure you want to check out from ${activePresence?.gymName}?`,
+      `Are you sure you want to check out from ${presence?.gymName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Check Out',
           style: 'destructive',
           onPress: async () => {
-            setCheckingOut(true);
             try {
               await checkOut();
               Alert.alert('Checked Out', "You've successfully checked out.");
             } catch (error) {
               console.error('Check-out error:', error);
               Alert.alert('Error', error.message || 'Failed to check out.');
-            } finally {
-              setCheckingOut(false);
             }
           },
         },
       ]
     );
-  };
-
-  const getTimeRemaining = () => {
-    if (!activePresence?.expiresAt) return null;
-    const expiresAt = activePresence.expiresAt.toDate();
-    const minutes = Math.max(0, Math.round((expiresAt - new Date()) / 60000));
-    if (minutes < 60) return `${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return `${hours}h ${mins}m`;
   };
 
   return (
@@ -93,13 +65,13 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.presenceCard}>
             <ActivityIndicator size="small" color={COLORS.primary} />
           </View>
-        ) : activePresence ? (
+        ) : isCheckedIn ? (
           <View style={styles.presenceCard}>
             <View style={styles.presenceHeader}>
               <View style={styles.liveIndicator} />
               <Text style={styles.presenceLabel}>You're Checked In</Text>
             </View>
-            <Text style={styles.presenceGym}>{activePresence.gymName}</Text>
+            <Text style={styles.presenceGym}>{presence.gymName}</Text>
             <Text style={styles.presenceTime}>
               Expires in {getTimeRemaining()}
             </Text>
@@ -119,11 +91,11 @@ const HomeScreen = ({ navigation }) => {
 
         {/* Action Buttons */}
         <TouchableOpacity
-          style={[BUTTON.base, activePresence && styles.buttonDisabled]}
+          style={[BUTTON.base, isCheckedIn && styles.buttonDisabled]}
           onPress={() => navigation.navigate('CheckIn')}
         >
           <Text style={BUTTON.text}>
-            {activePresence ? 'Already Checked In' : 'Check Into a Run'}
+            {isCheckedIn ? 'Already Checked In' : 'Check Into a Run'}
           </Text>
         </TouchableOpacity>
 
