@@ -11,21 +11,21 @@ import {
 import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
 import { subscribeToGym } from '../services/gymService';
 import { subscribeToGymPresences } from '../services/presenceService';
-import { subscribeToGymIntents } from '../services/intentService';
+import { subscribeToGymSchedules } from '../services/scheduleService';
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
 
   const [gym, setGym] = useState(null);
   const [presences, setPresences] = useState([]);
-  const [intents, setIntents] = useState([]);
-  const [intentsBySlot, setIntentsBySlot] = useState({});
+  const [schedules, setSchedules] = useState([]);
+  const [schedulesBySlot, setSchedulesBySlot] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let unsubscribeGym;
     let unsubscribePresences;
-    let unsubscribeIntents;
+    let unsubscribeSchedules;
 
     // Subscribe to gym details
     unsubscribeGym = subscribeToGym(gymId, (gymData) => {
@@ -38,16 +38,16 @@ export default function RunDetailsScreen({ route, navigation }) {
       setPresences(presenceData);
     });
 
-    // Subscribe to intents at this gym
-    unsubscribeIntents = subscribeToGymIntents(gymId, (intentData, bySlot) => {
-      setIntents(intentData);
-      setIntentsBySlot(bySlot);
+    // Subscribe to schedules at this gym
+    unsubscribeSchedules = subscribeToGymSchedules(gymId, (scheduleData, bySlot) => {
+      setSchedules(scheduleData);
+      setSchedulesBySlot(bySlot);
     });
 
     return () => {
       if (unsubscribeGym) unsubscribeGym();
       if (unsubscribePresences) unsubscribePresences();
-      if (unsubscribeIntents) unsubscribeIntents();
+      if (unsubscribeSchedules) unsubscribeSchedules();
     };
   }, [gymId]);
 
@@ -126,14 +126,14 @@ export default function RunDetailsScreen({ route, navigation }) {
         </View>
 
         {/* Upcoming Visitors */}
-        {intents.length > 0 && (
+        {schedules.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Coming Soon</Text>
-            {Object.keys(intentsBySlot)
+            {Object.keys(schedulesBySlot)
               .sort()
               .slice(0, 3)
               .map((slot) => {
-                const slotIntents = intentsBySlot[slot];
+                const slotSchedules = schedulesBySlot[slot];
                 const time = new Date(slot);
                 const now = new Date();
                 const isToday = time.toDateString() === now.toDateString();
@@ -147,7 +147,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   <View key={slot} style={styles.intentSlot}>
                     <Text style={styles.intentTime}>{label}</Text>
                     <Text style={styles.intentCount}>
-                      {slotIntents.length} {slotIntents.length === 1 ? 'player' : 'players'} planning to come
+                      {slotSchedules.length} {slotSchedules.length === 1 ? 'player' : 'players'} planning to come
                     </Text>
                   </View>
                 );

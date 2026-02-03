@@ -13,20 +13,50 @@ import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
 import { auth } from '../config/firebase';
 import { getAllGyms } from '../services/gymService';
 import {
-  createIntent,
-  getAvailableTimeSlots,
-  subscribeToUserIntents,
-  cancelIntent,
-} from '../services/intentService';
+  createSchedule,
+  cancelSchedule,
+  subscribeToUserSchedules,
+} from '../services/scheduleService';
+
+// Generate available time slots for the next 7 days
+const getAvailableTimeSlots = () => {
+  const slots = [];
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  // Today's remaining slots (next few hours)
+  for (let hour = currentHour + 1; hour <= 22; hour++) {
+    const date = new Date(now);
+    date.setHours(hour, 0, 0, 0);
+    const label = `Today ${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`;
+    slots.push({ date, label, timeSlot: date.toISOString() });
+  }
+
+  // Next 6 days
+  for (let day = 1; day <= 6; day++) {
+    const dayDate = new Date(now);
+    dayDate.setDate(dayDate.getDate() + day);
+    const dayName = day === 1 ? 'Tomorrow' : dayDate.toLocaleDateString('en-US', { weekday: 'short' });
+
+    for (let hour = 6; hour <= 22; hour += 2) {
+      const date = new Date(dayDate);
+      date.setHours(hour, 0, 0, 0);
+      const label = `${dayName} ${hour > 12 ? hour - 12 : hour}:00 ${hour >= 12 ? 'PM' : 'AM'}`;
+      slots.push({ date, label, timeSlot: date.toISOString() });
+    }
+  }
+
+  return slots.slice(0, 20); // Limit to 20 slots
+};
 
 export default function PlanVisitScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [gyms, setGyms] = useState([]);
-  const [userIntents, setUserIntents] = useState([]);
+  const [userSchedules, setUserSchedules] = useState([]);
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [step, setStep] = useState(1); // 1: view intents, 2: select gym, 3: select time
+  const [step, setStep] = useState(1); // 1: view schedules, 2: select gym, 3: select time
 
   const timeSlots = getAvailableTimeSlots();
 
@@ -35,8 +65,8 @@ export default function PlanVisitScreen({ navigation }) {
 
     let unsubscribe;
     if (auth.currentUser) {
-      unsubscribe = subscribeToUserIntents(auth.currentUser.uid, (intents) => {
-        setUserIntents(intents);
+      unsubscribe = subscribeToUserSchedules(auth.currentUser.uid, (schedules) => {
+        setUserSchedules(schedules);
       });
     }
 
@@ -56,16 +86,16 @@ export default function PlanVisitScreen({ navigation }) {
     }
   };
 
-  const handleCreateIntent = async () => {
+  const handleCreateSchedule = async () => {
     if (!selectedGym || !selectedSlot) return;
 
     setSubmitting(true);
     try {
-      await createIntent(
+      await createSchedule(
+        auth.currentUser.uid,
         selectedGym.id,
         selectedGym.name,
-        selectedSlot.date,
-        selectedSlot.timeSlot
+        selectedSlot.date
       );
 
       Alert.alert(
@@ -83,10 +113,10 @@ export default function PlanVisitScreen({ navigation }) {
     }
   };
 
-  const handleCancelIntent = async (intent) => {
+  const handleCancelSchedule = async (schedule) => {
     Alert.alert(
       'Cancel Visit',
-      `Cancel your planned visit to ${intent.gymName}?`,
+      `Cancel your planned visit to ${schedule.gymName}?`,
       [
         { text: 'Keep', style: 'cancel' },
         {
@@ -94,7 +124,7 @@ export default function PlanVisitScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await cancelIntent(intent.id);
+              await cancelSchedule(schedule.id);
             } catch (error) {
               Alert.alert('Error', error.message);
             }
@@ -104,8 +134,8 @@ export default function PlanVisitScreen({ navigation }) {
     );
   };
 
-  const formatIntentTime = (intent) => {
-    const date = intent.plannedTime?.toDate();
+  const formatScheduleTime = (schedule) => {
+    const date = schedule.scheduledTime?.toDate();
     if (!date) return '';
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
@@ -140,20 +170,20 @@ export default function PlanVisitScreen({ navigation }) {
             Schedule when you plan to play
           </Text>
 
-          {userIntents.length > 0 ? (
+          {userSchedules.length > 0 ? (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Your Upcoming Visits</Text>
-              {userIntents.map((intent) => (
-                <View key={intent.id} style={styles.intentCard}>
+              {userSchedules.map((schedule) => (
+                <View key={schedule.id} style={styles.intentCard}>
                   <View style={styles.intentInfo}>
-                    <Text style={styles.intentGym}>{intent.gymName}</Text>
+                    <Text style={styles.intentGym}>{schedule.gymName}</Text>
                     <Text style={styles.intentTime}>
-                      {formatIntentTime(intent)}
+                      {formatScheduleTime(schedule)}
                     </Text>
                   </View>
                   <TouchableOpacity
                     style={styles.cancelButton}
-                    onPress={() => handleCancelIntent(intent)}
+                    onPress={() => handleCancelSchedule(schedule)}
                   >
                     <Text style={styles.cancelButtonText}>Cancel</Text>
                   </TouchableOpacity>
@@ -282,7 +312,7 @@ export default function PlanVisitScreen({ navigation }) {
               styles.primaryButton,
               (!selectedSlot || submitting) && styles.buttonDisabled,
             ]}
-            onPress={handleCreateIntent}
+            onPress={handleCreateSchedule}
             disabled={!selectedSlot || submitting}
           >
             {submitting ? (

@@ -45,8 +45,8 @@ jest.mock('../../services/presenceService', () => ({
   }),
 }));
 
-jest.mock('../../services/intentService', () => ({
-  subscribeToGymIntents: jest.fn((gymId, callback) => {
+jest.mock('../../services/scheduleService', () => ({
+  subscribeToGymSchedules: jest.fn((gymId, callback) => {
     setTimeout(() => callback([], {}), 0);
     return jest.fn();
   }),

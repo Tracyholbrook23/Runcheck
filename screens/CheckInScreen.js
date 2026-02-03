@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
+import * as Location from 'expo-location';
 import { auth } from '../config/firebase';
 import { checkIn, getActivePresence } from '../services/presenceService';
 import { getAllGyms, seedGyms } from '../services/gymService';
@@ -81,11 +82,32 @@ export default function CheckInScreen({ navigation }) {
     setLoading(true);
 
     try {
+      // Request location permission
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Location Required',
+          'Please enable location services to check in. We use your location to verify you are at the gym.'
+        );
+        setLoading(false);
+        return;
+      }
+
+      // Get current location
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+
+      const userLocation = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+
       // Get the gym name from items
       const gymItem = gymItems.find((item) => item.value === selectedGym);
       const gymName = gymItem?.gymName || selectedGym;
 
-      await checkIn(selectedGym, gymName);
+      await checkIn(auth.currentUser.uid, selectedGym, userLocation);
 
       Alert.alert(
         'Checked In!',
