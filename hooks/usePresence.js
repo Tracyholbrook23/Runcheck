@@ -23,6 +23,9 @@ import {
   checkIn as checkInService,
   checkOut as checkOutService,
 } from '../services/presenceService';
+import { getCurrentLocation, calculateDistanceMeters } from '../utils/locationUtils';
+import { getGym } from '../services/gymService';
+import { DEFAULT_CHECK_IN_RADIUS_METERS } from '../services/models';
 
 export const usePresence = () => {
   const [presence, setPresence] = useState(null);
@@ -47,8 +50,8 @@ export const usePresence = () => {
     return unsubscribe;
   }, [auth.currentUser?.uid]);
 
-  // Check in to a gym
-  const checkIn = useCallback(async (gymId, userLocation) => {
+  // Check in to a gym with GPS validation
+  const checkIn = useCallback(async (gymId) => {
     if (!auth.currentUser) {
       throw new Error('Must be logged in to check in');
     }
@@ -57,6 +60,23 @@ export const usePresence = () => {
     setError(null);
 
     try {
+      // 1. Get device location (handles permission + retrieval)
+      const userLocation = await getCurrentLocation();
+
+      // 2. Client-side distance check before hitting Firestore
+      const gym = await getGym(gymId);
+      if (!gym?.location) {
+        throw new Error('Gym location not configured');
+      }
+
+      const distance = calculateDistanceMeters(userLocation, gym.location);
+      const radius = gym.checkInRadiusMeters || DEFAULT_CHECK_IN_RADIUS_METERS;
+
+      if (distance > radius) {
+        throw new Error('You must be at the gym to check in. Try again when you arrive.');
+      }
+
+      // 3. Service-layer check-in (second safety layer validates again)
       const result = await checkInService(auth.currentUser.uid, gymId, userLocation);
       return result;
     } catch (err) {

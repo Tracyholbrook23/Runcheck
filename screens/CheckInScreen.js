@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
-import { usePresence, useGyms, useLocation } from '../hooks';
+import { usePresence, useGyms } from '../hooks';
 
 export default function CheckInScreen({ navigation }) {
   const [open, setOpen] = useState(false);
@@ -38,11 +38,6 @@ export default function CheckInScreen({ navigation }) {
     ensureGymsExist,
   } = useGyms();
 
-  const {
-    getCurrentLocation,
-    loading: locationLoading,
-  } = useLocation();
-
   useEffect(() => {
     ensureGymsExist();
   }, [ensureGymsExist]);
@@ -63,11 +58,10 @@ export default function CheckInScreen({ navigation }) {
     }
 
     try {
-      const userLocation = await getCurrentLocation();
       const gymItem = gymItems.find((item) => item.value === selectedGym);
       const gymName = gymItem?.gymName || selectedGym;
 
-      await checkIn(selectedGym, userLocation);
+      await checkIn(selectedGym);
 
       Alert.alert(
         'Checked In!',
@@ -81,10 +75,15 @@ export default function CheckInScreen({ navigation }) {
       );
     } catch (error) {
       console.error('Check-in error:', error);
-      if (error.message.includes('permission')) {
+      if (error.message.includes('permission denied')) {
         Alert.alert(
           'Location Required',
           'Please enable location services to check in. We use your location to verify you are at the gym.'
+        );
+      } else if (error.message.includes('Unable to retrieve')) {
+        Alert.alert(
+          'GPS Unavailable',
+          'Could not get your location. Please check that GPS is enabled and try again.'
         );
       } else {
         Alert.alert('Check-in Failed', error.message || 'Please try again.');
@@ -93,7 +92,7 @@ export default function CheckInScreen({ navigation }) {
   };
 
   const loading = presenceLoading || gymsLoading;
-  const isProcessing = checkingIn || locationLoading;
+  const isProcessing = checkingIn;
 
   if (isCheckedIn && presence) {
     const timeRemaining = getTimeRemaining();

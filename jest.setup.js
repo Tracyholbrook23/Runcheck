@@ -90,5 +90,15 @@ jest.mock('react-native-maps', () => {
   };
 });
 
+// Mock expo-location
+jest.mock('expo-location', () => ({
+  requestForegroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
+  getForegroundPermissionsAsync: jest.fn(() => Promise.resolve({ status: 'granted' })),
+  getCurrentPositionAsync: jest.fn(() =>
+    Promise.resolve({ coords: { latitude: 30.4692, longitude: -97.5963 } })
+  ),
+  Accuracy: { High: 6 },
+}));
+
 // Mock alert
 global.alert = jest.fn();

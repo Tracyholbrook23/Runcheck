@@ -12,7 +12,7 @@
  *
  * BUSINESS RULES:
  * - User can only be checked in at one gym at a time
- * - Check-in requires GPS within configured radius (default 200m)
+ * - Check-in requires GPS within configured radius (default 50m)
  * - Presences auto-expire after configured time (default 3 hours)
  * - Check-in fulfills matching scheduled session if within grace period
  *
@@ -64,30 +64,7 @@ import {
 } from './models';
 
 import { findMatchingSchedule, markScheduleAttended } from './scheduleService';
-
-/**
- * Calculate distance between two GPS coordinates in meters
- * Uses Haversine formula
- *
- * @param {Object} coord1 - { latitude, longitude }
- * @param {Object} coord2 - { latitude, longitude }
- * @returns {number} Distance in meters
- */
-export const calculateDistance = (coord1, coord2) => {
-  const R = 6371e3; // Earth's radius in meters
-  const lat1 = (coord1.latitude * Math.PI) / 180;
-  const lat2 = (coord2.latitude * Math.PI) / 180;
-  const deltaLat = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
-  const deltaLon = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
-
-  const a =
-    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-  return R * c;
-};
+import { calculateDistanceMeters } from '../utils/locationUtils';
 
 /**
  * Generate presence document ID (compound key prevents duplicates)
@@ -189,12 +166,11 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
       throw new Error('Gym location not configured');
     }
 
-    distanceFromGym = calculateDistance(userLocation, gymLocation);
+    distanceFromGym = calculateDistanceMeters(userLocation, gymLocation);
 
     if (distanceFromGym > checkInRadius) {
       throw new Error(
-        `You are ${Math.round(distanceFromGym)}m away. ` +
-        `Please be within ${checkInRadius}m of the gym to check in.`
+        'You must be at the gym to check in. Try again when you arrive.'
       );
     }
   }

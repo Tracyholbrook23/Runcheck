@@ -30,10 +30,6 @@ jest.mock('../../hooks', () => ({
     loading: false,
     ensureGymsExist: jest.fn(),
   })),
-  useLocation: jest.fn(() => ({
-    getCurrentLocation: jest.fn(() => Promise.resolve({ latitude: 30.4692, longitude: -97.5963 })),
-    loading: false,
-  })),
 }));
 
 describe('CheckInScreen', () => {

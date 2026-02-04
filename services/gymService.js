@@ -221,7 +221,7 @@ export const updateGymLocation = async (gymId, location, checkInRadius = DEFAULT
  * @returns {Promise<Array>} Array of nearby gyms with distance
  */
 export const getNearbyGyms = async (userLocation, maxDistanceMeters = 10000) => {
-  const { calculateDistance } = await import('./presenceService');
+  const { calculateDistanceMeters } = await import('../utils/locationUtils');
 
   const allGyms = await getAllGyms();
 
@@ -229,7 +229,7 @@ export const getNearbyGyms = async (userLocation, maxDistanceMeters = 10000) => 
     .map((gym) => {
       if (!gym.location) return null;
 
-      const distance = calculateDistance(userLocation, gym.location);
+      const distance = calculateDistanceMeters(userLocation, gym.location);
       return { ...gym, distance };
     })
     .filter((gym) => gym && gym.distance <= maxDistanceMeters)

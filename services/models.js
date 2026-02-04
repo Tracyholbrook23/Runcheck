@@ -57,7 +57,7 @@
  *     latitude: number,
  *     longitude: number
  *   },
- *   checkInRadiusMeters: number,     // Max distance for valid check-in (default: 200)
+ *   checkInRadiusMeters: number,     // Max distance for valid check-in (default: 50)
  *
  *   // Counts (updated by services)
  *   currentPresenceCount: number,
@@ -164,7 +164,7 @@ export const SCHEDULE_STATUS = {
   CANCELLED: 'cancelled',
 };
 
-export const DEFAULT_CHECK_IN_RADIUS_METERS = 200;
+export const DEFAULT_CHECK_IN_RADIUS_METERS = 50;
 export const DEFAULT_EXPIRE_MINUTES = 180; // 3 hours
 export const SCHEDULE_GRACE_PERIOD_MINUTES = 60; // 1 hour window to check in
 export const CANCEL_PENALTY_THRESHOLD_MINUTES = 60; // No penalty if cancelled 1hr+ before
