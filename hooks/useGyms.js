@@ -41,10 +41,10 @@ export const useGyms = () => {
   // Get activity level based on presence count
   const getActivityLevel = useCallback((gym) => {
     const count = gym?.currentPresenceCount || 0;
-    if (count === 0) return { level: 'empty', label: 'Empty', color: '#9e9e9e' };
-    if (count <= 3) return { level: 'light', label: 'Light', color: '#4caf50' };
-    if (count <= 7) return { level: 'active', label: 'Active', color: '#ff9800' };
-    return { level: 'busy', label: 'Busy', color: '#f44336' };
+    if (count === 0) return { level: 'empty', label: 'Empty', color: '#9CA3AF' };
+    if (count <= 3) return { level: 'light', label: 'Light', color: '#22C55E' };
+    if (count <= 7) return { level: 'active', label: 'Active', color: '#F59E0B' };
+    return { level: 'busy', label: 'Busy', color: '#EF4444' };
   }, []);
 
   return {

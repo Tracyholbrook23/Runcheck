@@ -8,13 +8,12 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
+import { COLORS, FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
 import { useGym, useGymPresences, useGymSchedules } from '../hooks';
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
 
-  // Hooks
   const { gym, loading: gymLoading } = useGym(gymId);
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
   const { schedules, schedulesBySlot, loading: schedulesLoading } = useGymSchedules(gymId);
@@ -128,14 +127,14 @@ export default function RunDetailsScreen({ route, navigation }) {
         {/* Action Buttons */}
         <TouchableOpacity
           style={styles.checkInButton}
-          onPress={() => navigation.navigate('CheckIn')}
+          onPress={() => navigation.getParent()?.navigate('CheckIn')}
         >
           <Text style={styles.checkInButtonText}>Check In Here</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.planButton}
-          onPress={() => navigation.navigate('PlanVisit')}
+          onPress={() => navigation.getParent()?.navigate('Plan')}
         >
           <Text style={styles.planButtonText}>Plan a Visit</Text>
         </TouchableOpacity>
@@ -162,35 +161,31 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
-    color: COLORS.textDark,
+    color: COLORS.textSecondary,
   },
   header: {
     padding: SPACING.lg,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   gymName: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     marginBottom: SPACING.xs,
   },
   gymAddress: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
   },
   statsCard: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     margin: SPACING.lg,
     borderRadius: 12,
     padding: SPACING.lg,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    ...SHADOWS.card,
   },
   statItem: {
     flex: 1,
@@ -203,7 +198,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     marginTop: SPACING.xs,
   },
   section: {
@@ -212,37 +207,33 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     marginBottom: SPACING.md,
   },
   emptyState: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: COLORS.surfaceLight,
     borderRadius: 12,
     padding: SPACING.lg,
     alignItems: 'center',
   },
   emptyText: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     fontWeight: '500',
   },
   emptySubtext: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     marginTop: SPACING.xs,
   },
   playerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderRadius: 10,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 2,
+    ...SHADOWS.subtle,
   },
   playerAvatar: {
     width: 44,
@@ -264,15 +255,15 @@ const styles = StyleSheet.create({
   playerName: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
   },
   playerTime: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     marginTop: 2,
   },
   intentSlot: {
-    backgroundColor: '#f3e5f5',
+    backgroundColor: COLORS.scheduleBackground,
     borderRadius: 8,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -280,11 +271,11 @@ const styles = StyleSheet.create({
   intentTime: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: '#7b1fa2',
+    color: COLORS.scheduleText,
   },
   intentCount: {
     fontSize: FONT_SIZES.small,
-    color: '#9c27b0',
+    color: COLORS.scheduleTextBright,
     marginTop: 2,
   },
   checkInButton: {
@@ -300,7 +291,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   planButton: {
-    backgroundColor: '#6c5ce7',
+    backgroundColor: COLORS.secondary,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.sm,
     borderRadius: 10,

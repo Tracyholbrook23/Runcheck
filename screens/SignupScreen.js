@@ -3,18 +3,17 @@ import {
   View,
   Text,
   TextInput,
-  Button,
+  TouchableOpacity,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
+import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../constants/theme';
 import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 
 export default function SignupScreen({ navigation }) {
-  // STATE HOOKS – must be inside the function
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
   const [age, setAge] = useState('');
@@ -22,7 +21,6 @@ export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // HANDLER FUNCTION – also inside component
   const handleSignup = async () => {
     if (!name || !email || !password || !age || !skillLevel) {
       alert('Please fill out all fields');
@@ -43,7 +41,7 @@ export default function SignupScreen({ navigation }) {
       });
 
       alert('Signup successful!');
-      navigation.navigate('Home');
+      navigation.navigate('Main');
     } catch (error) {
       console.error('Signup error:', error);
       alert(error.message);
@@ -56,17 +54,19 @@ export default function SignupScreen({ navigation }) {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>Create Your RunCheck Account</Text>
 
-      <TextInput style={styles.input} placeholder="Full Name" value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder="Age" keyboardType="numeric" value={age} onChangeText={setAge} />
-      <TextInput style={styles.input} placeholder="Skill Level (e.g. Beginner, Pro)" value={skillLevel} onChangeText={setSkillLevel} />
-      <TextInput style={styles.input} placeholder="Email" keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Password" secureTextEntry value={password} onChangeText={setPassword} />
+      <TextInput style={styles.input} placeholder="Full Name" placeholderTextColor={COLORS.textMuted} value={name} onChangeText={setName} />
+      <TextInput style={styles.input} placeholder="Age" placeholderTextColor={COLORS.textMuted} keyboardType="numeric" value={age} onChangeText={setAge} />
+      <TextInput style={styles.input} placeholder="Skill Level (e.g. Beginner, Pro)" placeholderTextColor={COLORS.textMuted} value={skillLevel} onChangeText={setSkillLevel} />
+      <TextInput style={styles.input} placeholder="Email" placeholderTextColor={COLORS.textMuted} keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
+      <TextInput style={styles.input} placeholder="Password" placeholderTextColor={COLORS.textMuted} secureTextEntry value={password} onChangeText={setPassword} />
 
       <View style={styles.buttonContainer}>
         {loading ? (
-          <ActivityIndicator size="large" color="#0000ff" testID="loading-indicator" />
+          <ActivityIndicator size="large" color={COLORS.primary} testID="loading-indicator" />
         ) : (
-          <Button title="Sign Up" onPress={handleSignup} testID="signup-button" />
+          <TouchableOpacity style={styles.signupButton} onPress={handleSignup} testID="signup-button">
+            <Text style={styles.signupButtonText}>Sign Up</Text>
+          </TouchableOpacity>
         )}
       </View>
     </ScrollView>
@@ -79,24 +79,38 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.background,
   },
   title: {
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 24,
+    color: COLORS.textPrimary,
   },
   input: {
     width: '100%',
-    borderColor: '#ccc',
+    borderColor: COLORS.border,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: RADIUS.sm,
     padding: 12,
     marginBottom: 16,
     fontSize: 16,
+    backgroundColor: COLORS.surface,
+    color: COLORS.textPrimary,
   },
   buttonContainer: {
     width: '100%',
     marginBottom: 12,
+  },
+  signupButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    alignItems: 'center',
+  },
+  signupButtonText: {
+    color: '#FFFFFF',
+    fontSize: FONT_SIZES.body,
+    fontWeight: '600',
   },
 });

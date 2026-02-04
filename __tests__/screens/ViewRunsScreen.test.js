@@ -81,9 +81,9 @@ describe('ViewRunsScreen', () => {
     );
 
     await waitFor(() => {
-      expect(getByText('5 players here now')).toBeTruthy();
-      expect(getByText('No one here yet')).toBeTruthy();
-      expect(getByText('12 players here now')).toBeTruthy();
+      expect(getByText('5/15')).toBeTruthy();
+      expect(getByText('0/15')).toBeTruthy();
+      expect(getByText('12/15')).toBeTruthy();
     });
   });
 

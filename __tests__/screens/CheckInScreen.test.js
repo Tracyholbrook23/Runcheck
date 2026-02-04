@@ -2,10 +2,11 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import CheckInScreen from '../../screens/CheckInScreen';
 
-// Mock navigation
-const mockNavigate = jest.fn();
+// Mock navigation (CheckInScreen uses navigation.getParent()?.navigate for tab switching)
+const mockParentNavigate = jest.fn();
 const mockNavigation = {
-  navigate: mockNavigate,
+  navigate: jest.fn(),
+  getParent: () => ({ navigate: mockParentNavigate }),
 };
 
 // Mock gyms data
@@ -87,7 +88,7 @@ describe('CheckInScreen', () => {
 
     fireEvent.press(getByText('Back to Home'));
 
-    expect(mockNavigate).toHaveBeenCalledWith('Home');
+    expect(mockParentNavigate).toHaveBeenCalledWith('Home');
   });
 
   it('renders info box about expiry', () => {

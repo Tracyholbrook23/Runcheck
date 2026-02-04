@@ -2,10 +2,11 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import RunDetailsScreen from '../../screens/RunDetailsScreen';
 
-// Mock navigation
-const mockNavigate = jest.fn();
+// Mock navigation (RunDetailsScreen uses navigation.getParent()?.navigate for tab switching)
+const mockParentNavigate = jest.fn();
 const mockNavigation = {
-  navigate: mockNavigate,
+  navigate: jest.fn(),
+  getParent: () => ({ navigate: mockParentNavigate }),
 };
 
 // Mock gym data
@@ -119,7 +120,7 @@ describe('RunDetailsScreen', () => {
 
     fireEvent.press(getByText('Check In Here'));
 
-    expect(mockNavigation.navigate).toHaveBeenCalledWith('CheckIn');
+    expect(mockParentNavigate).toHaveBeenCalledWith('CheckIn');
   });
 
   it('renders loading state when hooks are loading', () => {

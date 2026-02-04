@@ -16,12 +16,10 @@ import DropDownPicker from 'react-native-dropdown-picker';
 import { usePresence, useGyms, useLocation } from '../hooks';
 
 export default function CheckInScreen({ navigation }) {
-  // Dropdown state
   const [open, setOpen] = useState(false);
   const [selectedGym, setSelectedGym] = useState(null);
   const [gymItems, setGymItems] = useState([]);
 
-  // Hooks
   const {
     presence,
     loading: presenceLoading,
@@ -42,12 +40,10 @@ export default function CheckInScreen({ navigation }) {
     loading: locationLoading,
   } = useLocation();
 
-  // Ensure gyms exist on mount
   useEffect(() => {
     ensureGymsExist();
   }, [ensureGymsExist]);
 
-  // Update dropdown items when gyms change
   useEffect(() => {
     const items = gyms.map((gym) => ({
       label: `${gym.name} (${gym.currentPresenceCount || 0} here)`,
@@ -64,10 +60,7 @@ export default function CheckInScreen({ navigation }) {
     }
 
     try {
-      // Get current location
       const userLocation = await getCurrentLocation();
-
-      // Get the gym name from items
       const gymItem = gymItems.find((item) => item.value === selectedGym);
       const gymName = gymItem?.gymName || selectedGym;
 
@@ -79,7 +72,7 @@ export default function CheckInScreen({ navigation }) {
         [
           {
             text: 'View Gyms',
-            onPress: () => navigation.navigate('ViewRuns'),
+            onPress: () => navigation.getParent()?.navigate('Runs'),
           },
         ]
       );
@@ -99,7 +92,6 @@ export default function CheckInScreen({ navigation }) {
   const loading = presenceLoading || gymsLoading;
   const isProcessing = checkingIn || locationLoading;
 
-  // If user already has an active presence, show that instead
   if (isCheckedIn && presence) {
     const timeRemaining = getTimeRemaining();
 
@@ -118,7 +110,7 @@ export default function CheckInScreen({ navigation }) {
           </Text>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => navigation.navigate('Home')}
+            onPress={() => navigation.getParent()?.navigate('Home')}
           >
             <Text style={styles.backButtonText}>Back to Home</Text>
           </TouchableOpacity>
@@ -163,6 +155,10 @@ export default function CheckInScreen({ navigation }) {
             containerStyle={{ marginBottom: open ? 200 : 20 }}
             style={styles.dropdown}
             dropDownContainerStyle={styles.dropdownContainer}
+            textStyle={{ color: COLORS.textPrimary }}
+            placeholderStyle={{ color: COLORS.textMuted }}
+            listItemLabelStyle={{ color: COLORS.textPrimary }}
+            selectedItemLabelStyle={{ color: COLORS.primary }}
             zIndex={5000}
             zIndexInverse={1000}
             listMode="SCROLLVIEW"
@@ -191,7 +187,7 @@ export default function CheckInScreen({ navigation }) {
 
           <TouchableOpacity
             style={styles.secondaryButton}
-            onPress={() => navigation.navigate('Home')}
+            onPress={() => navigation.getParent()?.navigate('Home')}
           >
             <Text style={styles.secondaryButtonText}>Back to Home</Text>
           </TouchableOpacity>
@@ -218,7 +214,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
-    color: COLORS.textDark,
+    color: COLORS.textSecondary,
   },
   innerContainer: {
     padding: SPACING.lg,
@@ -229,11 +225,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: SPACING.xs,
     textAlign: 'center',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
   },
@@ -241,33 +237,34 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
     marginBottom: SPACING.sm,
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
   },
   dropdown: {
     borderColor: COLORS.border,
     borderRadius: 8,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
   },
   dropdownContainer: {
     borderColor: COLORS.border,
     borderRadius: 8,
+    backgroundColor: COLORS.surface,
   },
   infoBox: {
-    backgroundColor: '#f0f7ff',
+    backgroundColor: COLORS.infoBackground,
     borderRadius: 8,
     padding: SPACING.md,
     marginTop: SPACING.md,
   },
   infoText: {
     fontSize: FONT_SIZES.small,
-    color: '#1a73e8',
+    color: COLORS.infoText,
     lineHeight: 20,
   },
   footer: {
     padding: SPACING.lg,
     borderTopWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
   },
   checkInButton: {
     backgroundColor: COLORS.primary,
@@ -294,7 +291,6 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
   },
-  // Active presence styles
   activeContainer: {
     flex: 1,
     padding: SPACING.lg,
@@ -304,11 +300,11 @@ const styles = StyleSheet.create({
   activeTitle: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     marginBottom: SPACING.lg,
   },
   activeCard: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: COLORS.presenceBackground,
     borderRadius: 12,
     padding: SPACING.lg,
     width: '100%',
@@ -318,16 +314,16 @@ const styles = StyleSheet.create({
   activeGym: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
-    color: '#2e7d32',
+    color: COLORS.presenceTextBright,
     marginBottom: SPACING.sm,
   },
   activeTime: {
     fontSize: FONT_SIZES.body,
-    color: '#388e3c',
+    color: COLORS.presenceText,
   },
   activeHint: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
   },

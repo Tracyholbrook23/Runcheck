@@ -9,16 +9,14 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
+import { COLORS, FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
 import { useSchedules, useGyms } from '../hooks';
 
-// Generate available time slots for the next 7 days
 const getAvailableTimeSlots = () => {
   const slots = [];
   const now = new Date();
   const currentHour = now.getHours();
 
-  // Today's remaining slots (next few hours)
   for (let hour = currentHour + 1; hour <= 22; hour++) {
     const date = new Date(now);
     date.setHours(hour, 0, 0, 0);
@@ -26,7 +24,6 @@ const getAvailableTimeSlots = () => {
     slots.push({ date, label, timeSlot: date.toISOString() });
   }
 
-  // Next 6 days
   for (let day = 1; day <= 6; day++) {
     const dayDate = new Date(now);
     dayDate.setDate(dayDate.getDate() + day);
@@ -40,17 +37,16 @@ const getAvailableTimeSlots = () => {
     }
   }
 
-  return slots.slice(0, 20); // Limit to 20 slots
+  return slots.slice(0, 20);
 };
 
 export default function PlanVisitScreen({ navigation }) {
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
-  const [step, setStep] = useState(1); // 1: view schedules, 2: select gym, 3: select time
+  const [step, setStep] = useState(1);
 
   const timeSlots = getAvailableTimeSlots();
 
-  // Hooks
   const {
     schedules,
     loading: schedulesLoading,
@@ -117,7 +113,6 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 1: View existing schedules
   if (step === 1) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -174,7 +169,6 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 2: Select gym
   if (step === 2) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -225,7 +219,6 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 3: Select time slot
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
@@ -301,12 +294,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
   },
@@ -316,20 +309,17 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     marginBottom: SPACING.md,
   },
   intentCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderRadius: 10,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    ...SHADOWS.subtle,
   },
   intentInfo: {
     flex: 1,
@@ -337,7 +327,7 @@ const styles = StyleSheet.create({
   intentGym: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
   },
   intentTime: {
     fontSize: FONT_SIZES.small,
@@ -349,12 +339,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   cancelButtonText: {
-    color: '#c62828',
+    color: COLORS.danger,
     fontSize: FONT_SIZES.small,
     fontWeight: '600',
   },
   emptyState: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: COLORS.surfaceLight,
     borderRadius: 12,
     padding: SPACING.lg,
     alignItems: 'center',
@@ -362,35 +352,36 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     fontWeight: '500',
   },
   emptySubtext: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     marginTop: SPACING.xs,
     textAlign: 'center',
   },
   optionCard: {
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderRadius: 10,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     borderWidth: 2,
     borderColor: 'transparent',
+    ...SHADOWS.subtle,
   },
   optionCardSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#f0f7ff',
+    borderColor: COLORS.secondary,
+    backgroundColor: COLORS.scheduleBackground,
   },
   optionTitle: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
   },
   optionSubtitle: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     marginTop: 2,
   },
   optionBadge: {
@@ -406,25 +397,26 @@ const styles = StyleSheet.create({
   },
   slotCard: {
     width: '48%',
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.surface,
     borderRadius: 8,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
     borderWidth: 2,
     borderColor: 'transparent',
     alignItems: 'center',
+    ...SHADOWS.subtle,
   },
   slotCardSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: '#f0f7ff',
+    borderColor: COLORS.secondary,
+    backgroundColor: COLORS.scheduleBackground,
   },
   slotText: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     fontWeight: '500',
   },
   slotTextSelected: {
-    color: COLORS.primary,
+    color: COLORS.scheduleText,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -450,10 +442,10 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     alignItems: 'center',
     marginRight: SPACING.sm,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: COLORS.surfaceLight,
   },
   secondaryButtonText: {
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
   },

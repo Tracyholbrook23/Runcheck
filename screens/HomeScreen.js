@@ -45,6 +45,11 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
+  // Navigate into the tab structure
+  const goToTab = (tabName) => {
+    navigation.getParent()?.navigate(tabName);
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
@@ -63,7 +68,7 @@ const HomeScreen = ({ navigation }) => {
         {/* Active Presence Card */}
         {loading ? (
           <View style={styles.presenceCard}>
-            <ActivityIndicator size="small" color={COLORS.primary} />
+            <ActivityIndicator size="small" color={COLORS.success} />
           </View>
         ) : isCheckedIn ? (
           <View style={styles.presenceCard}>
@@ -92,7 +97,7 @@ const HomeScreen = ({ navigation }) => {
         {/* Action Buttons */}
         <TouchableOpacity
           style={[BUTTON.base, isCheckedIn && styles.buttonDisabled]}
-          onPress={() => navigation.navigate('CheckIn')}
+          onPress={() => goToTab('CheckIn')}
         >
           <Text style={BUTTON.text}>
             {isCheckedIn ? 'Already Checked In' : 'Check Into a Run'}
@@ -101,14 +106,14 @@ const HomeScreen = ({ navigation }) => {
 
         <TouchableOpacity
           style={[BUTTON.base, styles.accentButton]}
-          onPress={() => navigation.navigate('ViewRuns')}
+          onPress={() => goToTab('Runs')}
         >
           <Text style={BUTTON.text}>Find Open Runs</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[BUTTON.base, styles.planButton]}
-          onPress={() => navigation.navigate('PlanVisit')}
+          onPress={() => goToTab('Plan')}
         >
           <Text style={BUTTON.text}>Plan a Visit</Text>
         </TouchableOpacity>
@@ -142,19 +147,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.title + 4,
     fontWeight: 'bold',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: FONT_SIZES.subtitle,
-    color: COLORS.textDark,
+    color: COLORS.textSecondary,
     marginBottom: SPACING.lg,
     textAlign: 'center',
   },
-  // Active presence card
   presenceCard: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: COLORS.presenceBackground,
     borderRadius: 12,
     padding: SPACING.md,
     width: '100%',
@@ -170,28 +174,28 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#4caf50',
+    backgroundColor: COLORS.success,
     marginRight: SPACING.xs,
   },
   presenceLabel: {
     fontSize: FONT_SIZES.small,
-    color: '#2e7d32',
+    color: COLORS.presenceText,
     fontWeight: '600',
   },
   presenceGym: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: 'bold',
-    color: '#1b5e20',
+    color: COLORS.presenceTextBright,
     marginBottom: SPACING.xs,
     textAlign: 'center',
   },
   presenceTime: {
     fontSize: FONT_SIZES.small,
-    color: '#388e3c',
+    color: COLORS.presenceText,
     marginBottom: SPACING.sm,
   },
   checkOutButton: {
-    backgroundColor: '#c62828',
+    backgroundColor: COLORS.danger,
     borderRadius: 6,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
@@ -201,26 +205,24 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.small,
     fontWeight: '600',
   },
-  // Buttons
   accentButton: {
-    backgroundColor: COLORS.accent,
+    backgroundColor: COLORS.primaryLight,
     marginTop: SPACING.md,
   },
   planButton: {
-    backgroundColor: '#6c5ce7',
+    backgroundColor: COLORS.secondary,
     marginTop: SPACING.md,
   },
   buttonDisabled: {
     opacity: 0.6,
   },
-  // Footer
   footer: {
     paddingVertical: SPACING.sm,
     alignItems: 'center',
   },
   footerText: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.border,
+    color: COLORS.textMuted,
   },
 });
 

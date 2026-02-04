@@ -2,10 +2,11 @@ import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
 import HomeScreen from '../../screens/HomeScreen';
 
-// Mock navigation
-const mockNavigate = jest.fn();
+// Mock navigation (HomeScreen uses navigation.getParent()?.navigate for tab switching)
+const mockParentNavigate = jest.fn();
 const mockNavigation = {
-  navigate: mockNavigate,
+  navigate: jest.fn(),
+  getParent: () => ({ navigate: mockParentNavigate }),
 };
 
 // Mock the image require
@@ -94,7 +95,7 @@ describe('HomeScreen', () => {
 
     fireEvent.press(getByText('Check Into a Run'));
 
-    expect(mockNavigate).toHaveBeenCalledWith('CheckIn');
+    expect(mockParentNavigate).toHaveBeenCalledWith('CheckIn');
   });
 
   it('navigates to ViewRuns when Find Open Runs is pressed', async () => {
@@ -108,6 +109,6 @@ describe('HomeScreen', () => {
 
     fireEvent.press(getByText('Find Open Runs'));
 
-    expect(mockNavigate).toHaveBeenCalledWith('ViewRuns');
+    expect(mockParentNavigate).toHaveBeenCalledWith('Runs');
   });
 });

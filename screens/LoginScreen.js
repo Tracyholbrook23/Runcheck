@@ -3,12 +3,12 @@ import {
   View,
   Text,
   TextInput,
-  Button,
+  TouchableOpacity,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
+import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../constants/theme';
 import { auth } from '../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -27,7 +27,7 @@ export default function LoginScreen({ navigation }) {
 
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate('Home');
+      navigation.navigate('Main');
     } catch (error) {
       console.error('Login error:', error);
       let errorMessage = 'Login failed. Please try again.';
@@ -53,6 +53,7 @@ export default function LoginScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
+        placeholderTextColor={COLORS.textMuted}
         keyboardType="email-address"
         autoCapitalize="none"
         value={email}
@@ -62,6 +63,7 @@ export default function LoginScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Password"
+        placeholderTextColor={COLORS.textMuted}
         secureTextEntry
         value={password}
         onChangeText={setPassword}
@@ -70,18 +72,24 @@ export default function LoginScreen({ navigation }) {
 
       <View style={styles.buttonContainer}>
         {loading ? (
-          <ActivityIndicator size="large" color="#0000ff" testID="loading-indicator" />
+          <ActivityIndicator size="large" color={COLORS.primary} testID="loading-indicator" />
         ) : (
-          <Button title="Login" onPress={handleLogin} testID="login-button" />
+          <TouchableOpacity style={styles.loginButton} onPress={handleLogin} testID="login-button">
+            <Text style={styles.loginButtonText}>Login</Text>
+          </TouchableOpacity>
         )}
       </View>
 
       <View style={styles.buttonContainer}>
-        <Button title="Go to Signup" onPress={() => navigation.navigate('Signup')} />
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Signup')}>
+          <Text style={styles.secondaryButtonText}>Go to Signup</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.buttonContainer}>
-        <Button title="Back to Home" onPress={() => navigation.navigate('Home')} />
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Main')}>
+          <Text style={styles.secondaryButtonText}>Back to Home</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -93,25 +101,50 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#fff',
+    backgroundColor: COLORS.background,
   },
   title: {
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 24,
     textAlign: 'center',
+    color: COLORS.textPrimary,
   },
   input: {
     width: '100%',
-    borderColor: '#ccc',
+    borderColor: COLORS.border,
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: RADIUS.sm,
     padding: 12,
     marginBottom: 16,
     fontSize: 16,
+    backgroundColor: COLORS.surface,
+    color: COLORS.textPrimary,
   },
   buttonContainer: {
     width: '100%',
     marginBottom: 12,
+  },
+  loginButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    alignItems: 'center',
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: FONT_SIZES.body,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: COLORS.surfaceLight,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: COLORS.primary,
+    fontSize: FONT_SIZES.body,
+    fontWeight: '600',
   },
 });

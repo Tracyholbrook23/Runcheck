@@ -131,7 +131,7 @@ describe('LoginScreen', () => {
     fireEvent.press(getByText('Login'));
 
     await waitFor(() => {
-      expect(mockNavigate).toHaveBeenCalledWith('Home');
+      expect(mockNavigate).toHaveBeenCalledWith('Main');
     });
   });
 
@@ -242,7 +242,7 @@ describe('LoginScreen', () => {
 
     fireEvent.press(getByText('Back to Home'));
 
-    expect(mockNavigate).toHaveBeenCalledWith('Home');
+    expect(mockNavigate).toHaveBeenCalledWith('Main');
   });
 
   it('shows loading indicator while login is in progress', async () => {

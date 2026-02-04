@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
 import { subscribeToGyms, seedGyms, getAllGyms } from '../services/gymService';
 
@@ -22,13 +23,11 @@ export default function ViewRunsScreen({ navigation }) {
 
     const initializeGyms = async () => {
       try {
-        // Check if gyms exist, seed if not
         const existingGyms = await getAllGyms();
         if (existingGyms.length === 0) {
           await seedGyms();
         }
 
-        // Subscribe to real-time updates
         unsubscribe = subscribeToGyms((gymsData) => {
           setGyms(gymsData);
           setLoading(false);
@@ -52,14 +51,13 @@ export default function ViewRunsScreen({ navigation }) {
 
   const onRefresh = () => {
     setRefreshing(true);
-    // The subscription will update automatically
   };
 
   const getActivityLevel = (count) => {
-    if (count === 0) return { label: 'Empty', color: '#9e9e9e' };
-    if (count < 5) return { label: 'Light', color: '#4caf50' };
-    if (count < 10) return { label: 'Active', color: '#ff9800' };
-    return { label: 'Busy', color: '#f44336' };
+    if (count === 0) return { label: 'Empty', color: COLORS.activityEmpty };
+    if (count < 5) return { label: 'Light', color: COLORS.activityLight };
+    if (count < 10) return { label: 'Active', color: COLORS.activityActive };
+    return { label: 'Busy', color: COLORS.activityBusy };
   };
 
   if (loading) {
@@ -109,23 +107,30 @@ export default function ViewRunsScreen({ navigation }) {
                     })
                   }
                 >
-                  <View style={styles.gymHeader}>
-                    <Text style={styles.gymName}>{gym.name}</Text>
-                    <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
-                      <Text style={styles.activityText}>{activity.label}</Text>
-                    </View>
+                  {/* Thumbnail */}
+                  <View style={styles.thumbnail}>
+                    <Ionicons name="basketball" size={28} color={COLORS.primary} />
                   </View>
 
-                  <Text style={styles.gymAddress}>{gym.address}</Text>
+                  {/* Info */}
+                  <View style={styles.gymInfo}>
+                    <View style={styles.gymRow}>
+                      <Text style={styles.gymName} numberOfLines={1}>{gym.name}</Text>
+                      <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
+                        <Text style={styles.activityText}>{activity.label}</Text>
+                      </View>
+                    </View>
 
-                  <View style={styles.gymFooter}>
-                    <Text style={styles.playerCount}>
-                      {count === 0
-                        ? 'No one here yet'
-                        : count === 1
-                        ? '1 player here now'
-                        : `${count} players here now`}
-                    </Text>
+                    <View style={styles.gymRow}>
+                      <Text style={styles.runType}>
+                        Indoor <Text style={styles.runTypeAccent}>OPEN RUN</Text>
+                      </Text>
+                      <Text style={styles.playerCount}>
+                        {count}/15
+                      </Text>
+                    </View>
+
+                    <Text style={styles.gymAddress} numberOfLines={1}>{gym.address}</Text>
                   </View>
                 </TouchableOpacity>
               );
@@ -144,7 +149,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: SPACING.lg,
+    padding: SPACING.md,
   },
   centered: {
     flex: 1,
@@ -154,19 +159,18 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
-    color: COLORS.textDark,
+    color: COLORS.textSecondary,
   },
   title: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textDark,
-    textAlign: 'center',
+    color: COLORS.textPrimary,
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: FONT_SIZES.body,
-    color: COLORS.textLight,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
+    fontSize: FONT_SIZES.small,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
   },
   scroll: {
     paddingBottom: SPACING.lg,
@@ -179,59 +183,73 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: FONT_SIZES.subtitle,
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     fontWeight: '600',
   },
   emptySubtext: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textLight,
+    color: COLORS.textSecondary,
     marginTop: SPACING.sm,
   },
   gymCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    flexDirection: 'row',
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
   },
-  gymHeader: {
+  thumbnail: {
+    width: 56,
+    height: 56,
+    borderRadius: 8,
+    backgroundColor: COLORS.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+  },
+  gymInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  gymRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
   },
   gymName: {
-    fontSize: FONT_SIZES.subtitle,
+    fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textDark,
+    color: COLORS.textPrimary,
     flex: 1,
+    marginRight: SPACING.xs,
   },
   activityBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 2,
+    borderRadius: 10,
   },
   activityText: {
     color: '#fff',
-    fontSize: FONT_SIZES.small,
+    fontSize: FONT_SIZES.xs,
     fontWeight: '600',
   },
-  gymAddress: {
+  runType: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textLight,
-    marginBottom: SPACING.sm,
+    color: COLORS.textSecondary,
   },
-  gymFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  runTypeAccent: {
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   playerCount: {
-    fontSize: FONT_SIZES.body,
-    color: COLORS.primary,
+    fontSize: FONT_SIZES.small,
+    color: COLORS.textSecondary,
     fontWeight: '500',
+  },
+  gymAddress: {
+    fontSize: FONT_SIZES.xs,
+    color: COLORS.textMuted,
   },
 });

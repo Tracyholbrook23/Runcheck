@@ -1,6 +1,18 @@
 // Jest setup file
 import '@testing-library/react-native/extend-expect';
 
+// Mock @react-navigation/bottom-tabs
+jest.mock('@react-navigation/bottom-tabs', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+  return {
+    createBottomTabNavigator: () => ({
+      Navigator: ({ children }) => React.createElement(View, null, children),
+      Screen: ({ children }) => React.createElement(View, null, children),
+    }),
+  };
+});
+
 // Mock react-native-dropdown-picker
 jest.mock('react-native-dropdown-picker', () => {
   const React = require('react');
