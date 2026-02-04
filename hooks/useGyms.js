@@ -20,6 +20,9 @@ export const useGyms = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Seed/cleanup gyms on first load, then subscribe to updates
+    seedGyms().catch((err) => console.error('Error seeding gyms:', err));
+
     const unsubscribe = subscribeToGyms((gymData) => {
       setGyms(gymData);
       setLoading(false);
