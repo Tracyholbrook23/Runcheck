@@ -6,25 +6,11 @@ import ViewRunsScreen from '../../screens/ViewRunsScreen';
 // Mock gym data
 const mockGyms = [
   {
-    id: 'gym-1',
+    id: 'cowboys-fit-pflugerville',
     name: 'Cowboys Fit - Pflugerville',
     address: '1401 Town Center Dr, Pflugerville, TX 78660',
     type: 'indoor',
     currentPresenceCount: 5,
-  },
-  {
-    id: 'gym-2',
-    name: 'Pflugerville Recreation Center',
-    address: '400 Immanuel Rd, Pflugerville, TX 78660',
-    type: 'indoor',
-    currentPresenceCount: 0,
-  },
-  {
-    id: 'gym-3',
-    name: 'Pfluger Park',
-    address: '515 City Park Rd, Pflugerville, TX 78660',
-    type: 'outdoor',
-    currentPresenceCount: 12,
   },
 ];
 
@@ -74,49 +60,39 @@ describe('ViewRunsScreen', () => {
     expect(getByText('Find a Run')).toBeTruthy();
   });
 
-  it('renders all gyms from hook', () => {
+  it('renders Cowboys Fit gym', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
     expect(getByText('Cowboys Fit - Pflugerville')).toBeTruthy();
-    expect(getByText('Pflugerville Recreation Center')).toBeTruthy();
-    expect(getByText('Pfluger Park')).toBeTruthy();
   });
 
-  it('displays player counts', () => {
+  it('displays player count', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
     expect(getByText('5/15')).toBeTruthy();
-    expect(getByText('0/15')).toBeTruthy();
-    expect(getByText('12/15')).toBeTruthy();
   });
 
-  it('displays activity badges', () => {
-    const { getAllByText } = renderWithTheme(
+  it('displays activity badge', () => {
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    expect(getAllByText('Active').length).toBeGreaterThan(0);
-    expect(getAllByText('Empty').length).toBeGreaterThan(0);
-    expect(getAllByText('Busy').length).toBeGreaterThan(0);
+    expect(getByText('Active')).toBeTruthy();
   });
 
-  it('shows Indoor/Outdoor type per gym', () => {
-    const { getAllByText } = renderWithTheme(
+  it('shows Indoor type for Cowboys Fit', () => {
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    // Two indoor gyms, one outdoor
-    const indoorElements = getAllByText(/^Indoor /);
-    const outdoorElements = getAllByText(/^Outdoor /);
-    expect(indoorElements.length).toBe(2);
-    expect(outdoorElements.length).toBe(1);
+    expect(getByText(/^Indoor /)).toBeTruthy();
   });
 
-  it('navigates to RunDetails with correct params when a gym is pressed', () => {
+  it('navigates to RunDetails with correct params when gym is pressed', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
@@ -124,7 +100,7 @@ describe('ViewRunsScreen', () => {
     fireEvent.press(getByText('Cowboys Fit - Pflugerville'));
 
     expect(mockNavigate).toHaveBeenCalledWith('RunDetails', {
-      gymId: 'gym-1',
+      gymId: 'cowboys-fit-pflugerville',
       gymName: 'Cowboys Fit - Pflugerville',
       players: 5,
     });

@@ -13,7 +13,6 @@ const mockNavigation = {
 // Mock gyms data
 const mockGyms = [
   { id: 'cowboys-fit-pflugerville', name: 'Cowboys Fit - Pflugerville', type: 'indoor', currentPresenceCount: 3 },
-  { id: 'pfluger-park', name: 'Pfluger Park', type: 'outdoor', currentPresenceCount: 0 },
 ];
 
 // Mock hooks

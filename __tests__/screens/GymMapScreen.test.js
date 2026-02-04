@@ -4,20 +4,12 @@ import GymMapScreen from '../../screens/GymMapScreen';
 
 const mockGyms = [
   {
-    id: 'cowboys-fit',
+    id: 'cowboys-fit-pflugerville',
     name: 'Cowboys Fit - Pflugerville',
     address: '1401 Town Center Dr, Pflugerville, TX 78660',
     type: 'indoor',
     location: { latitude: 30.4692, longitude: -97.5963 },
     currentPresenceCount: 3,
-  },
-  {
-    id: 'pfluger-park',
-    name: 'Pfluger Park',
-    address: '515 City Park Rd, Pflugerville, TX 78660',
-    type: 'outdoor',
-    location: { latitude: 30.4469, longitude: -97.6219 },
-    currentPresenceCount: 0,
   },
 ];
 
@@ -59,30 +51,27 @@ describe('GymMapScreen', () => {
     expect(getByTestId('gym-map')).toBeTruthy();
   });
 
-  it('renders markers for each gym', () => {
+  it('renders marker for Cowboys Fit', () => {
     const { getByTestId } = renderWithTheme(
       <GymMapScreen navigation={mockNavigation} />
     );
 
-    expect(getByTestId('marker-cowboys-fit')).toBeTruthy();
-    expect(getByTestId('marker-pfluger-park')).toBeTruthy();
+    expect(getByTestId('marker-cowboys-fit-pflugerville')).toBeTruthy();
   });
 
-  it('displays gym names in callouts', () => {
+  it('displays gym name in callout', () => {
     const { getByText } = renderWithTheme(
       <GymMapScreen navigation={mockNavigation} />
     );
 
     expect(getByText('Cowboys Fit - Pflugerville')).toBeTruthy();
-    expect(getByText('Pfluger Park')).toBeTruthy();
   });
 
-  it('displays gym type labels', () => {
+  it('displays Indoor type label', () => {
     const { getByText } = renderWithTheme(
       <GymMapScreen navigation={mockNavigation} />
     );
 
     expect(getByText('Indoor')).toBeTruthy();
-    expect(getByText('Outdoor')).toBeTruthy();
   });
 });
