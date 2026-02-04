@@ -52,6 +52,14 @@ export default function RunDetailsScreen({ route, navigation }) {
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
+          {gym?.type && (
+            <Text style={styles.gymType}>
+              {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
+            </Text>
+          )}
+          {gym?.notes ? (
+            <Text style={styles.gymNotes}>{gym.notes}</Text>
+          ) : null}
         </View>
 
         <View style={styles.statsCard}>
@@ -176,6 +184,18 @@ const getStyles = (colors) => StyleSheet.create({
   gymAddress: {
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
+  },
+  gymType: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    fontWeight: '500',
+    marginTop: SPACING.xs,
+  },
+  gymNotes: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    fontStyle: 'italic',
+    marginTop: SPACING.xs,
   },
   statsCard: {
     flexDirection: 'row',

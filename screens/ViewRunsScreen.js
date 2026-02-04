@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,48 +12,18 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { FONT_SIZES, SPACING } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { subscribeToGyms, seedGyms, getAllGyms } from '../services/gymService';
+import { useGyms } from '../hooks';
 
 export default function ViewRunsScreen({ navigation }) {
-  const [gyms, setGyms] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const { gyms, loading, ensureGymsExist } = useGyms();
   const [refreshing, setRefreshing] = useState(false);
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
 
-  useEffect(() => {
-    let unsubscribe;
-
-    const initializeGyms = async () => {
-      try {
-        const existingGyms = await getAllGyms();
-        if (existingGyms.length === 0) {
-          await seedGyms();
-        }
-
-        unsubscribe = subscribeToGyms((gymsData) => {
-          setGyms(gymsData);
-          setLoading(false);
-          setRefreshing(false);
-        });
-      } catch (error) {
-        console.error('Error initializing gyms:', error);
-        setLoading(false);
-        setRefreshing(false);
-      }
-    };
-
-    initializeGyms();
-
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
-  }, []);
-
-  const onRefresh = () => {
+  const onRefresh = async () => {
     setRefreshing(true);
+    await ensureGymsExist();
+    setRefreshing(false);
   };
 
   const getActivityLevel = (count) => {
@@ -124,7 +94,8 @@ export default function ViewRunsScreen({ navigation }) {
 
                     <View style={styles.gymRow}>
                       <Text style={styles.runType}>
-                        Indoor <Text style={styles.runTypeAccent}>OPEN RUN</Text>
+                        {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
+                        <Text style={styles.runTypeAccent}>OPEN RUN</Text>
                       </Text>
                       <Text style={styles.playerCount}>
                         {count}/15

@@ -190,6 +190,11 @@ export default function PlanVisitScreen({ navigation }) {
             >
               <Text style={styles.optionTitle}>{gym.name}</Text>
               <Text style={styles.optionSubtitle}>{gym.address}</Text>
+              {gym.type && (
+                <Text style={styles.optionType}>
+                  {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
+                </Text>
+              )}
               {gym.currentPresenceCount > 0 && (
                 <Text style={styles.optionBadge}>
                   {gym.currentPresenceCount} there now
@@ -385,6 +390,12 @@ const getStyles = (colors) => StyleSheet.create({
   optionSubtitle: {
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
+    marginTop: 2,
+  },
+  optionType: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    fontWeight: '500',
     marginTop: 2,
   },
   optionBadge: {

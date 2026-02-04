@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent } from '@testing-library/react-native';
 import { renderWithTheme } from '../helpers/renderWithTheme';
 import ViewRunsScreen from '../../screens/ViewRunsScreen';
 
@@ -7,32 +7,33 @@ import ViewRunsScreen from '../../screens/ViewRunsScreen';
 const mockGyms = [
   {
     id: 'gym-1',
-    name: 'LA Fitness - Southside',
-    address: '123 Southside Ave',
+    name: 'Cowboys Fit - Pflugerville',
+    address: '1401 Town Center Dr, Pflugerville, TX 78660',
+    type: 'indoor',
     currentPresenceCount: 5,
   },
   {
     id: 'gym-2',
-    name: 'YMCA - Midtown',
-    address: '456 Midtown Blvd',
+    name: 'Pflugerville Recreation Center',
+    address: '400 Immanuel Rd, Pflugerville, TX 78660',
+    type: 'indoor',
     currentPresenceCount: 0,
   },
   {
     id: 'gym-3',
-    name: 'Outdoor Park',
-    address: '789 Park Rd',
+    name: 'Pfluger Park',
+    address: '515 City Park Rd, Pflugerville, TX 78660',
+    type: 'outdoor',
     currentPresenceCount: 12,
   },
 ];
 
-// Mock the gym service
-jest.mock('../../services/gymService', () => ({
-  subscribeToGyms: jest.fn((callback) => {
-    setTimeout(() => callback(mockGyms), 0);
-    return jest.fn(); // unsubscribe function
-  }),
-  seedGyms: jest.fn(),
-  getAllGyms: jest.fn(() => Promise.resolve(mockGyms)),
+const mockEnsureGymsExist = jest.fn();
+const mockUseGyms = jest.fn();
+
+// Mock the hooks module
+jest.mock('../../hooks', () => ({
+  useGyms: (...args) => mockUseGyms(...args),
 }));
 
 // Mock navigation
@@ -44,9 +45,20 @@ const mockNavigation = {
 describe('ViewRunsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseGyms.mockReturnValue({
+      gyms: mockGyms,
+      loading: false,
+      ensureGymsExist: mockEnsureGymsExist,
+    });
   });
 
-  it('renders loading state initially', () => {
+  it('renders loading state when loading is true', () => {
+    mockUseGyms.mockReturnValue({
+      gyms: [],
+      loading: true,
+      ensureGymsExist: mockEnsureGymsExist,
+    });
+
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
@@ -54,67 +66,66 @@ describe('ViewRunsScreen', () => {
     expect(getByText('Loading gyms...')).toBeTruthy();
   });
 
-  it('renders the title after loading', async () => {
+  it('renders the title', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    await waitFor(() => {
-      expect(getByText('Find a Run')).toBeTruthy();
-    });
+    expect(getByText('Find a Run')).toBeTruthy();
   });
 
-  it('renders all gyms from service', async () => {
+  it('renders all gyms from hook', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    await waitFor(() => {
-      expect(getByText('LA Fitness - Southside')).toBeTruthy();
-      expect(getByText('YMCA - Midtown')).toBeTruthy();
-      expect(getByText('Outdoor Park')).toBeTruthy();
-    });
+    expect(getByText('Cowboys Fit - Pflugerville')).toBeTruthy();
+    expect(getByText('Pflugerville Recreation Center')).toBeTruthy();
+    expect(getByText('Pfluger Park')).toBeTruthy();
   });
 
-  it('displays player counts', async () => {
+  it('displays player counts', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    await waitFor(() => {
-      expect(getByText('5/15')).toBeTruthy();
-      expect(getByText('0/15')).toBeTruthy();
-      expect(getByText('12/15')).toBeTruthy();
-    });
+    expect(getByText('5/15')).toBeTruthy();
+    expect(getByText('0/15')).toBeTruthy();
+    expect(getByText('12/15')).toBeTruthy();
   });
 
-  it('displays activity badges', async () => {
+  it('displays activity badges', () => {
     const { getAllByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    await waitFor(() => {
-      // Check that badges exist (using getAllByText since there could be multiple)
-      expect(getAllByText('Active').length).toBeGreaterThan(0); // 5 players (5-9 = Active)
-      expect(getAllByText('Empty').length).toBeGreaterThan(0); // 0 players
-      expect(getAllByText('Busy').length).toBeGreaterThan(0); // 12 players (10+ = Busy)
-    });
+    expect(getAllByText('Active').length).toBeGreaterThan(0);
+    expect(getAllByText('Empty').length).toBeGreaterThan(0);
+    expect(getAllByText('Busy').length).toBeGreaterThan(0);
   });
 
-  it('navigates to RunDetails with correct params when a gym is pressed', async () => {
+  it('shows Indoor/Outdoor type per gym', () => {
+    const { getAllByText } = renderWithTheme(
+      <ViewRunsScreen navigation={mockNavigation} />
+    );
+
+    // Two indoor gyms, one outdoor
+    const indoorElements = getAllByText(/^Indoor /);
+    const outdoorElements = getAllByText(/^Outdoor /);
+    expect(indoorElements.length).toBe(2);
+    expect(outdoorElements.length).toBe(1);
+  });
+
+  it('navigates to RunDetails with correct params when a gym is pressed', () => {
     const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
-    await waitFor(() => {
-      expect(getByText('LA Fitness - Southside')).toBeTruthy();
-    });
-
-    fireEvent.press(getByText('LA Fitness - Southside'));
+    fireEvent.press(getByText('Cowboys Fit - Pflugerville'));
 
     expect(mockNavigate).toHaveBeenCalledWith('RunDetails', {
       gymId: 'gym-1',
-      gymName: 'LA Fitness - Southside',
+      gymName: 'Cowboys Fit - Pflugerville',
       players: 5,
     });
   });

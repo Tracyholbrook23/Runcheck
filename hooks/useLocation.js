@@ -57,13 +57,13 @@ export const useLocation = () => {
     setError(null);
 
     try {
-      // In dev mode, return a fake location near LA Fitness Southside in Atlanta
+      // In dev mode, return a fake location near Cowboys Fit in Pflugerville
       if (DEV_SKIP_GPS) {
         const fakeCoords = {
-          latitude: 33.7120,  // Near LA Fitness - Southside
-          longitude: -84.3880,
+          latitude: 30.4692,  // Near Cowboys Fit - Pflugerville
+          longitude: -97.5963,
         };
-        console.log('DEV MODE: Using fake Atlanta location for testing');
+        console.log('DEV MODE: Using fake Pflugerville location for testing');
         setLocation(fakeCoords);
         return fakeCoords;
       }

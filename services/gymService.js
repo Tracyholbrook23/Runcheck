@@ -35,7 +35,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 
-import { DEFAULT_CHECK_IN_RADIUS_METERS, DEFAULT_EXPIRE_MINUTES } from './models';
+import { DEFAULT_CHECK_IN_RADIUS_METERS, DEFAULT_EXPIRE_MINUTES, GYM_TYPE } from './models';
 
 /**
  * Seed initial gyms with GPS locations
@@ -44,15 +44,19 @@ import { DEFAULT_CHECK_IN_RADIUS_METERS, DEFAULT_EXPIRE_MINUTES } from './models
  * @returns {Promise<Array>} Array of seeded gyms
  */
 export const seedGyms = async () => {
-  // Atlanta area gyms with real-ish coordinates
+  // Pflugerville, TX gyms and courts
   const gyms = [
     {
-      id: 'la-fitness-southside',
-      name: 'LA Fitness - Southside',
-      address: '123 Southside Ave, Atlanta, GA 30315',
+      id: 'cowboys-fit-pflugerville',
+      name: 'Cowboys Fit - Pflugerville',
+      address: '1401 Town Center Dr, Pflugerville, TX 78660',
+      city: 'Pflugerville',
+      state: 'TX',
+      type: GYM_TYPE.INDOOR,
+      notes: '57,000 sq ft facility with indoor basketball court, pool, and recovery lounge',
       location: {
-        latitude: 33.7120,
-        longitude: -84.3880,
+        latitude: 30.4692,
+        longitude: -97.5963,
       },
       checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
       currentPresenceCount: 0,
@@ -60,12 +64,16 @@ export const seedGyms = async () => {
       autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
     },
     {
-      id: 'ymca-midtown',
-      name: 'YMCA - Midtown',
-      address: '456 Midtown Blvd, Atlanta, GA 30308',
+      id: 'pflugerville-rec-center',
+      name: 'Pflugerville Recreation Center',
+      address: '400 Immanuel Rd, Pflugerville, TX 78660',
+      city: 'Pflugerville',
+      state: 'TX',
+      type: GYM_TYPE.INDOOR,
+      notes: 'City rec center with two basketball half courts and walking track',
       location: {
-        latitude: 33.7870,
-        longitude: -84.3830,
+        latitude: 30.4325,
+        longitude: -97.6129,
       },
       checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
       currentPresenceCount: 0,
@@ -73,40 +81,52 @@ export const seedGyms = async () => {
       autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
     },
     {
-      id: 'outdoor-park-rivertown',
-      name: 'Outdoor Park - Piedmont',
-      address: '789 Piedmont Ave, Atlanta, GA 30309',
+      id: 'pfluger-park',
+      name: 'Pfluger Park',
+      address: '515 City Park Rd, Pflugerville, TX 78660',
+      city: 'Pflugerville',
+      state: 'TX',
+      type: GYM_TYPE.OUTDOOR,
+      notes: '30-acre park with outdoor basketball court and sand volleyball',
       location: {
-        latitude: 33.7870,
-        longitude: -84.3740,
+        latitude: 30.4469,
+        longitude: -97.6219,
       },
-      checkInRadiusMeters: 500, // Larger radius for outdoor park
+      checkInRadiusMeters: 500,
       currentPresenceCount: 0,
       scheduleCounts: {},
       autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
     },
     {
-      id: '24hr-fitness-buckhead',
-      name: '24 Hour Fitness - Buckhead',
-      address: '321 Buckhead Loop, Atlanta, GA 30326',
+      id: 'gilleland-creek-park',
+      name: 'Gilleland Creek Park',
+      address: '700 N Railroad Ave, Pflugerville, TX 78660',
+      city: 'Pflugerville',
+      state: 'TX',
+      type: GYM_TYPE.OUTDOOR,
+      notes: '11-acre park with basketball courts and playground',
       location: {
-        latitude: 33.8400,
-        longitude: -84.3790,
+        latitude: 30.4451,
+        longitude: -97.6198,
       },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
+      checkInRadiusMeters: 500,
       currentPresenceCount: 0,
       scheduleCounts: {},
       autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
     },
     {
-      id: 'lifetime-fitness-perimeter',
-      name: 'Lifetime Fitness - Perimeter',
-      address: '555 Perimeter Center, Atlanta, GA 30346',
+      id: 'northeast-metro-park',
+      name: 'Northeast Metropolitan Park',
+      address: '15500 Sun Light Near Way, Pflugerville, TX 78660',
+      city: 'Pflugerville',
+      state: 'TX',
+      type: GYM_TYPE.OUTDOOR,
+      notes: '349-acre park with basketball court, tennis, and skate park',
       location: {
-        latitude: 33.9260,
-        longitude: -84.3410,
+        latitude: 30.4475,
+        longitude: -97.5700,
       },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
+      checkInRadiusMeters: 500,
       currentPresenceCount: 0,
       scheduleCounts: {},
       autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
@@ -129,6 +149,12 @@ export const seedGyms = async () => {
     } else {
       // Always force update location data to ensure correct coordinates
       await updateDoc(gymRef, {
+        name: gym.name,
+        address: gym.address,
+        city: gym.city,
+        state: gym.state,
+        type: gym.type,
+        notes: gym.notes,
         location: gym.location,
         checkInRadiusMeters: gym.checkInRadiusMeters,
         autoExpireMinutes: gym.autoExpireMinutes,

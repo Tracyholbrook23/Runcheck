@@ -11,6 +11,7 @@ import ViewRunsScreen from './screens/ViewRunsScreen';
 import CheckInScreen from './screens/CheckInScreen';
 import RunDetailsScreen from './screens/RunDetailsScreen';
 import PlanVisitScreen from './screens/PlanVisitScreen';
+import GymMapScreen from './screens/GymMapScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import { ThemeProvider, useTheme } from './contexts';
 
@@ -27,10 +28,26 @@ function HomeStack() {
 }
 
 function RunsStack() {
-  const { themeStyles } = useTheme();
+  const { themeStyles, colors } = useTheme();
   return (
     <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
-      <Stack.Screen name="ViewRunsMain" component={ViewRunsScreen} options={{ title: 'Find Runs' }} />
+      <Stack.Screen
+        name="ViewRunsMain"
+        component={ViewRunsScreen}
+        options={({ navigation }) => ({
+          title: 'Find Runs',
+          headerRight: () => (
+            <Ionicons
+              name="map-outline"
+              size={24}
+              color={colors.textPrimary}
+              onPress={() => navigation.navigate('GymMap')}
+              style={{ marginRight: 8 }}
+            />
+          ),
+        })}
+      />
+      <Stack.Screen name="GymMap" component={GymMapScreen} options={{ title: 'Gym Map' }} />
       <Stack.Screen name="RunDetails" component={RunDetailsScreen} options={{ title: 'Run Details' }} />
     </Stack.Navigator>
   );

@@ -66,5 +66,29 @@ console.warn = (...args) => {
   originalWarn(...args);
 };
 
+// Mock react-native-maps
+jest.mock('react-native-maps', () => {
+  const React = require('react');
+  const { View } = require('react-native');
+
+  const MapView = React.forwardRef((props, ref) =>
+    React.createElement(View, { ...props, ref, testID: props.testID || 'map-view' }, props.children)
+  );
+  MapView.displayName = 'MapView';
+
+  const Marker = (props) =>
+    React.createElement(View, { ...props, testID: props.testID || 'marker' }, props.children);
+
+  const Callout = (props) =>
+    React.createElement(View, { ...props, testID: props.testID || 'callout' }, props.children);
+
+  return {
+    __esModule: true,
+    default: MapView,
+    Marker,
+    Callout,
+  };
+});
+
 // Mock alert
 global.alert = jest.fn();

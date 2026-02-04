@@ -47,6 +47,10 @@
  * {
  *   name: string,
  *   address: string,
+ *   city: string,                    // e.g. "Pflugerville"
+ *   state: string,                   // e.g. "TX"
+ *   type: string,                    // "indoor" | "outdoor"
+ *   notes: string,                   // Additional info about the gym
  *
  *   // Location for GPS validation
  *   location: {
@@ -141,6 +145,11 @@
  * 5. schedules: gymId ASC, status ASC, scheduledTime ASC
  * 6. schedules: status ASC, scheduledTime ASC
  */
+
+export const GYM_TYPE = {
+  INDOOR: 'indoor',
+  OUTDOOR: 'outdoor',
+};
 
 export const PRESENCE_STATUS = {
   ACTIVE: 'active',
