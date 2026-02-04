@@ -29,6 +29,7 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   orderBy,
   onSnapshot,
@@ -161,6 +162,16 @@ export const seedGyms = async () => {
         updatedAt: serverTimestamp(),
       });
       console.log(`Updated gym location: ${gym.name}`);
+    }
+  }
+
+  // Remove old gym documents that are no longer in the seed list
+  const validIds = new Set(gyms.map((g) => g.id));
+  const allDocs = await getDocs(collection(db, 'gyms'));
+  for (const gymDoc of allDocs.docs) {
+    if (!validIds.has(gymDoc.id)) {
+      await deleteDoc(doc(db, 'gyms', gymDoc.id));
+      console.log(`Removed old gym: ${gymDoc.id}`);
     }
   }
 

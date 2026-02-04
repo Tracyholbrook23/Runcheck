@@ -27,8 +27,8 @@
  *
  * // Check in with GPS validation
  * const presence = await checkIn('user123', 'gym456', {
- *   latitude: 33.8486,
- *   longitude: -84.3733
+ *   latitude: 30.4692,
+ *   longitude: -97.5963
  * });
  *
  * // Check out
