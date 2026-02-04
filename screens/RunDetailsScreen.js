@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,11 +8,14 @@ import {
   ActivityIndicator,
   TouchableOpacity,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules } from '../hooks';
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const { gym, loading: gymLoading } = useGym(gymId);
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
@@ -34,7 +37,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
@@ -46,13 +49,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
         </View>
 
-        {/* Stats Card */}
         <View style={styles.statsCard}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{playerCount}</Text>
@@ -62,7 +63,6 @@ export default function RunDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Players List */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Who's Here Now</Text>
 
@@ -94,7 +94,6 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Upcoming Visitors */}
         {schedules.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Coming Soon</Text>
@@ -124,7 +123,6 @@ export default function RunDetailsScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* Action Buttons */}
         <TouchableOpacity
           style={styles.checkInButton}
           onPress={() => navigation.getParent()?.navigate('CheckIn')}
@@ -145,10 +143,10 @@ export default function RunDetailsScreen({ route, navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -161,27 +159,27 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   header: {
     padding: SPACING.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   gymName: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.xs,
   },
   gymAddress: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   statsCard: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     margin: SPACING.lg,
     borderRadius: 12,
     padding: SPACING.lg,
@@ -194,11 +192,11 @@ const styles = StyleSheet.create({
   statNumber: {
     fontSize: 36,
     fontWeight: 'bold',
-    color: COLORS.primary,
+    color: colors.primary,
   },
   statLabel: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.xs,
   },
   section: {
@@ -207,29 +205,29 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.md,
   },
   emptyState: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: colors.surfaceLight,
     borderRadius: 12,
     padding: SPACING.lg,
     alignItems: 'center',
   },
   emptyText: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   emptySubtext: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.xs,
   },
   playerCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -239,7 +237,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.md,
@@ -255,15 +253,15 @@ const styles = StyleSheet.create({
   playerName: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   playerTime: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   intentSlot: {
-    backgroundColor: COLORS.scheduleBackground,
+    backgroundColor: colors.scheduleBackground,
     borderRadius: 8,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -271,15 +269,15 @@ const styles = StyleSheet.create({
   intentTime: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.scheduleText,
+    color: colors.scheduleText,
   },
   intentCount: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.scheduleTextBright,
+    color: colors.scheduleTextBright,
     marginTop: 2,
   },
   checkInButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     marginHorizontal: SPACING.lg,
     borderRadius: 10,
     padding: SPACING.md,
@@ -291,7 +289,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   planButton: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: colors.secondary,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.sm,
     borderRadius: 10,

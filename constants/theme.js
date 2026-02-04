@@ -53,6 +53,61 @@ export const COLORS = {
   tabInactive: '#9CA3AF',
 };
 
+export const COLORS_DARK = {
+  // Backgrounds
+  background: '#1A1A2E',
+  surface: '#25253E',
+  surfaceLight: '#2A2A45',
+
+  // Primary (burnt orange - same for brand)
+  primary: '#E8622A',
+  primaryLight: '#FF7A3D',
+
+  // Secondary (purple)
+  secondary: '#A78BFA',
+
+  // Semantic
+  success: '#34D399',
+  danger: '#F87171',
+
+  // Text
+  textPrimary: '#F5F5F5',
+  textSecondary: '#A1A1AA',
+  textMuted: '#71717A',
+
+  // Legacy aliases
+  textDark: '#F5F5F5',
+  textLight: '#A1A1AA',
+  accent: '#E8622A',
+
+  // Borders
+  border: '#3F3F5C',
+
+  // Info
+  infoBackground: '#1E293B',
+  infoText: '#60A5FA',
+
+  // Activity levels
+  activityEmpty: '#71717A',
+  activityLight: '#34D399',
+  activityActive: '#FBBF24',
+  activityBusy: '#F87171',
+
+  // Presence cards
+  presenceBackground: '#0D3B2E',
+  presenceText: '#34D399',
+  presenceTextBright: '#10B981',
+
+  // Schedule/purple cards
+  scheduleBackground: '#2D1B69',
+  scheduleText: '#A78BFA',
+  scheduleTextBright: '#8B5CF6',
+
+  // Tab bar
+  tabActive: '#E8622A',
+  tabInactive: '#71717A',
+};
+
 export const FONT_SIZES = {
   title: 22,
   subtitle: 18,
@@ -136,3 +191,28 @@ export const BUTTON = {
     textAlign: 'center',
   },
 };
+
+export function getThemeStyles(colors) {
+  return {
+    NAV_HEADER: {
+      headerStyle: { backgroundColor: colors.surface },
+      headerTintColor: colors.textPrimary,
+      headerTitleStyle: { color: colors.textPrimary, fontWeight: 'bold' },
+      headerShadowVisible: false,
+    },
+    BUTTON: {
+      base: {
+        backgroundColor: colors.primary,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderRadius: RADIUS.md,
+      },
+      text: {
+        color: '#FFFFFF',
+        fontSize: FONT_SIZES.body,
+        fontWeight: 'bold',
+        textAlign: 'center',
+      },
+    },
+  };
+}

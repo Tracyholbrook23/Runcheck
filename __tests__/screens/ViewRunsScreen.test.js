@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderWithTheme } from '../helpers/renderWithTheme';
 import ViewRunsScreen from '../../screens/ViewRunsScreen';
 
 // Mock gym data
@@ -46,7 +47,7 @@ describe('ViewRunsScreen', () => {
   });
 
   it('renders loading state initially', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
@@ -54,7 +55,7 @@ describe('ViewRunsScreen', () => {
   });
 
   it('renders the title after loading', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
@@ -64,7 +65,7 @@ describe('ViewRunsScreen', () => {
   });
 
   it('renders all gyms from service', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
@@ -76,7 +77,7 @@ describe('ViewRunsScreen', () => {
   });
 
   it('displays player counts', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
@@ -88,7 +89,7 @@ describe('ViewRunsScreen', () => {
   });
 
   it('displays activity badges', async () => {
-    const { getAllByText } = render(
+    const { getAllByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 
@@ -101,7 +102,7 @@ describe('ViewRunsScreen', () => {
   });
 
   it('navigates to RunDetails with correct params when a gym is pressed', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <ViewRunsScreen navigation={mockNavigation} />
     );
 

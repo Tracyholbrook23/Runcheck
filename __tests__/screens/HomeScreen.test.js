@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderWithTheme } from '../helpers/renderWithTheme';
 import HomeScreen from '../../screens/HomeScreen';
 
 // Mock navigation (HomeScreen uses navigation.getParent()?.navigate for tab switching)
@@ -35,7 +36,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders the app title', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
@@ -45,7 +46,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders the subtitle', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
@@ -55,7 +56,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders Check Into a Run button when not checked in', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
@@ -65,7 +66,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders Find Open Runs button', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
@@ -75,7 +76,7 @@ describe('HomeScreen', () => {
   });
 
   it('renders footer text', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
@@ -85,7 +86,7 @@ describe('HomeScreen', () => {
   });
 
   it('navigates to CheckIn when Check Into a Run is pressed', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
@@ -99,7 +100,7 @@ describe('HomeScreen', () => {
   });
 
   it('navigates to ViewRuns when Find Open Runs is pressed', async () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
+import React, { useState, useEffect, useMemo } from 'react';
+import { FONT_SIZES, SPACING } from '../constants/theme';
+import { useTheme } from '../contexts';
 
 import {
   View,
@@ -19,6 +20,8 @@ export default function CheckInScreen({ navigation }) {
   const [open, setOpen] = useState(false);
   const [selectedGym, setSelectedGym] = useState(null);
   const [gymItems, setGymItems] = useState([]);
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const {
     presence,
@@ -123,7 +126,7 @@ export default function CheckInScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading gyms...</Text>
         </View>
       </SafeAreaView>
@@ -155,10 +158,10 @@ export default function CheckInScreen({ navigation }) {
             containerStyle={{ marginBottom: open ? 200 : 20 }}
             style={styles.dropdown}
             dropDownContainerStyle={styles.dropdownContainer}
-            textStyle={{ color: COLORS.textPrimary }}
-            placeholderStyle={{ color: COLORS.textMuted }}
-            listItemLabelStyle={{ color: COLORS.textPrimary }}
-            selectedItemLabelStyle={{ color: COLORS.primary }}
+            textStyle={{ color: colors.textPrimary }}
+            placeholderStyle={{ color: colors.textMuted }}
+            listItemLabelStyle={{ color: colors.textPrimary }}
+            selectedItemLabelStyle={{ color: colors.primary }}
             zIndex={5000}
             zIndexInverse={1000}
             listMode="SCROLLVIEW"
@@ -197,10 +200,10 @@ export default function CheckInScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -214,7 +217,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   innerContainer: {
     padding: SPACING.lg,
@@ -225,11 +228,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: SPACING.xs,
     textAlign: 'center',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
   },
@@ -237,37 +240,37 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
     marginBottom: SPACING.sm,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   dropdown: {
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 8,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   dropdownContainer: {
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderRadius: 8,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   infoBox: {
-    backgroundColor: COLORS.infoBackground,
+    backgroundColor: colors.infoBackground,
     borderRadius: 8,
     padding: SPACING.md,
     marginTop: SPACING.md,
   },
   infoText: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.infoText,
+    color: colors.infoText,
     lineHeight: 20,
   },
   footer: {
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   checkInButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: 8,
     padding: SPACING.md,
     alignItems: 'center',
@@ -287,7 +290,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
   },
@@ -300,11 +303,11 @@ const styles = StyleSheet.create({
   activeTitle: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.lg,
   },
   activeCard: {
-    backgroundColor: COLORS.presenceBackground,
+    backgroundColor: colors.presenceBackground,
     borderRadius: 12,
     padding: SPACING.lg,
     width: '100%',
@@ -314,21 +317,21 @@ const styles = StyleSheet.create({
   activeGym: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
-    color: COLORS.presenceTextBright,
+    color: colors.presenceTextBright,
     marginBottom: SPACING.sm,
   },
   activeTime: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.presenceText,
+    color: colors.presenceText,
   },
   activeHint: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
   },
   backButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: 8,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg * 2,

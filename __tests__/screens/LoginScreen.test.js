@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderWithTheme } from '../helpers/renderWithTheme';
 import LoginScreen from '../../screens/LoginScreen';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -15,7 +16,7 @@ describe('LoginScreen', () => {
   });
 
   it('renders the title correctly', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -23,7 +24,7 @@ describe('LoginScreen', () => {
   });
 
   it('renders email and password inputs', () => {
-    const { getByPlaceholderText } = render(
+    const { getByPlaceholderText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -32,7 +33,7 @@ describe('LoginScreen', () => {
   });
 
   it('renders all navigation buttons', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -42,7 +43,7 @@ describe('LoginScreen', () => {
   });
 
   it('updates email input when user types', () => {
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -53,7 +54,7 @@ describe('LoginScreen', () => {
   });
 
   it('updates password input when user types', () => {
-    const { getByTestId } = render(
+    const { getByTestId } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -64,7 +65,7 @@ describe('LoginScreen', () => {
   });
 
   it('shows alert when submitting with empty fields', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -74,7 +75,7 @@ describe('LoginScreen', () => {
   });
 
   it('shows alert when only email is provided', () => {
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -85,7 +86,7 @@ describe('LoginScreen', () => {
   });
 
   it('shows alert when only password is provided', () => {
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -100,7 +101,7 @@ describe('LoginScreen', () => {
       user: { uid: 'test-uid' },
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -122,7 +123,7 @@ describe('LoginScreen', () => {
       user: { uid: 'test-uid' },
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -140,7 +141,7 @@ describe('LoginScreen', () => {
       code: 'auth/user-not-found',
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -158,7 +159,7 @@ describe('LoginScreen', () => {
       code: 'auth/wrong-password',
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -176,7 +177,7 @@ describe('LoginScreen', () => {
       code: 'auth/invalid-email',
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -194,7 +195,7 @@ describe('LoginScreen', () => {
       code: 'auth/too-many-requests',
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -212,7 +213,7 @@ describe('LoginScreen', () => {
       code: 'auth/unknown-error',
     });
 
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -226,7 +227,7 @@ describe('LoginScreen', () => {
   });
 
   it('navigates to Signup when Go to Signup is pressed', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -236,7 +237,7 @@ describe('LoginScreen', () => {
   });
 
   it('navigates to Home when Back to Home is pressed', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 
@@ -251,7 +252,7 @@ describe('LoginScreen', () => {
       () => new Promise((resolve) => { resolveLogin = resolve; })
     );
 
-    const { getByTestId, getByText, queryByTestId } = render(
+    const { getByTestId, getByText, queryByTestId } = renderWithTheme(
       <LoginScreen navigation={mockNavigation} />
     );
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,8 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { useTheme } from '../contexts';
 import { useSchedules, useGyms } from '../hooks';
 
 const getAvailableTimeSlots = () => {
@@ -44,6 +45,8 @@ export default function PlanVisitScreen({ navigation }) {
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [step, setStep] = useState(1);
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const timeSlots = getAvailableTimeSlots();
 
@@ -107,7 +110,7 @@ export default function PlanVisitScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </SafeAreaView>
     );
@@ -277,10 +280,10 @@ export default function PlanVisitScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -294,12 +297,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.lg,
   },
@@ -309,13 +312,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.md,
   },
   intentCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -327,11 +330,11 @@ const styles = StyleSheet.create({
   intentGym: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   intentTime: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.primary,
+    color: colors.primary,
     marginTop: 2,
   },
   cancelButton: {
@@ -339,12 +342,12 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   cancelButtonText: {
-    color: COLORS.danger,
+    color: colors.danger,
     fontSize: FONT_SIZES.small,
     fontWeight: '600',
   },
   emptyState: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: colors.surfaceLight,
     borderRadius: 12,
     padding: SPACING.lg,
     alignItems: 'center',
@@ -352,17 +355,17 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   emptySubtext: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.xs,
     textAlign: 'center',
   },
   optionCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -371,22 +374,22 @@ const styles = StyleSheet.create({
     ...SHADOWS.subtle,
   },
   optionCardSelected: {
-    borderColor: COLORS.secondary,
-    backgroundColor: COLORS.scheduleBackground,
+    borderColor: colors.secondary,
+    backgroundColor: colors.scheduleBackground,
   },
   optionTitle: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   optionSubtitle: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   optionBadge: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.primary,
+    color: colors.primary,
     marginTop: SPACING.xs,
     fontWeight: '500',
   },
@@ -397,7 +400,7 @@ const styles = StyleSheet.create({
   },
   slotCard: {
     width: '48%',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 8,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -407,16 +410,16 @@ const styles = StyleSheet.create({
     ...SHADOWS.subtle,
   },
   slotCardSelected: {
-    borderColor: COLORS.secondary,
-    backgroundColor: COLORS.scheduleBackground,
+    borderColor: colors.secondary,
+    backgroundColor: colors.scheduleBackground,
   },
   slotText: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     fontWeight: '500',
   },
   slotTextSelected: {
-    color: COLORS.scheduleText,
+    color: colors.scheduleText,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -425,7 +428,7 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: 8,
     padding: SPACING.md,
     alignItems: 'center',
@@ -442,10 +445,10 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     alignItems: 'center',
     marginRight: SPACING.sm,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: colors.surfaceLight,
   },
   secondaryButtonText: {
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
   },

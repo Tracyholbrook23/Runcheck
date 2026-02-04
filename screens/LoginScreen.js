@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, RADIUS } from '../constants/theme';
+import { FONT_SIZES, SPACING, RADIUS } from '../constants/theme';
+import { useTheme } from '../contexts';
 import { auth } from '../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -16,6 +17,8 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -53,7 +56,7 @@ export default function LoginScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Email"
-        placeholderTextColor={COLORS.textMuted}
+        placeholderTextColor={colors.textMuted}
         keyboardType="email-address"
         autoCapitalize="none"
         value={email}
@@ -63,7 +66,7 @@ export default function LoginScreen({ navigation }) {
       <TextInput
         style={styles.input}
         placeholder="Password"
-        placeholderTextColor={COLORS.textMuted}
+        placeholderTextColor={colors.textMuted}
         secureTextEntry
         value={password}
         onChangeText={setPassword}
@@ -72,7 +75,7 @@ export default function LoginScreen({ navigation }) {
 
       <View style={styles.buttonContainer}>
         {loading ? (
-          <ActivityIndicator size="large" color={COLORS.primary} testID="loading-indicator" />
+          <ActivityIndicator size="large" color={colors.primary} testID="loading-indicator" />
         ) : (
           <TouchableOpacity style={styles.loginButton} onPress={handleLogin} testID="login-button">
             <Text style={styles.loginButtonText}>Login</Text>
@@ -95,38 +98,38 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   title: {
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 24,
     textAlign: 'center',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   input: {
     width: '100%',
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     borderWidth: 1,
     borderRadius: RADIUS.sm,
     padding: 12,
     marginBottom: 16,
     fontSize: 16,
-    backgroundColor: COLORS.surface,
-    color: COLORS.textPrimary,
+    backgroundColor: colors.surface,
+    color: colors.textPrimary,
   },
   buttonContainer: {
     width: '100%',
     marginBottom: 12,
   },
   loginButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
@@ -137,13 +140,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   secondaryButton: {
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: colors.surfaceLight,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
   },
   secondaryButtonText: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
   },

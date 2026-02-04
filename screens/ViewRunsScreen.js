@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,16 @@ import {
   RefreshControl,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
+import { FONT_SIZES, SPACING } from '../constants/theme';
+import { useTheme } from '../contexts';
 import { subscribeToGyms, seedGyms, getAllGyms } from '../services/gymService';
 
 export default function ViewRunsScreen({ navigation }) {
   const [gyms, setGyms] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { colors } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
 
   useEffect(() => {
     let unsubscribe;
@@ -54,17 +57,17 @@ export default function ViewRunsScreen({ navigation }) {
   };
 
   const getActivityLevel = (count) => {
-    if (count === 0) return { label: 'Empty', color: COLORS.activityEmpty };
-    if (count < 5) return { label: 'Light', color: COLORS.activityLight };
-    if (count < 10) return { label: 'Active', color: COLORS.activityActive };
-    return { label: 'Busy', color: COLORS.activityBusy };
+    if (count === 0) return { label: 'Empty', color: colors.activityEmpty };
+    if (count < 5) return { label: 'Light', color: colors.activityLight };
+    if (count < 10) return { label: 'Active', color: colors.activityActive };
+    return { label: 'Busy', color: colors.activityBusy };
   };
 
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading gyms...</Text>
         </View>
       </SafeAreaView>
@@ -107,12 +110,10 @@ export default function ViewRunsScreen({ navigation }) {
                     })
                   }
                 >
-                  {/* Thumbnail */}
                   <View style={styles.thumbnail}>
-                    <Ionicons name="basketball" size={28} color={COLORS.primary} />
+                    <Ionicons name="basketball" size={28} color={colors.primary} />
                   </View>
 
-                  {/* Info */}
                   <View style={styles.gymInfo}>
                     <View style={styles.gymRow}>
                       <Text style={styles.gymName} numberOfLines={1}>{gym.name}</Text>
@@ -142,10 +143,10 @@ export default function ViewRunsScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -159,17 +160,17 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   title: {
     fontSize: FONT_SIZES.title,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: 2,
   },
   subtitle: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginBottom: SPACING.md,
   },
   scroll: {
@@ -183,19 +184,19 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: FONT_SIZES.subtitle,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     fontWeight: '600',
   },
   emptySubtext: {
     fontSize: FONT_SIZES.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.sm,
   },
   gymCard: {
     flexDirection: 'row',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.xs,
   },
@@ -203,7 +204,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 8,
-    backgroundColor: COLORS.surfaceLight,
+    backgroundColor: colors.surfaceLight,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.sm,
@@ -221,7 +222,7 @@ const styles = StyleSheet.create({
   gymName: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     flex: 1,
     marginRight: SPACING.xs,
   },
@@ -237,19 +238,19 @@ const styles = StyleSheet.create({
   },
   runType: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   runTypeAccent: {
-    color: COLORS.primary,
+    color: colors.primary,
     fontWeight: '600',
   },
   playerCount: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   gymAddress: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
   },
 });

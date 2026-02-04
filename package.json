@@ -50,6 +50,10 @@
       "^@/(.*)$": "<rootDir>/$1",
       "^react-native-vector-icons/(.*)$": "<rootDir>/__mocks__/react-native-vector-icons.js"
     },
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/__tests__/helpers/"
+    ],
     "collectCoverageFrom": [
       "**/*.{js,jsx}",
       "!**/coverage/**",

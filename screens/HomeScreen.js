@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,10 +9,15 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { COLORS, FONT_SIZES, SPACING, BUTTON } from '../constants/theme';
+import { FONT_SIZES, SPACING } from '../constants/theme';
+import { useTheme } from '../contexts';
 import { usePresence } from '../hooks';
 
 const HomeScreen = ({ navigation }) => {
+  const { colors, themeStyles } = useTheme();
+  const styles = useMemo(() => getStyles(colors), [colors]);
+  const BUTTON = themeStyles.BUTTON;
+
   const {
     presence,
     loading,
@@ -45,7 +50,6 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
-  // Navigate into the tab structure
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
@@ -53,7 +57,6 @@ const HomeScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Logo */}
         <View style={styles.logoWrapper}>
           <Image
             source={require('../assets/hoop-icon.png')}
@@ -65,10 +68,9 @@ const HomeScreen = ({ navigation }) => {
         <Text style={styles.title}>RunCheck</Text>
         <Text style={styles.subtitle}>Find or join a pickup run near you</Text>
 
-        {/* Active Presence Card */}
         {loading ? (
           <View style={styles.presenceCard}>
-            <ActivityIndicator size="small" color={COLORS.success} />
+            <ActivityIndicator size="small" color={colors.success} />
           </View>
         ) : isCheckedIn ? (
           <View style={styles.presenceCard}>
@@ -94,7 +96,6 @@ const HomeScreen = ({ navigation }) => {
           </View>
         ) : null}
 
-        {/* Action Buttons */}
         <TouchableOpacity
           style={[BUTTON.base, isCheckedIn && styles.buttonDisabled]}
           onPress={() => goToTab('CheckIn')}
@@ -126,10 +127,10 @@ const HomeScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (colors) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   container: {
     flex: 1,
@@ -147,18 +148,18 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.title + 4,
     fontWeight: 'bold',
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.sm,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: FONT_SIZES.subtitle,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginBottom: SPACING.lg,
     textAlign: 'center',
   },
   presenceCard: {
-    backgroundColor: COLORS.presenceBackground,
+    backgroundColor: colors.presenceBackground,
     borderRadius: 12,
     padding: SPACING.md,
     width: '100%',
@@ -174,28 +175,28 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.success,
+    backgroundColor: colors.success,
     marginRight: SPACING.xs,
   },
   presenceLabel: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.presenceText,
+    color: colors.presenceText,
     fontWeight: '600',
   },
   presenceGym: {
     fontSize: FONT_SIZES.subtitle,
     fontWeight: 'bold',
-    color: COLORS.presenceTextBright,
+    color: colors.presenceTextBright,
     marginBottom: SPACING.xs,
     textAlign: 'center',
   },
   presenceTime: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.presenceText,
+    color: colors.presenceText,
     marginBottom: SPACING.sm,
   },
   checkOutButton: {
-    backgroundColor: COLORS.danger,
+    backgroundColor: colors.danger,
     borderRadius: 6,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
@@ -206,11 +207,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   accentButton: {
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: colors.primaryLight,
     marginTop: SPACING.md,
   },
   planButton: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: colors.secondary,
     marginTop: SPACING.md,
   },
   buttonDisabled: {
@@ -222,7 +223,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: FONT_SIZES.small,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
   },
 });
 

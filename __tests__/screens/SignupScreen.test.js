@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderWithTheme } from '../helpers/renderWithTheme';
 import SignupScreen from '../../screens/SignupScreen';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc } from 'firebase/firestore';
@@ -16,7 +17,7 @@ describe('SignupScreen', () => {
   });
 
   it('renders all input fields', () => {
-    const { getByPlaceholderText } = render(
+    const { getByPlaceholderText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -28,7 +29,7 @@ describe('SignupScreen', () => {
   });
 
   it('renders the title correctly', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -36,7 +37,7 @@ describe('SignupScreen', () => {
   });
 
   it('renders the Sign Up button', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -44,7 +45,7 @@ describe('SignupScreen', () => {
   });
 
   it('updates name input when user types', () => {
-    const { getByPlaceholderText } = render(
+    const { getByPlaceholderText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -55,7 +56,7 @@ describe('SignupScreen', () => {
   });
 
   it('updates email input when user types', () => {
-    const { getByPlaceholderText } = render(
+    const { getByPlaceholderText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -66,7 +67,7 @@ describe('SignupScreen', () => {
   });
 
   it('updates password input when user types', () => {
-    const { getByPlaceholderText } = render(
+    const { getByPlaceholderText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -77,7 +78,7 @@ describe('SignupScreen', () => {
   });
 
   it('shows alert when submitting with empty fields', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -88,7 +89,7 @@ describe('SignupScreen', () => {
   });
 
   it('shows alert when only some fields are filled', () => {
-    const { getByPlaceholderText, getByText } = render(
+    const { getByPlaceholderText, getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -107,7 +108,7 @@ describe('SignupScreen', () => {
     });
     setDoc.mockResolvedValueOnce();
 
-    const { getByPlaceholderText, getByText } = render(
+    const { getByPlaceholderText, getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -134,7 +135,7 @@ describe('SignupScreen', () => {
     });
     setDoc.mockResolvedValueOnce();
 
-    const { getByPlaceholderText, getByText } = render(
+    const { getByPlaceholderText, getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -157,7 +158,7 @@ describe('SignupScreen', () => {
       message: errorMessage,
     });
 
-    const { getByPlaceholderText, getByText } = render(
+    const { getByPlaceholderText, getByText } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 
@@ -181,7 +182,7 @@ describe('SignupScreen', () => {
       () => new Promise((resolve) => { resolveSignup = resolve; })
     );
 
-    const { getByPlaceholderText, getByText, queryByTestId } = render(
+    const { getByPlaceholderText, getByText, queryByTestId } = renderWithTheme(
       <SignupScreen navigation={mockNavigation} />
     );
 

@@ -12,22 +12,24 @@ import CheckInScreen from './screens/CheckInScreen';
 import RunDetailsScreen from './screens/RunDetailsScreen';
 import PlanVisitScreen from './screens/PlanVisitScreen';
 import ProfileScreen from './screens/ProfileScreen';
-import { COLORS, NAV_HEADER } from './constants/theme';
+import { ThemeProvider, useTheme } from './contexts';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function HomeStack() {
+  const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator screenOptions={NAV_HEADER}>
+    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="HomeMain" component={HomeScreen} options={{ title: 'Home' }} />
     </Stack.Navigator>
   );
 }
 
 function RunsStack() {
+  const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator screenOptions={NAV_HEADER}>
+    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="ViewRunsMain" component={ViewRunsScreen} options={{ title: 'Find Runs' }} />
       <Stack.Screen name="RunDetails" component={RunDetailsScreen} options={{ title: 'Run Details' }} />
     </Stack.Navigator>
@@ -35,39 +37,43 @@ function RunsStack() {
 }
 
 function CheckInStack() {
+  const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator screenOptions={NAV_HEADER}>
+    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="CheckInMain" component={CheckInScreen} options={{ title: 'Check In' }} />
     </Stack.Navigator>
   );
 }
 
 function PlanStack() {
+  const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator screenOptions={NAV_HEADER}>
+    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="PlanVisitMain" component={PlanVisitScreen} options={{ title: 'Plan a Visit' }} />
     </Stack.Navigator>
   );
 }
 
 function ProfileStack() {
+  const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator screenOptions={NAV_HEADER}>
+    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Profile' }} />
     </Stack.Navigator>
   );
 }
 
 function MainTabs() {
+  const { colors } = useTheme();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
-        tabBarActiveTintColor: COLORS.tabActive,
-        tabBarInactiveTintColor: COLORS.tabInactive,
+        tabBarActiveTintColor: colors.tabActive,
+        tabBarInactiveTintColor: colors.tabInactive,
         tabBarStyle: {
-          backgroundColor: COLORS.surface,
-          borderTopColor: COLORS.border,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
         },
         tabBarIcon: ({ color, size }) => {
@@ -90,7 +96,7 @@ function MainTabs() {
   );
 }
 
-export default function App() {
+function AppContent() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -99,5 +105,13 @@ export default function App() {
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

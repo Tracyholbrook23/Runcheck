@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderWithTheme } from '../helpers/renderWithTheme';
 import RunDetailsScreen from '../../screens/RunDetailsScreen';
 
 // Mock navigation (RunDetailsScreen uses navigation.getParent()?.navigate for tab switching)
@@ -64,7 +65,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('renders the gym name as title', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -72,7 +73,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('displays the gym address', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -80,7 +81,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('displays the player count', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -89,7 +90,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('displays the section title', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -97,7 +98,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('displays checked in players', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -106,7 +107,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('renders Check In Here button', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -114,7 +115,7 @@ describe('RunDetailsScreen', () => {
   });
 
   it('navigates to CheckIn when button is pressed', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
@@ -130,7 +131,7 @@ describe('RunDetailsScreen', () => {
     hooks.useGymPresences.mockReturnValue({ presences: [], loading: true, count: 0 });
     hooks.useGymSchedules.mockReturnValue({ schedules: [], schedulesBySlot: {}, loading: true, count: 0 });
 
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 

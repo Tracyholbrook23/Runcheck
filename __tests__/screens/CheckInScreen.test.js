@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent, waitFor } from '@testing-library/react-native';
+import { renderWithTheme } from '../helpers/renderWithTheme';
 import CheckInScreen from '../../screens/CheckInScreen';
 
 // Mock navigation (CheckInScreen uses navigation.getParent()?.navigate for tab switching)
@@ -42,7 +43,7 @@ describe('CheckInScreen', () => {
   });
 
   it('renders the title', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -50,7 +51,7 @@ describe('CheckInScreen', () => {
   });
 
   it('renders the subtitle', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -58,7 +59,7 @@ describe('CheckInScreen', () => {
   });
 
   it('renders the gym selection label', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -66,7 +67,7 @@ describe('CheckInScreen', () => {
   });
 
   it('renders the Check In button', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -74,7 +75,7 @@ describe('CheckInScreen', () => {
   });
 
   it('renders the Back to Home button', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -82,7 +83,7 @@ describe('CheckInScreen', () => {
   });
 
   it('navigates to Home when Back to Home is pressed', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -92,7 +93,7 @@ describe('CheckInScreen', () => {
   });
 
   it('renders info box about expiry', () => {
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
@@ -112,7 +113,7 @@ describe('CheckInScreen', () => {
       getTimeRemaining: jest.fn(),
     });
 
-    const { getByText } = render(
+    const { getByText } = renderWithTheme(
       <CheckInScreen navigation={mockNavigation} />
     );
 
