@@ -17,7 +17,7 @@
 import { useState, useCallback } from 'react';
 import * as Location from 'expo-location';
 
-// Set to true to use a fake Atlanta location for testing
+// Set to true to use a fake Pflugerville location for testing
 // Change to false when you want real GPS validation
 const DEV_SKIP_GPS = true;
 

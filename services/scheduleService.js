@@ -27,7 +27,7 @@
  * } from './scheduleService';
  *
  * // Schedule a session
- * const schedule = await createSchedule('user123', 'gym456', 'LA Fitness', new Date('2024-02-01T18:00:00'));
+ * const schedule = await createSchedule('user123', 'gym456', 'Cowboys Fit', new Date('2024-02-01T18:00:00'));
  *
  * // Cancel a session
  * await cancelSchedule('schedule789');

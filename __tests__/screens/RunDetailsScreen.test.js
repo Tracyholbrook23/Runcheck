@@ -15,6 +15,8 @@ const mockGym = {
   id: 'gym-1',
   name: 'Test Gym - Downtown',
   address: '123 Test St',
+  type: 'indoor',
+  notes: '57,000 sq ft facility with indoor basketball court',
   currentPresenceCount: 3,
 };
 
@@ -104,6 +106,22 @@ describe('RunDetailsScreen', () => {
 
     expect(getByText('John')).toBeTruthy();
     expect(getByText('Jane')).toBeTruthy();
+  });
+
+  it('displays the gym type', () => {
+    const { getByText } = renderWithTheme(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('Indoor')).toBeTruthy();
+  });
+
+  it('displays the gym notes', () => {
+    const { getByText } = renderWithTheme(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('57,000 sq ft facility with indoor basketball court')).toBeTruthy();
   });
 
   it('renders Check In Here button', () => {

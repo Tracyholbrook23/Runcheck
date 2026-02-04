@@ -12,8 +12,8 @@ const mockNavigation = {
 
 // Mock gyms data
 const mockGyms = [
-  { id: 'gym-1', name: 'LA Fitness', currentPresenceCount: 3 },
-  { id: 'gym-2', name: 'YMCA', currentPresenceCount: 0 },
+  { id: 'cowboys-fit-pflugerville', name: 'Cowboys Fit - Pflugerville', type: 'indoor', currentPresenceCount: 3 },
+  { id: 'pfluger-park', name: 'Pfluger Park', type: 'outdoor', currentPresenceCount: 0 },
 ];
 
 // Mock hooks
@@ -32,7 +32,7 @@ jest.mock('../../hooks', () => ({
     ensureGymsExist: jest.fn(),
   })),
   useLocation: jest.fn(() => ({
-    getCurrentLocation: jest.fn(() => Promise.resolve({ latitude: 33.8486, longitude: -84.3733 })),
+    getCurrentLocation: jest.fn(() => Promise.resolve({ latitude: 30.4692, longitude: -97.5963 })),
     loading: false,
   })),
 }));
