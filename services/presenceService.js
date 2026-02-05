@@ -178,7 +178,9 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   // Get user data
   const userRef = doc(db, 'users', odId);
   const userDoc = await getDoc(userRef);
-  const userName = userDoc.exists() ? userDoc.data().name : 'Anonymous';
+  const userData = userDoc.exists() ? userDoc.data() : {};
+  const userName = userData.name || 'Anonymous';
+  const skillLevel = userData.skillLevel || 'Beginner';
 
   // Create presence
   const presenceId = getPresenceId(odId, gymId);
@@ -190,6 +192,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     userName,
     gymId,
     gymName: gymData.name,
+    skillLevel,
     status: PRESENCE_STATUS.ACTIVE,
     checkInLocation: userLocation || null,
     distanceFromGym,

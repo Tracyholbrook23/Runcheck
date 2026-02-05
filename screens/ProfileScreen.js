@@ -6,7 +6,7 @@ import {
   SafeAreaView,
   Switch,
 } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING } from '../constants/theme';
 import { useTheme } from '../contexts';
 

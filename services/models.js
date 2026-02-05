@@ -97,6 +97,8 @@
  *   },
  *   distanceFromGym: number,         // Meters at check-in time
  *
+ *   skillLevel: string,              // "Beginner" | "Intermediate" | "Advanced" | "Pro"
+ *
  *   checkedInAt: Timestamp,
  *   expiresAt: Timestamp,
  *   checkedOutAt: Timestamp | null,
@@ -145,6 +147,13 @@
  * 5. schedules: gymId ASC, status ASC, scheduledTime ASC
  * 6. schedules: status ASC, scheduledTime ASC
  */
+
+export const SKILL_LEVELS = {
+  BEGINNER: 'Beginner',
+  INTERMEDIATE: 'Intermediate',
+  ADVANCED: 'Advanced',
+  PRO: 'Pro',
+};
 
 export const GYM_TYPE = {
   INDOOR: 'indoor',

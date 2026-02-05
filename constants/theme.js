@@ -108,6 +108,13 @@ export const COLORS_DARK = {
   tabInactive: '#71717A',
 };
 
+export const SKILL_LEVEL_COLORS = {
+  Beginner:     { bg: '#DBEAFE', text: '#2563EB' },
+  Intermediate: { bg: '#DCFCE7', text: '#16A34A' },
+  Advanced:     { bg: '#FEF3C7', text: '#D97706' },
+  Pro:          { bg: '#FEE2E2', text: '#DC2626' },
+};
+
 export const FONT_SIZES = {
   title: 22,
   subtitle: 18,

@@ -53,6 +53,7 @@ jest.mock('firebase/firestore', () => ({
 
 // Mock image assets
 jest.mock('./assets/hoop-icon.png', () => 'hoop-icon.png');
+jest.mock('./assets/basketball-court.jpg', () => 'basketball-court.jpg');
 
 // Suppress console warnings during tests
 const originalWarn = console.warn;

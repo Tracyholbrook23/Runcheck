@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, waitFor } from '@testing-library/react-native';
+import { fireEvent } from '@testing-library/react-native';
 import { renderWithTheme } from '../helpers/renderWithTheme';
 import RunDetailsScreen from '../../screens/RunDetailsScreen';
 
@@ -20,16 +20,18 @@ const mockGym = {
   currentPresenceCount: 3,
 };
 
-// Mock presences data
+// Mock presences data with skillLevel
 const mockPresences = [
   {
     id: 'presence-1',
     userName: 'John',
+    skillLevel: 'Advanced',
     checkedInAt: { toDate: () => new Date(Date.now() - 30 * 60000) }, // 30 mins ago
   },
   {
     id: 'presence-2',
     userName: 'Jane',
+    skillLevel: 'Beginner',
     checkedInAt: { toDate: () => new Date(Date.now() - 5 * 60000) }, // 5 mins ago
   },
 ];
@@ -159,5 +161,58 @@ describe('RunDetailsScreen', () => {
     hooks.useGym.mockReturnValue({ gym: mockGym, loading: false });
     hooks.useGymPresences.mockReturnValue({ presences: mockPresences, loading: false, count: mockPresences.length });
     hooks.useGymSchedules.mockReturnValue({ schedules: [], schedulesBySlot: {}, loading: false, count: 0 });
+  });
+
+  // --- Skill Level Badge Tests ---
+
+  it('displays skill level badges for players', () => {
+    const { getByText } = renderWithTheme(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('Advanced')).toBeTruthy();
+    expect(getByText('Beginner')).toBeTruthy();
+  });
+
+  // --- Live Timer Tests ---
+
+  it('displays "Here for" duration text instead of "Checked in"', () => {
+    const { getByText, queryByText } = renderWithTheme(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('Here for 30m')).toBeTruthy();
+    expect(getByText('Here for 5m')).toBeTruthy();
+    expect(queryByText(/Checked in/)).toBeNull();
+  });
+
+  // --- Game On / Pulse Tests ---
+
+  it('displays "Game On" label when players are present', () => {
+    const { getByText } = renderWithTheme(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(getByText('Game On')).toBeTruthy();
+  });
+
+  it('does not display "Game On" when no players are present', () => {
+    const hooks = require('../../hooks');
+    hooks.useGym.mockReturnValue({
+      gym: { ...mockGym, currentPresenceCount: 0 },
+      loading: false,
+    });
+    hooks.useGymPresences.mockReturnValue({ presences: [], loading: false, count: 0 });
+
+    const { queryByText } = renderWithTheme(
+      <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
+    );
+
+    expect(queryByText('Game On')).toBeNull();
+    expect(queryByText('No one here yet')).toBeTruthy();
+
+    // Reset mocks
+    hooks.useGym.mockReturnValue({ gym: mockGym, loading: false });
+    hooks.useGymPresences.mockReturnValue({ presences: mockPresences, loading: false, count: mockPresences.length });
   });
 });

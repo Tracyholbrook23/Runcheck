@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,12 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  Animated,
+  Image,
 } from 'react-native';
-import { FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { FONT_SIZES, SPACING, SHADOWS, SKILL_LEVEL_COLORS } from '../constants/theme';
+
+const courtImage = require('../assets/basketball-court.jpg');
 import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules } from '../hooks';
 
@@ -23,14 +27,42 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   const loading = gymLoading || presencesLoading || schedulesLoading;
 
-  const getTimeAgo = (timestamp) => {
+  // Live timer: tick every 60s to re-render durations
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (presences.length === 0) return;
+    const interval = setInterval(() => setTick((t) => t + 1), 60000);
+    return () => clearInterval(interval);
+  }, [presences.length]);
+
+  // Pulse animation for active player indicator
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const playerCount = gym?.currentPresenceCount || 0;
+
+  useEffect(() => {
+    if (playerCount > 0) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 0.3, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [playerCount]);
+
+  const getHereDuration = (timestamp) => {
     if (!timestamp) return '';
     const checkedInAt = timestamp.toDate();
     const minutes = Math.round((new Date() - checkedInAt) / 60000);
-    if (minutes < 1) return 'just now';
-    if (minutes < 60) return `${minutes}m ago`;
+    if (minutes < 1) return 'Here for <1m';
+    if (minutes < 60) return `Here for ${minutes}m`;
     const hours = Math.floor(minutes / 60);
-    return `${hours}h ago`;
+    const mins = minutes % 60;
+    return mins > 0 ? `Here for ${hours}h ${mins}m` : `Here for ${hours}h`;
   };
 
   if (loading) {
@@ -44,11 +76,10 @@ export default function RunDetailsScreen({ route, navigation }) {
     );
   }
 
-  const playerCount = gym?.currentPresenceCount || 0;
-
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
+        <Image source={courtImage} style={styles.heroImage} />
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
@@ -64,10 +95,18 @@ export default function RunDetailsScreen({ route, navigation }) {
 
         <View style={styles.statsCard}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{playerCount}</Text>
+            <View style={styles.statRow}>
+              {playerCount > 0 && (
+                <Animated.View style={[styles.pulseDot, { opacity: pulseAnim }]} />
+              )}
+              <Text style={styles.statNumber}>{playerCount}</Text>
+            </View>
             <Text style={styles.statLabel}>
               {playerCount === 1 ? 'Player' : 'Players'} Here
             </Text>
+            {playerCount > 0 && (
+              <Text style={styles.gameOnLabel}>Game On</Text>
+            )}
           </View>
         </View>
 
@@ -90,11 +129,26 @@ export default function RunDetailsScreen({ route, navigation }) {
                   </Text>
                 </View>
                 <View style={styles.playerInfo}>
-                  <Text style={styles.playerName}>
-                    {presence.userName || 'Anonymous'}
-                  </Text>
+                  <View style={styles.playerNameRow}>
+                    <Text style={styles.playerName}>
+                      {presence.userName || 'Anonymous'}
+                    </Text>
+                    {presence.skillLevel && (
+                      <View style={[
+                        styles.skillBadge,
+                        { backgroundColor: (SKILL_LEVEL_COLORS[presence.skillLevel] || SKILL_LEVEL_COLORS.Beginner).bg },
+                      ]}>
+                        <Text style={[
+                          styles.skillBadgeText,
+                          { color: (SKILL_LEVEL_COLORS[presence.skillLevel] || SKILL_LEVEL_COLORS.Beginner).text },
+                        ]}>
+                          {presence.skillLevel}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.playerTime}>
-                    Checked in {getTimeAgo(presence.checkedInAt)}
+                    {getHereDuration(presence.checkedInAt)}
                   </Text>
                 </View>
               </View>
@@ -159,6 +213,11 @@ const getStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
   },
+  heroImage: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'cover',
+  },
   centered: {
     flex: 1,
     justifyContent: 'center',
@@ -208,6 +267,24 @@ const getStyles = (colors) => StyleSheet.create({
   statItem: {
     flex: 1,
     alignItems: 'center',
+  },
+  statRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pulseDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.success,
+    marginRight: SPACING.xs,
+  },
+  gameOnLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: colors.success,
+    marginTop: 4,
   },
   statNumber: {
     fontSize: 36,
@@ -269,6 +346,20 @@ const getStyles = (colors) => StyleSheet.create({
   },
   playerInfo: {
     flex: 1,
+  },
+  playerNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  skillBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: SPACING.xs,
+  },
+  skillBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
   },
   playerName: {
     fontSize: FONT_SIZES.body,
