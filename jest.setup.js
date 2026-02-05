@@ -43,12 +43,15 @@ jest.mock('firebase/auth', () => ({
   })),
   createUserWithEmailAndPassword: jest.fn(),
   signInWithEmailAndPassword: jest.fn(),
+  signOut: jest.fn(() => Promise.resolve()),
+  onAuthStateChanged: jest.fn(() => jest.fn()),
 }));
 
 jest.mock('firebase/firestore', () => ({
   getFirestore: jest.fn(() => ({})),
   setDoc: jest.fn(),
   doc: jest.fn(),
+  getDoc: jest.fn(() => Promise.resolve({ exists: () => false, data: () => null })),
 }));
 
 // Mock image assets

@@ -79,7 +79,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
-        <Image source={courtImage} style={styles.heroImage} />
+        <Image source={courtImage} style={styles.heroImage} resizeMode="cover" />
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
@@ -216,7 +216,6 @@ const getStyles = (colors) => StyleSheet.create({
   heroImage: {
     width: '100%',
     height: 200,
-    resizeMode: 'cover',
   },
   centered: {
     flex: 1,
