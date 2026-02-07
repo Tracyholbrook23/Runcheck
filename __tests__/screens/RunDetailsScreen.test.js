@@ -93,12 +93,14 @@ describe('RunDetailsScreen', () => {
     expect(getByText('Players Here')).toBeTruthy();
   });
 
-  it('displays the section title', () => {
+  it('displays the section titles', () => {
     const { getByText } = renderWithTheme(
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
-    expect(getByText("Who's Here Now")).toBeTruthy();
+    expect(getByText('Now Playing')).toBeTruthy();
+    expect(getByText('Scheduled Today')).toBeTruthy();
+    expect(getByText('Scheduled Tomorrow')).toBeTruthy();
   });
 
   it('displays checked in players', () => {

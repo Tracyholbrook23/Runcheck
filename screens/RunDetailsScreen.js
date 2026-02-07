@@ -10,11 +10,41 @@ import {
   Animated,
   Image,
 } from 'react-native';
-import { FONT_SIZES, SPACING, SHADOWS, SKILL_LEVEL_COLORS } from '../constants/theme';
+import { FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { PresenceList } from '../components';
 
 const courtImage = require('../assets/basketball-court.jpg');
 import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules } from '../hooks';
+
+/**
+ * Check if a date is today
+ * @param {Date} date
+ * @returns {boolean}
+ */
+const isToday = (date) => {
+  const today = new Date();
+  return (
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate()
+  );
+};
+
+/**
+ * Check if a date is tomorrow
+ * @param {Date} date
+ * @returns {boolean}
+ */
+const isTomorrow = (date) => {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return (
+    date.getFullYear() === tomorrow.getFullYear() &&
+    date.getMonth() === tomorrow.getMonth() &&
+    date.getDate() === tomorrow.getDate()
+  );
+};
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
@@ -23,9 +53,28 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   const { gym, loading: gymLoading } = useGym(gymId);
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
-  const { schedules, schedulesBySlot, loading: schedulesLoading } = useGymSchedules(gymId);
+  const { schedules, loading: schedulesLoading } = useGymSchedules(gymId);
 
   const loading = gymLoading || presencesLoading || schedulesLoading;
+
+  // Filter schedules into today and tomorrow
+  const { todaySchedules, tomorrowSchedules } = useMemo(() => {
+    const today = [];
+    const tomorrow = [];
+
+    schedules.forEach((schedule) => {
+      const scheduledTime = schedule.scheduledTime?.toDate();
+      if (!scheduledTime) return;
+
+      if (isToday(scheduledTime)) {
+        today.push(schedule);
+      } else if (isTomorrow(scheduledTime)) {
+        tomorrow.push(schedule);
+      }
+    });
+
+    return { todaySchedules: today, tomorrowSchedules: tomorrow };
+  }, [schedules]);
 
   // Live timer: tick every 60s to re-render durations
   const [tick, setTick] = useState(0);
@@ -53,17 +102,6 @@ export default function RunDetailsScreen({ route, navigation }) {
       pulseAnim.setValue(1);
     }
   }, [playerCount]);
-
-  const getHereDuration = (timestamp) => {
-    if (!timestamp) return '';
-    const checkedInAt = timestamp.toDate();
-    const minutes = Math.round((new Date() - checkedInAt) / 60000);
-    if (minutes < 1) return 'Here for <1m';
-    if (minutes < 60) return `Here for ${minutes}m`;
-    const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
-    return mins > 0 ? `Here for ${hours}h ${mins}m` : `Here for ${hours}h`;
-  };
 
   if (loading) {
     return (
@@ -111,79 +149,32 @@ export default function RunDetailsScreen({ route, navigation }) {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Who's Here Now</Text>
-
-          {presences.length === 0 ? (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No one here yet</Text>
-              <Text style={styles.emptySubtext}>
-                Be the first to check in!
-              </Text>
-            </View>
-          ) : (
-            presences.map((presence) => (
-              <View key={presence.id} style={styles.playerCard}>
-                <View style={styles.playerAvatar}>
-                  <Text style={styles.playerInitial}>
-                    {(presence.userName || 'A').charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.playerInfo}>
-                  <View style={styles.playerNameRow}>
-                    <Text style={styles.playerName}>
-                      {presence.userName || 'Anonymous'}
-                    </Text>
-                    {presence.skillLevel && (
-                      <View style={[
-                        styles.skillBadge,
-                        { backgroundColor: (SKILL_LEVEL_COLORS[presence.skillLevel] || SKILL_LEVEL_COLORS.Beginner).bg },
-                      ]}>
-                        <Text style={[
-                          styles.skillBadgeText,
-                          { color: (SKILL_LEVEL_COLORS[presence.skillLevel] || SKILL_LEVEL_COLORS.Beginner).text },
-                        ]}>
-                          {presence.skillLevel}
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.playerTime}>
-                    {getHereDuration(presence.checkedInAt)}
-                  </Text>
-                </View>
-              </View>
-            ))
-          )}
+          <Text style={styles.sectionTitle}>Now Playing</Text>
+          <PresenceList
+            items={presences}
+            type="presence"
+            emptyMessage="No one here yet"
+            emptySubtext="Be the first to check in!"
+          />
         </View>
 
-        {schedules.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Coming Soon</Text>
-            {Object.keys(schedulesBySlot)
-              .sort()
-              .slice(0, 3)
-              .map((slot) => {
-                const slotSchedules = schedulesBySlot[slot];
-                const time = new Date(slot);
-                const now = new Date();
-                const isToday = time.toDateString() === now.toDateString();
-                const timeStr = time.toLocaleTimeString([], {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                });
-                const label = isToday ? `Today ${timeStr}` : `Tomorrow ${timeStr}`;
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Scheduled Today</Text>
+          <PresenceList
+            items={todaySchedules}
+            type="schedule"
+            emptyMessage="No one scheduled today"
+          />
+        </View>
 
-                return (
-                  <View key={slot} style={styles.intentSlot}>
-                    <Text style={styles.intentTime}>{label}</Text>
-                    <Text style={styles.intentCount}>
-                      {slotSchedules.length} {slotSchedules.length === 1 ? 'player' : 'players'} planning to come
-                    </Text>
-                  </View>
-                );
-              })}
-          </View>
-        )}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Scheduled Tomorrow</Text>
+          <PresenceList
+            items={tomorrowSchedules}
+            type="schedule"
+            emptyMessage="No one scheduled tomorrow"
+          />
+        </View>
 
         <TouchableOpacity
           style={styles.checkInButton}
@@ -303,88 +294,6 @@ const getStyles = (colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: SPACING.md,
-  },
-  emptyState: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 12,
-    padding: SPACING.lg,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: FONT_SIZES.body,
-    color: colors.textPrimary,
-    fontWeight: '500',
-  },
-  emptySubtext: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
-    marginTop: SPACING.xs,
-  },
-  playerCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    ...SHADOWS.subtle,
-  },
-  playerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: SPACING.md,
-  },
-  playerInitial: {
-    color: '#fff',
-    fontSize: FONT_SIZES.subtitle,
-    fontWeight: 'bold',
-  },
-  playerInfo: {
-    flex: 1,
-  },
-  playerNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  skillBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginLeft: SPACING.xs,
-  },
-  skillBadgeText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
-  },
-  playerName: {
-    fontSize: FONT_SIZES.body,
-    fontWeight: '600',
-    color: colors.textPrimary,
-  },
-  playerTime: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  intentSlot: {
-    backgroundColor: colors.scheduleBackground,
-    borderRadius: 8,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-  },
-  intentTime: {
-    fontSize: FONT_SIZES.body,
-    fontWeight: '600',
-    color: colors.scheduleText,
-  },
-  intentCount: {
-    fontSize: FONT_SIZES.small,
-    color: colors.scheduleTextBright,
-    marginTop: 2,
   },
   checkInButton: {
     backgroundColor: colors.primary,
