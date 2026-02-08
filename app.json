@@ -8,12 +8,13 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo/runcheck-logo-full.png",
       "resizeMode": "contain",
-      "backgroundColor": "#FFFFFF"
+      "backgroundColor": "#1A1A2E"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.runcheck.app"
     },
     "android": {
       "adaptiveIcon": {

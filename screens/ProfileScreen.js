@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
@@ -225,6 +226,11 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Branding */}
+        <View style={styles.brandingFooter}>
+          <Logo size="small" />
+        </View>
+
         {/* Sign Out */}
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={colors.danger} />
@@ -425,6 +431,11 @@ const getStyles = (colors) =>
       color: colors.textPrimary,
       marginLeft: SPACING.sm,
       fontWeight: '500',
+    },
+    brandingFooter: {
+      alignItems: 'center',
+      paddingVertical: SPACING.md,
+      opacity: 0.6,
     },
     // Sign out
     signOutButton: {

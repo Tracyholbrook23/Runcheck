@@ -88,10 +88,20 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopColor: colors.border,
-          borderTopWidth: 1,
+          borderTopWidth: 0,
+          height: 60,
+          paddingBottom: 6,
+          shadowColor: '#000',
+          shadowOpacity: 0.08,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: -2 },
+          elevation: 8,
         },
         tabBarIcon: ({ color, size }) => {
           let iconName;

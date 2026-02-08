@@ -2,17 +2,18 @@ import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
-import { FONT_SIZES, SPACING, RADIUS } from '../constants/theme';
+import { FONT_SIZES, SPACING, RADIUS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
+
+const SKILL_OPTIONS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'];
 
 export default function SignupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
@@ -55,22 +56,74 @@ export default function SignupScreen({ navigation }) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Create Your RunCheck Account</Text>
+      <Button
+        title="← Back to Login"
+        variant="ghost"
+        size="sm"
+        onPress={() => navigation.goBack()}
+        style={styles.backButton}
+      />
 
-      <TextInput style={styles.input} placeholder="Full Name" placeholderTextColor={colors.textMuted} value={name} onChangeText={setName} />
-      <TextInput style={styles.input} placeholder="Age" placeholderTextColor={colors.textMuted} keyboardType="numeric" value={age} onChangeText={setAge} />
-      <TextInput style={styles.input} placeholder="Skill Level (e.g. Beginner, Pro)" placeholderTextColor={colors.textMuted} value={skillLevel} onChangeText={setSkillLevel} />
-      <TextInput style={styles.input} placeholder="Email" placeholderTextColor={colors.textMuted} keyboardType="email-address" autoCapitalize="none" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Password" placeholderTextColor={colors.textMuted} secureTextEntry value={password} onChangeText={setPassword} />
+      <Logo size="medium" style={{ marginBottom: SPACING.sm }} />
+      <Text style={styles.title}>Create Your Account</Text>
+      <Text style={styles.subtitle}>Join the RunCheck community</Text>
 
-      <View style={styles.buttonContainer}>
-        {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} testID="loading-indicator" />
-        ) : (
-          <TouchableOpacity style={styles.signupButton} onPress={handleSignup} testID="signup-button">
-            <Text style={styles.signupButtonText}>Sign Up</Text>
-          </TouchableOpacity>
-        )}
+      <View style={styles.form}>
+        <Input label="Full Name" placeholder="Your name" value={name} onChangeText={setName} />
+        <Input label="Age" placeholder="Your age" keyboardType="numeric" value={age} onChangeText={setAge} />
+
+        <Text style={styles.fieldLabel}>Skill Level</Text>
+        <View style={styles.skillRow}>
+          {SKILL_OPTIONS.map((level) => {
+            const selected = skillLevel === level;
+            const skillColors = SKILL_LEVEL_COLORS[level];
+            return (
+              <TouchableOpacity
+                key={level}
+                style={[
+                  styles.skillPill,
+                  selected && { backgroundColor: skillColors.bg, borderColor: skillColors.text },
+                ]}
+                onPress={() => setSkillLevel(level)}
+              >
+                <Text
+                  style={[
+                    styles.skillPillText,
+                    selected && { color: skillColors.text },
+                  ]}
+                >
+                  {level}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        <Input
+          label="Email"
+          placeholder="your@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <Input
+          label="Password"
+          placeholder="Create a password"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+
+        <Button
+          title="Create Account"
+          variant="primary"
+          size="lg"
+          onPress={handleSignup}
+          loading={loading}
+          testID="signup-button"
+          style={{ marginTop: SPACING.sm }}
+        />
       </View>
     </ScrollView>
   );
@@ -79,41 +132,52 @@ export default function SignupScreen({ navigation }) {
 const getStyles = (colors) => StyleSheet.create({
   container: {
     flexGrow: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: SPACING.lg,
+    paddingTop: SPACING.xxl,
     backgroundColor: colors.background,
   },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.md,
+  },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 24,
+    fontSize: FONT_SIZES.title,
+    fontWeight: '800',
     color: colors.textPrimary,
   },
-  input: {
-    width: '100%',
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: RADIUS.sm,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: colors.surface,
-    color: colors.textPrimary,
-  },
-  buttonContainer: {
-    width: '100%',
-    marginBottom: 12,
-  },
-  signupButton: {
-    backgroundColor: colors.primary,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-  },
-  signupButtonText: {
-    color: '#FFFFFF',
+  subtitle: {
     fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.lg,
+  },
+  form: {
+    width: '100%',
+  },
+  fieldLabel: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
     fontWeight: '600',
+    marginBottom: 6,
+  },
+  skillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  skillPill: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  skillPillText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
 });

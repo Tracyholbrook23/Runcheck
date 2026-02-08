@@ -5,13 +5,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Image,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { FONT_SIZES, SPACING } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { usePresence } from '../hooks';
+import { Logo } from '../components';
 
 const HomeScreen = ({ navigation }) => {
   const { colors, themeStyles } = useTheme();
@@ -57,15 +57,7 @@ const HomeScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        <View style={styles.logoWrapper}>
-          <Image
-            source={require('../assets/hoop-icon.png')}
-            style={styles.logo}
-            resizeMode="contain"
-          />
-        </View>
-
-        <Text style={styles.title}>RunCheck</Text>
+        <Logo size="medium" />
         <Text style={styles.subtitle}>Find or join a pickup run near you</Text>
 
         {loading ? (
@@ -137,20 +129,6 @@ const getStyles = (colors) => StyleSheet.create({
     padding: SPACING.lg,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  logoWrapper: {
-    marginBottom: SPACING.md,
-  },
-  logo: {
-    width: 100,
-    height: 100,
-  },
-  title: {
-    fontSize: FONT_SIZES.title + 4,
-    fontWeight: 'bold',
-    color: colors.textPrimary,
-    marginBottom: SPACING.sm,
-    textAlign: 'center',
   },
   subtitle: {
     fontSize: FONT_SIZES.subtitle,

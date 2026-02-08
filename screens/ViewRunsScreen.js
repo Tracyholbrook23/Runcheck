@@ -8,11 +8,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms } from '../hooks';
+import { Logo } from '../components';
+import { openDirections } from '../utils/openMapsDirections';
 
 export default function ViewRunsScreen({ navigation }) {
   const { gyms, loading, ensureGymsExist } = useGyms();
@@ -37,6 +40,7 @@ export default function ViewRunsScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
+          <Logo size="small" style={{ marginBottom: SPACING.sm }} />
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading gyms...</Text>
         </View>
@@ -80,9 +84,10 @@ export default function ViewRunsScreen({ navigation }) {
                     })
                   }
                 >
-                  <View style={styles.thumbnail}>
-                    <Ionicons name="basketball" size={28} color={colors.primary} />
-                  </View>
+                  <Image
+                    source={require('../assets/basketball-court.png')}
+                    style={styles.thumbnail}
+                  />
 
                   <View style={styles.gymInfo}>
                     <View style={styles.gymRow}>
@@ -102,7 +107,17 @@ export default function ViewRunsScreen({ navigation }) {
                       </Text>
                     </View>
 
-                    <Text style={styles.gymAddress} numberOfLines={1}>{gym.address}</Text>
+                    <View style={styles.addressRow}>
+                      <Text style={styles.gymAddress} numberOfLines={1}>{gym.address}</Text>
+                      {gym.location && (
+                        <TouchableOpacity
+                          onPress={() => openDirections(gym.location, gym.name)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="navigate-outline" size={14} color={colors.primary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 </TouchableOpacity>
               );
@@ -175,9 +190,6 @@ const getStyles = (colors) => StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 8,
-    backgroundColor: colors.surfaceLight,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginRight: SPACING.sm,
   },
   gymInfo: {
@@ -220,8 +232,14 @@ const getStyles = (colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: '500',
   },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   gymAddress: {
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
+    flex: 1,
   },
 });

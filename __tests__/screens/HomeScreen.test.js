@@ -35,13 +35,13 @@ describe('HomeScreen', () => {
     jest.clearAllMocks();
   });
 
-  it('renders the app title', async () => {
-    const { getByText } = renderWithTheme(
+  it('renders the app logo', async () => {
+    const { getByLabelText } = renderWithTheme(
       <HomeScreen navigation={mockNavigation} />
     );
 
     await waitFor(() => {
-      expect(getByText(/RunCheck/)).toBeTruthy();
+      expect(getByLabelText('RunCheck logo')).toBeTruthy();
     });
   });
 

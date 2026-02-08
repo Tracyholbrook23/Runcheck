@@ -2,14 +2,14 @@ export const COLORS = {
   // Backgrounds
   background: '#F9FAFB',
   surface: '#FFFFFF',
-  surfaceLight: '#F3F4F6',
+  surfaceLight: '#F5F6F8',
 
   // Primary (burnt orange)
   primary: '#E8622A',
   primaryLight: '#FF7A3D',
 
-  // Secondary (purple - plan visits)
-  secondary: '#8B5CF6',
+  // Secondary (blue - matches logo checkmark)
+  secondary: '#2563EB',
 
   // Semantic
   success: '#22C55E',
@@ -43,14 +43,17 @@ export const COLORS = {
   presenceText: '#059669',
   presenceTextBright: '#047857',
 
-  // Schedule/purple cards
-  scheduleBackground: '#F3E8FF',
-  scheduleText: '#7C3AED',
-  scheduleTextBright: '#6D28D9',
+  // Schedule cards (blue - matches logo)
+  scheduleBackground: '#EFF6FF',
+  scheduleText: '#2563EB',
+  scheduleTextBright: '#1D4ED8',
 
   // Tab bar
   tabActive: '#E8622A',
   tabInactive: '#9CA3AF',
+
+  // Overlay
+  overlay: 'rgba(0,0,0,0.5)',
 };
 
 export const COLORS_DARK = {
@@ -63,8 +66,8 @@ export const COLORS_DARK = {
   primary: '#E8622A',
   primaryLight: '#FF7A3D',
 
-  // Secondary (purple)
-  secondary: '#A78BFA',
+  // Secondary (blue - matches logo checkmark)
+  secondary: '#60A5FA',
 
   // Semantic
   success: '#34D399',
@@ -98,14 +101,17 @@ export const COLORS_DARK = {
   presenceText: '#34D399',
   presenceTextBright: '#10B981',
 
-  // Schedule/purple cards
-  scheduleBackground: '#2D1B69',
-  scheduleText: '#A78BFA',
-  scheduleTextBright: '#8B5CF6',
+  // Schedule cards (blue - matches logo)
+  scheduleBackground: '#1E3A5F',
+  scheduleText: '#60A5FA',
+  scheduleTextBright: '#3B82F6',
 
   // Tab bar
   tabActive: '#E8622A',
   tabInactive: '#71717A',
+
+  // Overlay
+  overlay: 'rgba(0,0,0,0.6)',
 };
 
 export const SKILL_LEVEL_COLORS = {
@@ -116,8 +122,8 @@ export const SKILL_LEVEL_COLORS = {
 };
 
 export const FONT_SIZES = {
-  title: 22,
-  subtitle: 18,
+  title: 24,
+  subtitle: 20,
   body: 16,
   small: 14,
   xs: 12,
@@ -129,30 +135,45 @@ export const SPACING = {
   md: 16,
   lg: 24,
   xl: 32,
+  xxl: 40,
 };
 
 export const RADIUS = {
-  sm: 6,
-  md: 8,
-  lg: 12,
-  xl: 16,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  full: 9999,
 };
 
 export const SHADOWS = {
   card: {
     shadowColor: '#000',
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 3,
+  },
+  subtle: {
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
-  subtle: {
+  elevated: {
     shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
   },
+};
+
+export const BUTTON_HEIGHT = {
+  sm: 40,
+  md: 48,
+  lg: 56,
 };
 
 export const CARD = {
@@ -165,9 +186,10 @@ export const CARD = {
 export const INPUT = {
   backgroundColor: COLORS.surface,
   borderColor: COLORS.border,
-  borderWidth: 1,
+  borderWidth: 1.5,
   borderRadius: RADIUS.md,
-  padding: SPACING.sm,
+  height: BUTTON_HEIGHT.md,
+  paddingHorizontal: SPACING.md,
   color: COLORS.textPrimary,
   fontSize: FONT_SIZES.body,
 };
@@ -180,6 +202,7 @@ export const NAV_HEADER = {
   headerTitleStyle: {
     color: COLORS.textPrimary,
     fontWeight: 'bold',
+    fontSize: 18,
   },
   headerShadowVisible: false,
 };
@@ -187,13 +210,15 @@ export const NAV_HEADER = {
 export const BUTTON = {
   base: {
     backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: RADIUS.md,
+    height: BUTTON_HEIGHT.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.lg,
   },
   text: {
     color: '#FFFFFF',
-    fontSize: FONT_SIZES.body,
+    fontSize: FONT_SIZES.subtitle,
     fontWeight: 'bold',
     textAlign: 'center',
   },
@@ -204,19 +229,21 @@ export function getThemeStyles(colors) {
     NAV_HEADER: {
       headerStyle: { backgroundColor: colors.surface },
       headerTintColor: colors.textPrimary,
-      headerTitleStyle: { color: colors.textPrimary, fontWeight: 'bold' },
+      headerTitleStyle: { color: colors.textPrimary, fontWeight: 'bold', fontSize: 18 },
       headerShadowVisible: false,
     },
     BUTTON: {
       base: {
         backgroundColor: colors.primary,
-        paddingVertical: 12,
-        paddingHorizontal: 16,
-        borderRadius: RADIUS.md,
+        height: BUTTON_HEIGHT.md,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: SPACING.md,
+        borderRadius: RADIUS.lg,
       },
       text: {
         color: '#FFFFFF',
-        fontSize: FONT_SIZES.body,
+        fontSize: FONT_SIZES.subtitle,
         fontWeight: 'bold',
         textAlign: 'center',
       },

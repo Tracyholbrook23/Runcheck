@@ -2,14 +2,12 @@ import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
-import { FONT_SIZES, SPACING, RADIUS } from '../constants/theme';
+import { FONT_SIZES, SPACING } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { Logo, Button, Input } from '../components';
 import { auth } from '../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
@@ -51,48 +49,46 @@ export default function LoginScreen({ navigation }) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Log Into Your RunCheck Account</Text>
+      <Logo size="large" style={{ marginBottom: SPACING.md }} />
+      <Text style={styles.title}>Welcome Back</Text>
+      <Text style={styles.subtitle}>Log in to your RunCheck account</Text>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor={colors.textMuted}
-        keyboardType="email-address"
-        autoCapitalize="none"
-        value={email}
-        onChangeText={setEmail}
-        testID="email-input"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor={colors.textMuted}
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-        testID="password-input"
-      />
+      <View style={styles.form}>
+        <Input
+          label="Email"
+          placeholder="your@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          value={email}
+          onChangeText={setEmail}
+          testID="email-input"
+        />
+        <Input
+          label="Password"
+          placeholder="Enter your password"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+          testID="password-input"
+        />
 
-      <View style={styles.buttonContainer}>
-        {loading ? (
-          <ActivityIndicator size="large" color={colors.primary} testID="loading-indicator" />
-        ) : (
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin} testID="login-button">
-            <Text style={styles.loginButtonText}>Login</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        <Button
+          title="Log In"
+          variant="primary"
+          size="lg"
+          onPress={handleLogin}
+          loading={loading}
+          testID="login-button"
+          style={{ marginTop: SPACING.sm }}
+        />
 
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Signup')}>
-          <Text style={styles.secondaryButtonText}>Go to Signup</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => navigation.navigate('Main')}>
-          <Text style={styles.secondaryButtonText}>Back to Home</Text>
-        </TouchableOpacity>
+        <Button
+          title="Create Account"
+          variant="outline"
+          size="lg"
+          onPress={() => navigation.navigate('Signup')}
+          style={{ marginTop: SPACING.sm }}
+        />
       </View>
     </ScrollView>
   );
@@ -103,51 +99,23 @@ const getStyles = (colors) => StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: SPACING.lg,
     backgroundColor: colors.background,
   },
   title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 24,
+    fontSize: FONT_SIZES.title,
+    fontWeight: '800',
+    color: colors.textPrimary,
     textAlign: 'center',
-    color: colors.textPrimary,
   },
-  input: {
-    width: '100%',
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: RADIUS.sm,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: colors.surface,
-    color: colors.textPrimary,
-  },
-  buttonContainer: {
-    width: '100%',
-    marginBottom: 12,
-  },
-  loginButton: {
-    backgroundColor: colors.primary,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-  },
-  loginButtonText: {
-    color: '#FFFFFF',
+  subtitle: {
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xxl,
   },
-  secondaryButton: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: colors.primary,
-    fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+  form: {
+    width: '100%',
   },
 });

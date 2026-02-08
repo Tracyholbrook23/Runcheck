@@ -20,7 +20,7 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { FONT_SIZES, SPACING, SHADOWS, SKILL_LEVEL_COLORS } from '../constants/theme';
+import { FONT_SIZES, SPACING, RADIUS, SHADOWS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
 
 /**
@@ -123,7 +123,7 @@ const getStyles = (colors) =>
   StyleSheet.create({
     emptyState: {
       backgroundColor: colors.surfaceLight,
-      borderRadius: 12,
+      borderRadius: RADIUS.lg,
       padding: SPACING.lg,
       alignItems: 'center',
     },
@@ -141,15 +141,15 @@ const getStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      borderRadius: 10,
+      borderRadius: RADIUS.lg,
       padding: SPACING.md,
       marginBottom: SPACING.sm,
       ...SHADOWS.subtle,
     },
     playerAvatar: {
-      width: 44,
-      height: 44,
-      borderRadius: 22,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
       backgroundColor: colors.primary,
       justifyContent: 'center',
       alignItems: 'center',
@@ -169,13 +169,13 @@ const getStyles = (colors) =>
     },
     playerName: {
       fontSize: FONT_SIZES.body,
-      fontWeight: '600',
+      fontWeight: '700',
       color: colors.textPrimary,
     },
     skillBadge: {
       paddingHorizontal: 8,
       paddingVertical: 2,
-      borderRadius: 10,
+      borderRadius: RADIUS.full,
       marginLeft: SPACING.xs,
     },
     skillBadgeText: {

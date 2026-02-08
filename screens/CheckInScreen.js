@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { FONT_SIZES, SPACING } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { Logo } from '../components';
 
 import {
   View,
@@ -125,6 +126,7 @@ export default function CheckInScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
+          <Logo size="small" style={{ marginBottom: SPACING.sm }} />
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading gyms...</Text>
         </View>

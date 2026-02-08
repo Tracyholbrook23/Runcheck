@@ -10,10 +10,12 @@ import {
   Animated,
   Image,
 } from 'react-native';
-import { FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
-import { PresenceList } from '../components';
+import { Ionicons } from '@expo/vector-icons';
+import { FONT_SIZES, SPACING, SHADOWS, RADIUS } from '../constants/theme';
+import { PresenceList, Logo } from '../components';
+import { openDirections } from '../utils/openMapsDirections';
 
-const courtImage = require('../assets/basketball-court.jpg');
+const courtImage = require('../assets/basketball-court.png');
 import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules } from '../hooks';
 
@@ -107,6 +109,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
+          <Logo size="small" style={{ marginBottom: SPACING.sm }} />
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
@@ -121,6 +124,15 @@ export default function RunDetailsScreen({ route, navigation }) {
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
+          {gym?.location && (
+            <TouchableOpacity
+              style={styles.directionsButton}
+              onPress={() => openDirections(gym.location, gym.name)}
+            >
+              <Ionicons name="navigate-outline" size={16} color={colors.infoText} style={{ marginRight: 6 }} />
+              <Text style={styles.directionsButtonText}>Get Directions</Text>
+            </TouchableOpacity>
+          )}
           {gym?.type && (
             <Text style={styles.gymType}>
               {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
@@ -233,6 +245,21 @@ const getStyles = (colors) => StyleSheet.create({
   gymAddress: {
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
+  },
+  directionsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: colors.infoBackground,
+    borderRadius: RADIUS.md,
+    alignSelf: 'flex-start',
+  },
+  directionsButtonText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: '600',
+    color: colors.infoText,
   },
   gymType: {
     fontSize: FONT_SIZES.small,
