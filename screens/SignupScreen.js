@@ -6,7 +6,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { FONT_SIZES, SPACING, RADIUS, SKILL_LEVEL_COLORS } from '../constants/theme';
+import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
@@ -22,8 +22,8 @@ export default function SignupScreen({ navigation }) {
   const [skillLevel, setSkillLevel] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const handleSignup = async () => {
     if (!name || !email || !password || !age || !skillLevel) {
@@ -129,7 +129,7 @@ export default function SignupScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flexGrow: 1,
     alignItems: 'center',
@@ -143,8 +143,9 @@ const getStyles = (colors) => StyleSheet.create({
   },
   title: {
     fontSize: FONT_SIZES.title,
-    fontWeight: '800',
+    fontWeight: FONT_WEIGHTS.extraBold,
     color: colors.textPrimary,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
@@ -170,10 +171,10 @@ const getStyles = (colors) => StyleSheet.create({
   skillPill: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
-    borderWidth: 1.5,
+    borderRadius: RADIUS.sm,  // FitBuddy: 8px chip radius
+    borderWidth: 1,
     borderColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceLight,
   },
   skillPillText: {
     fontSize: FONT_SIZES.small,

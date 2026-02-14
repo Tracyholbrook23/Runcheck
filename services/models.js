@@ -51,6 +51,7 @@
  *   state: string,                   // e.g. "TX"
  *   type: string,                    // "indoor" | "outdoor"
  *   notes: string,                   // Additional info about the gym
+ *   imageUrl: string,                // Optional: URL to gym photo
  *
  *   // Location for GPS validation
  *   location: {
@@ -173,7 +174,7 @@ export const SCHEDULE_STATUS = {
   CANCELLED: 'cancelled',
 };
 
-export const DEFAULT_CHECK_IN_RADIUS_METERS = 50;
+export const DEFAULT_CHECK_IN_RADIUS_METERS = 100;
 export const DEFAULT_EXPIRE_MINUTES = 180; // 3 hours
 export const SCHEDULE_GRACE_PERIOD_MINUTES = 60; // 1 hour window to check in
 export const CANCEL_PENALTY_THRESHOLD_MINUTES = 60; // No penalty if cancelled 1hr+ before

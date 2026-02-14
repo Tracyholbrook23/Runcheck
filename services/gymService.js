@@ -64,6 +64,24 @@ export const seedGyms = async () => {
       scheduleCounts: {},
       autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
     },
+    {
+      id: 'clay-madsen-round-rock',
+      name: 'Clay Madsen Recreation Center',
+      address: '1600 Gattis School Rd, Round Rock, TX 78664',
+      city: 'Round Rock',
+      state: 'TX',
+      type: GYM_TYPE.INDOOR,
+      notes: '55,000 sq ft facility with two full-size gymnasiums, basketball courts, pool, racquetball courts',
+      imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg',
+      location: {
+        latitude: 30.4972,
+        longitude: -97.6609,
+      },
+      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
+      currentPresenceCount: 0,
+      scheduleCounts: {},
+      autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
+    },
   ];
 
   const gymsRef = collection(db, 'gyms');
@@ -88,6 +106,7 @@ export const seedGyms = async () => {
         state: gym.state,
         type: gym.type,
         notes: gym.notes,
+        imageUrl: gym.imageUrl || null,
         location: gym.location,
         checkInRadiusMeters: gym.checkInRadiusMeters,
         autoExpireMinutes: gym.autoExpireMinutes,

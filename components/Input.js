@@ -14,9 +14,9 @@ const Input = ({
   style,
   testID,
 }) => {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [focused, setFocused] = useState(false);
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   return (
     <View style={[styles.container, style]}>
@@ -24,7 +24,7 @@ const Input = ({
       <TextInput
         style={[
           styles.input,
-          focused && { borderColor: colors.primary },
+          focused && styles.inputFocused,
         ]}
         value={value}
         onChangeText={onChangeText}
@@ -41,7 +41,7 @@ const Input = ({
   );
 };
 
-const getStyles = (colors) =>
+const getStyles = (colors, isDark) =>
   StyleSheet.create({
     container: {
       width: '100%',
@@ -52,16 +52,23 @@ const getStyles = (colors) =>
       color: colors.textSecondary,
       fontWeight: '600',
       marginBottom: 6,
+      letterSpacing: 0.2,
     },
     input: {
       height: BUTTON_HEIGHT.md,
-      backgroundColor: colors.surface,
-      borderWidth: 1.5,
+      backgroundColor: colors.surfaceLight,
+      // NRC-style: no border in dark mode, subtle border in light
+      borderWidth: isDark ? 0 : 1,
       borderColor: colors.border,
-      borderRadius: RADIUS.md,
+      borderRadius: RADIUS.sm,
       paddingHorizontal: SPACING.md,
       fontSize: FONT_SIZES.body,
       color: colors.textPrimary,
+    },
+    inputFocused: {
+      // NRC-style: orange accent on focus
+      borderWidth: isDark ? 1 : 1,
+      borderColor: colors.primary,
     },
   });
 

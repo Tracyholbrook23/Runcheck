@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
-import { FONT_SIZES, SPACING, SHADOWS } from '../constants/theme';
+import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms } from '../hooks';
 
@@ -45,8 +45,8 @@ export default function PlanVisitScreen({ navigation }) {
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [step, setStep] = useState(1);
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const timeSlots = getAvailableTimeSlots();
 
@@ -285,7 +285,7 @@ export default function PlanVisitScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -301,9 +301,10 @@ const getStyles = (colors) => StyleSheet.create({
   },
   title: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
@@ -316,26 +317,28 @@ const getStyles = (colors) => StyleSheet.create({
   },
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textPrimary,
     marginBottom: SPACING.md,
+    letterSpacing: 0.3,
   },
   intentCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderRadius: 10,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    ...SHADOWS.subtle,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   intentInfo: {
     flex: 1,
   },
   intentGym: {
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textPrimary,
+    letterSpacing: 0.2,
   },
   intentTime: {
     fontSize: FONT_SIZES.small,
@@ -349,19 +352,21 @@ const getStyles = (colors) => StyleSheet.create({
   cancelButtonText: {
     color: colors.danger,
     fontSize: FONT_SIZES.small,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
+    letterSpacing: 0.2,
   },
   emptyState: {
-    backgroundColor: colors.surfaceLight,
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     alignItems: 'center',
     marginBottom: SPACING.lg,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   emptyText: {
     fontSize: FONT_SIZES.body,
     color: colors.textPrimary,
-    fontWeight: '500',
+    fontWeight: FONT_WEIGHTS.medium,
   },
   emptySubtext: {
     fontSize: FONT_SIZES.small,
@@ -371,21 +376,21 @@ const getStyles = (colors) => StyleSheet.create({
   },
   optionCard: {
     backgroundColor: colors.surface,
-    borderRadius: 10,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    ...SHADOWS.subtle,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   optionCardSelected: {
     borderColor: colors.secondary,
+    borderWidth: 2,
     backgroundColor: colors.scheduleBackground,
   },
   optionTitle: {
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textPrimary,
+    letterSpacing: 0.2,
   },
   optionSubtitle: {
     fontSize: FONT_SIZES.small,
@@ -412,22 +417,22 @@ const getStyles = (colors) => StyleSheet.create({
   slotCard: {
     width: '48%',
     backgroundColor: colors.surface,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
     alignItems: 'center',
-    ...SHADOWS.subtle,
   },
   slotCardSelected: {
     borderColor: colors.secondary,
+    borderWidth: 2,
     backgroundColor: colors.scheduleBackground,
   },
   slotText: {
     fontSize: FONT_SIZES.small,
     color: colors.textPrimary,
-    fontWeight: '500',
+    fontWeight: FONT_WEIGHTS.medium,
+    letterSpacing: 0.2,
   },
   slotTextSelected: {
     color: colors.scheduleText,
@@ -440,7 +445,7 @@ const getStyles = (colors) => StyleSheet.create({
   primaryButton: {
     flex: 1,
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
     marginLeft: SPACING.sm,
@@ -448,11 +453,12 @@ const getStyles = (colors) => StyleSheet.create({
   primaryButtonText: {
     color: '#fff',
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
+    letterSpacing: 0.2,
   },
   secondaryButton: {
     flex: 1,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
     marginRight: SPACING.sm,
@@ -461,7 +467,8 @@ const getStyles = (colors) => StyleSheet.create({
   secondaryButtonText: {
     color: colors.textPrimary,
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
+    letterSpacing: 0.2,
   },
   buttonDisabled: {
     opacity: 0.5,

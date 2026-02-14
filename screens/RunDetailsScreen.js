@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT_SIZES, SPACING, SHADOWS, RADIUS } from '../constants/theme';
+import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { PresenceList, Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 
@@ -50,8 +50,8 @@ const isTomorrow = (date) => {
 
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName } = route.params;
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const { gym, loading: gymLoading } = useGym(gymId);
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
@@ -120,7 +120,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
-        <Image source={courtImage} style={styles.heroImage} resizeMode="cover" />
+        <Image
+          source={gym?.imageUrl ? { uri: gym.imageUrl } : courtImage}
+          style={styles.heroImage}
+          resizeMode="cover"
+        />
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
@@ -208,7 +212,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   );
 }
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -238,9 +242,10 @@ const getStyles = (colors) => StyleSheet.create({
   },
   gymName: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
     marginBottom: SPACING.xs,
+    letterSpacing: 0.5,
   },
   gymAddress: {
     fontSize: FONT_SIZES.body,
@@ -258,8 +263,9 @@ const getStyles = (colors) => StyleSheet.create({
   },
   directionsButtonText: {
     fontSize: FONT_SIZES.small,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.infoText,
+    letterSpacing: 0.2,
   },
   gymType: {
     fontSize: FONT_SIZES.small,
@@ -277,9 +283,9 @@ const getStyles = (colors) => StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: colors.surface,
     margin: SPACING.lg,
-    borderRadius: 12,
+    borderRadius: RADIUS.lg,
     padding: SPACING.lg,
-    ...SHADOWS.card,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   statItem: {
     flex: 1,
@@ -299,13 +305,14 @@ const getStyles = (colors) => StyleSheet.create({
   },
   gameOnLabel: {
     fontSize: FONT_SIZES.small,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.success,
     marginTop: 4,
+    letterSpacing: 0.3,
   },
   statNumber: {
     fontSize: 36,
-    fontWeight: 'bold',
+    fontWeight: FONT_WEIGHTS.bold,
     color: colors.primary,
   },
   statLabel: {
@@ -318,34 +325,35 @@ const getStyles = (colors) => StyleSheet.create({
   },
   sectionTitle: {
     fontSize: FONT_SIZES.subtitle,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textPrimary,
     marginBottom: SPACING.md,
+    letterSpacing: 0.3,
   },
   checkInButton: {
     backgroundColor: colors.primary,
     marginHorizontal: SPACING.lg,
-    borderRadius: 10,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
   },
   checkInButtonText: {
     color: '#fff',
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   planButton: {
     backgroundColor: colors.secondary,
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.sm,
-    borderRadius: 10,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
   },
   planButtonText: {
     color: '#fff',
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   bottomPadding: {
     height: SPACING.lg * 2,

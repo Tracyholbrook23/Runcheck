@@ -1,11 +1,13 @@
 {
   "expo": {
-    "name": "runcheck-new",
+    "name": "RunCheck",
     "slug": "runcheck-new",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "description": "Find and join basketball pickup games nearby in real-time. Check in at gyms, see who's playing, and build your reliability score.",
+    "privacy": "unlisted",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/logo/runcheck-logo-full.png",
@@ -17,14 +19,29 @@
       "bundleIdentifier": "com.runcheck.app"
     },
     "android": {
+      "package": "com.runcheck.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow RunCheck to use your location to check in at nearby gyms."
+        }
+      ]
+    ]
   }
 }

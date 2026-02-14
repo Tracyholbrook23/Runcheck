@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FONT_SIZES, SPACING } from '../constants/theme';
+import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
 
@@ -21,8 +21,8 @@ export default function CheckInScreen({ navigation }) {
   const [open, setOpen] = useState(false);
   const [selectedGym, setSelectedGym] = useState(null);
   const [gymItems, setGymItems] = useState([]);
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const {
     presence,
@@ -201,7 +201,7 @@ export default function CheckInScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -226,10 +226,11 @@ const getStyles = (colors) => StyleSheet.create({
   },
   title: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontWeight: FONT_WEIGHTS.bold,
     marginBottom: SPACING.xs,
     textAlign: 'center',
     color: colors.textPrimary,
+    letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
@@ -239,23 +240,25 @@ const getStyles = (colors) => StyleSheet.create({
   },
   label: {
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     marginBottom: SPACING.sm,
     color: colors.textPrimary,
   },
   dropdown: {
     borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    backgroundColor: colors.surfaceLight,  // FitBuddy: elevated input surface
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   dropdownContainer: {
     borderColor: colors.border,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    backgroundColor: colors.surfaceLight,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   infoBox: {
     backgroundColor: colors.infoBackground,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginTop: SPACING.md,
   },
@@ -272,7 +275,7 @@ const getStyles = (colors) => StyleSheet.create({
   },
   checkInButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
     marginBottom: SPACING.sm,
@@ -283,17 +286,17 @@ const getStyles = (colors) => StyleSheet.create({
   checkInButtonText: {
     color: '#fff',
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   secondaryButton: {
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
   },
   secondaryButtonText: {
     color: colors.primary,
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   activeContainer: {
     flex: 1,
@@ -303,23 +306,26 @@ const getStyles = (colors) => StyleSheet.create({
   },
   activeTitle: {
     fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
     marginBottom: SPACING.lg,
+    letterSpacing: 0.5,
   },
   activeCard: {
     backgroundColor: colors.presenceBackground,
-    borderRadius: 12,
+    borderRadius: RADIUS.lg,
     padding: SPACING.lg,
     width: '100%',
     alignItems: 'center',
     marginBottom: SPACING.lg,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   activeGym: {
     fontSize: FONT_SIZES.subtitle,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.presenceTextBright,
     marginBottom: SPACING.sm,
+    letterSpacing: 0.3,
   },
   activeTime: {
     fontSize: FONT_SIZES.body,
@@ -333,13 +339,13 @@ const getStyles = (colors) => StyleSheet.create({
   },
   backButton: {
     backgroundColor: colors.primary,
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg * 2,
   },
   backButtonText: {
     color: '#fff',
     fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });

@@ -11,7 +11,7 @@ import {
   Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT_SIZES, SPACING } from '../constants/theme';
+import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms } from '../hooks';
 import { Logo } from '../components';
@@ -20,8 +20,8 @@ import { openDirections } from '../utils/openMapsDirections';
 export default function ViewRunsScreen({ navigation }) {
   const { gyms, loading, ensureGymsExist } = useGyms();
   const [refreshing, setRefreshing] = useState(false);
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -85,7 +85,11 @@ export default function ViewRunsScreen({ navigation }) {
                   }
                 >
                   <Image
-                    source={require('../assets/basketball-court.png')}
+                    source={
+                      gym.imageUrl
+                        ? { uri: gym.imageUrl }
+                        : require('../assets/basketball-court.png')
+                    }
                     style={styles.thumbnail}
                   />
 
@@ -129,7 +133,7 @@ export default function ViewRunsScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
@@ -149,15 +153,16 @@ const getStyles = (colors) => StyleSheet.create({
     color: colors.textSecondary,
   },
   title: {
-    fontSize: FONT_SIZES.title,
-    fontWeight: 'bold',
+    fontSize: FONT_SIZES.h1,  // Design system: 32px
+    fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
-    marginBottom: 2,
+    marginBottom: SPACING.xxs,  // 4px
+    letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: FONT_SIZES.small,
+    fontSize: FONT_SIZES.body,  // 16px
     color: colors.textSecondary,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,  // 24px (more breathing room)
   },
   scroll: {
     paddingBottom: SPACING.lg,
@@ -171,7 +176,7 @@ const getStyles = (colors) => StyleSheet.create({
   emptyText: {
     fontSize: FONT_SIZES.subtitle,
     color: colors.textPrimary,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   emptySubtext: {
     fontSize: FONT_SIZES.body,
@@ -181,16 +186,17 @@ const getStyles = (colors) => StyleSheet.create({
   gymCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.xs,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: 12,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+    ...(isDark && SHADOWS.lg),
   },
   thumbnail: {
-    width: 56,
-    height: 56,
-    borderRadius: 8,
-    marginRight: SPACING.sm,
+    width: 72,
+    height: 72,
+    borderRadius: RADIUS.md,
+    marginRight: SPACING.md,
   },
   gymInfo: {
     flex: 1,
@@ -203,21 +209,22 @@ const getStyles = (colors) => StyleSheet.create({
     marginBottom: 2,
   },
   gymName: {
-    fontSize: FONT_SIZES.body,
-    fontWeight: '600',
+    fontSize: FONT_SIZES.h3,  // Design system: 18px (card headers)
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textPrimary,
     flex: 1,
     marginRight: SPACING.xs,
+    letterSpacing: 0.3,
   },
   activityBadge: {
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
   },
   activityText: {
     color: '#fff',
     fontSize: FONT_SIZES.xs,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   runType: {
     fontSize: FONT_SIZES.small,
@@ -225,12 +232,12 @@ const getStyles = (colors) => StyleSheet.create({
   },
   runTypeAccent: {
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   playerCount: {
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
-    fontWeight: '500',
+    fontWeight: FONT_WEIGHTS.medium,
   },
   addressRow: {
     flexDirection: 'row',

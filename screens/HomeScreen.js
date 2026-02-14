@@ -7,16 +7,18 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Alert,
+  ScrollView,
 } from 'react-native';
-import { FONT_SIZES, SPACING } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { usePresence } from '../hooks';
 import { Logo } from '../components';
+import Button from '../components/Button';
 
 const HomeScreen = ({ navigation }) => {
-  const { colors, themeStyles } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
-  const BUTTON = themeStyles.BUTTON;
+  const { colors, isDark, themeStyles } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const {
     presence,
@@ -56,19 +58,42 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <Logo size="medium" />
-        <Text style={styles.subtitle}>Find or join a pickup run near you</Text>
+      {/* NRC-style minimal header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <Logo size="small" />
+          <Text style={styles.headerTitle}>RunCheck</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.headerIcon}
+          onPress={() => goToTab('Profile')}
+        >
+          <Ionicons name="person-circle-outline" size={28} color={colors.textPrimary} />
+        </TouchableOpacity>
+      </View>
 
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Welcome — NRC big bold headline */}
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeTitle}>Find Your{'\n'}Next Run</Text>
+          <Text style={styles.welcomeSubtitle}>
+            Join a pickup run near you
+          </Text>
+        </View>
+
+        {/* Presence Card */}
         {loading ? (
           <View style={styles.presenceCard}>
-            <ActivityIndicator size="small" color={colors.success} />
+            <ActivityIndicator size="small" color={colors.primary} />
           </View>
         ) : isCheckedIn ? (
           <View style={styles.presenceCard}>
             <View style={styles.presenceHeader}>
               <View style={styles.liveIndicator} />
-              <Text style={styles.presenceLabel}>You're Checked In</Text>
+              <Text style={styles.presenceLabel}>YOU'RE CHECKED IN</Text>
             </View>
             <Text style={styles.presenceGym}>{presence.gymName}</Text>
             <Text style={styles.presenceTime}>
@@ -88,61 +113,111 @@ const HomeScreen = ({ navigation }) => {
           </View>
         ) : null}
 
-        <TouchableOpacity
-          style={[BUTTON.base, isCheckedIn && styles.buttonDisabled]}
-          onPress={() => goToTab('CheckIn')}
-        >
-          <Text style={BUTTON.text}>
-            {isCheckedIn ? 'Already Checked In' : 'Check Into a Run'}
-          </Text>
-        </TouchableOpacity>
+        {/* Quick Actions */}
+        <View style={styles.actionsSection}>
+          <TouchableOpacity
+            style={styles.actionCard}
+            onPress={() => goToTab('CheckIn')}
+            disabled={isCheckedIn}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="location" size={26} color="#FFFFFF" />
+            <Text style={styles.actionCardTitle}>
+              {isCheckedIn ? 'Already Checked In' : 'Check Into a Run'}
+            </Text>
+            <Text style={styles.actionCardSub}>Find courts near you</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[BUTTON.base, styles.accentButton]}
-          onPress={() => goToTab('Runs')}
-        >
-          <Text style={BUTTON.text}>Find Open Runs</Text>
-        </TouchableOpacity>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.actionCardSmall}
+              onPress={() => goToTab('Runs')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="basketball-outline" size={24} color={colors.primary} />
+              <Text style={styles.actionSmallTitle}>Find Runs</Text>
+              <Text style={styles.actionSmallSub}>Open games</Text>
+            </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[BUTTON.base, styles.planButton]}
-          onPress={() => goToTab('Plan')}
-        >
-          <Text style={BUTTON.text}>Plan a Visit</Text>
-        </TouchableOpacity>
-      </View>
+            <TouchableOpacity
+              style={styles.actionCardSmall}
+              onPress={() => goToTab('Plan')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="calendar-outline" size={24} color={colors.secondary} />
+              <Text style={styles.actionSmallTitle}>Plan a Visit</Text>
+              <Text style={styles.actionSmallSub}>Schedule ahead</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Built for hoopers. Powered by community.</Text>
-      </View>
+        {/* Footer */}
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Built for hoopers. Powered by community.</Text>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  container: {
-    flex: 1,
-    padding: SPACING.lg,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: colors.background,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  headerTitle: {
+    fontSize: FONT_SIZES.h3,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    letterSpacing: -0.3,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  subtitle: {
-    fontSize: FONT_SIZES.subtitle,
-    color: colors.textSecondary,
+  scrollContent: {
+    padding: SPACING.md,
+    paddingBottom: SPACING.xl,
+  },
+  welcomeSection: {
     marginBottom: SPACING.lg,
-    textAlign: 'center',
+    marginTop: SPACING.xs,
+  },
+  welcomeTitle: {
+    fontSize: FONT_SIZES.hero,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: colors.textPrimary,
+    marginBottom: SPACING.xs,
+    lineHeight: 46,
+    letterSpacing: -0.5,
+  },
+  welcomeSubtitle: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+    letterSpacing: 0.2,
   },
   presenceCard: {
     backgroundColor: colors.presenceBackground,
-    borderRadius: 12,
-    padding: SPACING.md,
-    width: '100%',
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
     marginBottom: SPACING.lg,
     alignItems: 'center',
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   presenceHeader: {
     flexDirection: 'row',
@@ -157,13 +232,14 @@ const getStyles = (colors) => StyleSheet.create({
     marginRight: SPACING.xs,
   },
   presenceLabel: {
-    fontSize: FONT_SIZES.small,
+    fontSize: FONT_SIZES.xs,
     color: colors.presenceText,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 1,
   },
   presenceGym: {
-    fontSize: FONT_SIZES.subtitle,
-    fontWeight: 'bold',
+    fontSize: FONT_SIZES.h2,
+    fontWeight: FONT_WEIGHTS.extraBold,
     color: colors.presenceTextBright,
     marginBottom: SPACING.xs,
     textAlign: 'center',
@@ -171,37 +247,70 @@ const getStyles = (colors) => StyleSheet.create({
   presenceTime: {
     fontSize: FONT_SIZES.small,
     color: colors.presenceText,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   checkOutButton: {
     backgroundColor: colors.danger,
-    borderRadius: 6,
+    borderRadius: RADIUS.sm,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
   },
   checkOutText: {
     color: '#fff',
     fontSize: FONT_SIZES.small,
-    fontWeight: '600',
+    fontWeight: FONT_WEIGHTS.bold,
   },
-  accentButton: {
-    backgroundColor: colors.primaryLight,
-    marginTop: SPACING.md,
+  actionsSection: {
+    gap: SPACING.sm,
   },
-  planButton: {
-    backgroundColor: colors.secondary,
-    marginTop: SPACING.md,
+  actionCard: {
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    gap: SPACING.xxs,
+    ...(isDark ? SHADOWS.glow : SHADOWS.card),
   },
-  buttonDisabled: {
-    opacity: 0.6,
+  actionCardTitle: {
+    fontSize: FONT_SIZES.h3,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: '#FFFFFF',
+    marginTop: SPACING.xs,
+    letterSpacing: -0.2,
+  },
+  actionCardSub: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.75)',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  actionCardSmall: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    gap: SPACING.xxs,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  actionSmallTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    marginTop: SPACING.xxs,
+  },
+  actionSmallSub: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
   },
   footer: {
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.xxxl,
     alignItems: 'center',
   },
   footerText: {
     fontSize: FONT_SIZES.small,
     color: colors.textMuted,
+    letterSpacing: 0.2,
   },
 });
 

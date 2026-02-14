@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { FONT_SIZES, SPACING, SKILL_LEVEL_COLORS } from '../constants/theme';
+import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence } from '../hooks';
@@ -20,8 +20,8 @@ import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
 export default function ProfileScreen({ navigation }) {
-  const { isDark, colors, toggleTheme } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { isDark, colors, toggleTheme, skillColors } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const { user } = useAuth();
   const { score, tier, stats, loading: reliabilityLoading } = useReliability();
@@ -71,8 +71,8 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
-  const skillColors = profile?.skillLevel
-    ? SKILL_LEVEL_COLORS[profile.skillLevel]
+  const profileSkillColors = profile?.skillLevel
+    ? skillColors[profile.skillLevel]
     : null;
 
   const loading = profileLoading || reliabilityLoading;
@@ -97,9 +97,9 @@ export default function ProfileScreen({ navigation }) {
           </View>
           <Text style={styles.name}>{profile?.name || 'Player'}</Text>
           <Text style={styles.email}>{user?.email}</Text>
-          {skillColors && (
-            <View style={[styles.skillBadge, { backgroundColor: skillColors.bg }]}>
-              <Text style={[styles.skillText, { color: skillColors.text }]}>
+          {profileSkillColors && (
+            <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
+              <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
                 {profile.skillLevel}
               </Text>
             </View>
@@ -241,7 +241,7 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) =>
+const getStyles = (colors, isDark) =>
   StyleSheet.create({
     safe: {
       flex: 1,
@@ -271,8 +271,9 @@ const getStyles = (colors) =>
     },
     name: {
       fontSize: FONT_SIZES.title,
-      fontWeight: 'bold',
+      fontWeight: FONT_WEIGHTS.extraBold,
       color: colors.textPrimary,
+      letterSpacing: -0.5,
     },
     email: {
       fontSize: FONT_SIZES.small,
@@ -283,25 +284,30 @@ const getStyles = (colors) =>
       marginTop: SPACING.xs,
       paddingHorizontal: SPACING.sm,
       paddingVertical: 4,
-      borderRadius: 12,
+      borderRadius: RADIUS.sm,
     },
     skillText: {
       fontSize: FONT_SIZES.xs,
-      fontWeight: '700',
+      fontWeight: FONT_WEIGHTS.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
     },
-    // Cards
+    // Cards — NRC-inspired dark card style
     card: {
       backgroundColor: colors.surface,
-      borderRadius: 12,
+      borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.md,
+      ...(isDark
+        ? { borderWidth: 0 }  // No borders in dark mode
+        : { borderWidth: 1, borderColor: colors.border }),
     },
     cardTitle: {
       fontSize: FONT_SIZES.small,
-      fontWeight: '700',
+      fontWeight: FONT_WEIGHTS.bold,
       color: colors.textSecondary,
       textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      letterSpacing: 0.8,
       marginBottom: SPACING.sm,
     },
     // Reliability score
@@ -316,13 +322,13 @@ const getStyles = (colors) =>
       marginRight: SPACING.md,
     },
     scoreNumber: {
-      fontSize: 44,
-      fontWeight: '800',
+      fontSize: 52,
+      fontWeight: FONT_WEIGHTS.extraBold,
     },
     scoreMax: {
       fontSize: FONT_SIZES.body,
       color: colors.textMuted,
-      fontWeight: '500',
+      fontWeight: FONT_WEIGHTS.medium,
     },
     tierInfo: {
       flex: 1,
@@ -333,7 +339,7 @@ const getStyles = (colors) =>
       alignSelf: 'flex-start',
       paddingHorizontal: SPACING.sm,
       paddingVertical: 4,
-      borderRadius: 12,
+      borderRadius: RADIUS.md,
       marginBottom: 4,
     },
     tierDot: {
@@ -344,7 +350,9 @@ const getStyles = (colors) =>
     },
     tierLabel: {
       fontSize: FONT_SIZES.small,
-      fontWeight: '700',
+      fontWeight: FONT_WEIGHTS.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
     },
     tierHint: {
       fontSize: FONT_SIZES.xs,
@@ -354,12 +362,12 @@ const getStyles = (colors) =>
     scoreBarTrack: {
       height: 6,
       backgroundColor: colors.border,
-      borderRadius: 3,
+      borderRadius: RADIUS.sm,
       overflow: 'hidden',
     },
     scoreBarFill: {
       height: 6,
-      borderRadius: 3,
+      borderRadius: RADIUS.sm,
     },
     // Stats grid
     statsGrid: {
@@ -373,7 +381,7 @@ const getStyles = (colors) =>
     },
     statNumber: {
       fontSize: FONT_SIZES.title,
-      fontWeight: '800',
+      fontWeight: FONT_WEIGHTS.extraBold,
       color: colors.textPrimary,
       marginTop: 4,
     },
@@ -381,6 +389,8 @@ const getStyles = (colors) =>
       fontSize: FONT_SIZES.xs,
       color: colors.textMuted,
       marginTop: 2,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
     },
     attendanceRow: {
       flexDirection: 'row',
@@ -394,10 +404,13 @@ const getStyles = (colors) =>
     attendanceLabel: {
       fontSize: FONT_SIZES.small,
       color: colors.textSecondary,
+      fontWeight: FONT_WEIGHTS.semibold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.3,
     },
     attendanceValue: {
       fontSize: FONT_SIZES.subtitle,
-      fontWeight: '800',
+      fontWeight: FONT_WEIGHTS.extraBold,
     },
     // Current status
     statusRow: {
@@ -414,7 +427,7 @@ const getStyles = (colors) =>
     statusText: {
       fontSize: FONT_SIZES.body,
       color: colors.presenceTextBright,
-      fontWeight: '500',
+      fontWeight: FONT_WEIGHTS.medium,
     },
     // Settings
     settingRow: {
@@ -430,7 +443,7 @@ const getStyles = (colors) =>
       fontSize: FONT_SIZES.body,
       color: colors.textPrimary,
       marginLeft: SPACING.sm,
-      fontWeight: '500',
+      fontWeight: FONT_WEIGHTS.medium,
     },
     brandingFooter: {
       alignItems: 'center',
@@ -449,6 +462,6 @@ const getStyles = (colors) =>
     signOutText: {
       fontSize: FONT_SIZES.body,
       color: colors.danger,
-      fontWeight: '600',
+      fontWeight: FONT_WEIGHTS.semibold,
     },
   });

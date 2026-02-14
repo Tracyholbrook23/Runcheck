@@ -5,7 +5,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
-import { FONT_SIZES, SPACING } from '../constants/theme';
+import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo, Button, Input } from '../components';
 import { auth } from '../config/firebase';
@@ -15,8 +15,8 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -94,7 +94,7 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) => StyleSheet.create({
+const getStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flexGrow: 1,
     justifyContent: 'center',
@@ -104,9 +104,10 @@ const getStyles = (colors) => StyleSheet.create({
   },
   title: {
     fontSize: FONT_SIZES.title,
-    fontWeight: '800',
+    fontWeight: FONT_WEIGHTS.extraBold,
     color: colors.textPrimary,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,

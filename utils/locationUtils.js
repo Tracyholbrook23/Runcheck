@@ -6,6 +6,7 @@
  */
 
 import * as Location from 'expo-location';
+import { distanceBetween } from 'geofire-common';
 
 // Cowboys Fit - Pflugerville coordinates for dev testing
 const DEV_LOCATION = {
@@ -35,50 +36,67 @@ export const requestLocationPermission = async () => {
  * @throws {Error} If permission denied or location unavailable
  */
 export const getCurrentLocation = async () => {
+  console.log('🔍 [GPS] Checking location mode...');
+  console.log('🔍 [GPS] DEV_SKIP_GPS =', process.env.EXPO_PUBLIC_DEV_SKIP_GPS);
+
   if (isDevGps()) {
-    console.log('DEV MODE: Using fake Cowboys Fit location');
+    console.warn('⚠️ [GPS] DEV MODE ENABLED - Using fake Cowboys Fit location');
+    console.warn('⚠️ [GPS] Fake location:', DEV_LOCATION);
     return DEV_LOCATION;
   }
 
+  console.log('✅ [GPS] REAL GPS MODE - Requesting location permission...');
   const granted = await requestLocationPermission();
+
   if (!granted) {
+    console.error('❌ [GPS] Location permission denied');
     throw new Error('Location permission denied. Please enable location services in your device settings.');
   }
+
+  console.log('✅ [GPS] Permission granted - Getting current position...');
 
   try {
     const position = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
     });
 
-    return {
+    const userLocation = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
     };
+
+    console.log('✅ [GPS] Real user location obtained:', userLocation);
+    console.log('✅ [GPS] Accuracy:', position.coords.accuracy, 'meters');
+
+    return userLocation;
   } catch (err) {
+    console.error('❌ [GPS] Failed to get location:', err.message);
     throw new Error('Unable to retrieve your location. Please check that GPS is enabled and try again.');
   }
 };
 
 /**
  * Calculate distance between two GPS coordinates in meters
- * Uses Haversine formula
+ * Uses geofire-common's distanceBetween (optimized Haversine)
  *
  * @param {Object} coord1 - { latitude, longitude }
  * @param {Object} coord2 - { latitude, longitude }
  * @returns {number} Distance in meters
  */
 export const calculateDistanceMeters = (coord1, coord2) => {
-  const R = 6371e3; // Earth's radius in meters
-  const lat1 = (coord1.latitude * Math.PI) / 180;
-  const lat2 = (coord2.latitude * Math.PI) / 180;
-  const deltaLat = ((coord2.latitude - coord1.latitude) * Math.PI) / 180;
-  const deltaLon = ((coord2.longitude - coord1.longitude) * Math.PI) / 180;
+  console.log('📏 [DISTANCE] Calculating distance...');
+  console.log('📏 [DISTANCE] From:', coord1);
+  console.log('📏 [DISTANCE] To:', coord2);
 
-  const a =
-    Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) * Math.sin(deltaLon / 2);
+  // geofire-common's distanceBetween returns distance in kilometers
+  const distanceKm = distanceBetween(
+    [coord1.latitude, coord1.longitude],
+    [coord2.latitude, coord2.longitude]
+  );
 
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const distanceMeters = distanceKm * 1000; // Convert to meters
 
-  return R * c;
+  console.log('📏 [DISTANCE] Distance:', distanceMeters.toFixed(2), 'meters');
+
+  return distanceMeters;
 };

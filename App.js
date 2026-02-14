@@ -91,17 +91,16 @@ function MainTabs() {
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
+          letterSpacing: 0.3,
         },
         tabBarStyle: {
-          backgroundColor: colors.surface,
+          backgroundColor: colors.background,
           borderTopWidth: 0,
-          height: 60,
-          paddingBottom: 6,
-          shadowColor: '#000',
-          shadowOpacity: 0.08,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: -2 },
-          elevation: 8,
+          height: 80,
+          paddingBottom: 14,
+          paddingTop: 10,
+          elevation: 0,
+          shadowOpacity: 0,
         },
         tabBarIcon: ({ color, size }) => {
           let iconName;

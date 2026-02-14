@@ -20,7 +20,7 @@
 
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { FONT_SIZES, SPACING, RADIUS, SHADOWS, SKILL_LEVEL_COLORS } from '../constants/theme';
+import { FONT_SIZES, SPACING, RADIUS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
 
 /**
@@ -122,10 +122,12 @@ export const PresenceList = ({
 const getStyles = (colors) =>
   StyleSheet.create({
     emptyState: {
-      backgroundColor: colors.surfaceLight,
-      borderRadius: RADIUS.lg,
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
       padding: SPACING.lg,
       alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     emptyText: {
       fontSize: FONT_SIZES.body,
@@ -141,10 +143,11 @@ const getStyles = (colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colors.surface,
-      borderRadius: RADIUS.lg,
+      borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.sm,
-      ...SHADOWS.subtle,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     playerAvatar: {
       width: 48,
@@ -175,7 +178,7 @@ const getStyles = (colors) =>
     skillBadge: {
       paddingHorizontal: 8,
       paddingVertical: 2,
-      borderRadius: RADIUS.full,
+      borderRadius: 6,  // FitBuddy: tighter badge radius
       marginLeft: SPACING.xs,
     },
     skillBadgeText: {

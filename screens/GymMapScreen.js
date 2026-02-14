@@ -5,9 +5,17 @@ import {
   StyleSheet,
   SafeAreaView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
-import MapView, { Marker, Callout } from 'react-native-maps';
-import { FONT_SIZES, SPACING } from '../constants/theme';
+import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
+
+let MapView, Marker, Callout;
+if (Platform.OS !== 'web') {
+  const Maps = require('react-native-maps');
+  MapView = Maps.default;
+  Marker = Maps.Marker;
+  Callout = Maps.Callout;
+}
 import { useTheme } from '../contexts';
 import { useGyms, useLocation } from '../hooks';
 import { GYM_TYPE } from '../services/models';
@@ -20,8 +28,8 @@ const PFLUGERVILLE_CENTER = {
 };
 
 export default function GymMapScreen({ navigation }) {
-  const { colors } = useTheme();
-  const styles = useMemo(() => getStyles(colors), [colors]);
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { gyms, loading } = useGyms();
   const { location } = useLocation();
 
@@ -40,6 +48,16 @@ export default function GymMapScreen({ navigation }) {
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Loading map...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (Platform.OS === 'web') {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centered}>
+          <Text style={styles.loadingText}>Map view is not available on web. Please use the mobile app.</Text>
         </View>
       </SafeAreaView>
     );
@@ -92,7 +110,7 @@ export default function GymMapScreen({ navigation }) {
   );
 }
 
-const getStyles = (colors) =>
+const getStyles = (colors, isDark) =>
   StyleSheet.create({
     safe: {
       flex: 1,
@@ -117,14 +135,16 @@ const getStyles = (colors) =>
     },
     calloutTitle: {
       fontSize: FONT_SIZES.body,
-      fontWeight: '600',
+      fontWeight: FONT_WEIGHTS.semibold,
       color: colors.textPrimary,
+      letterSpacing: 0.3,
     },
     calloutType: {
       fontSize: FONT_SIZES.small,
       color: colors.primary,
-      fontWeight: '500',
+      fontWeight: FONT_WEIGHTS.medium,
       marginTop: 2,
+      letterSpacing: 0.2,
     },
     calloutAddress: {
       fontSize: FONT_SIZES.xs,

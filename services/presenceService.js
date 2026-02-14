@@ -55,6 +55,8 @@ import {
   onSnapshot,
   serverTimestamp,
   Timestamp,
+  runTransaction,
+  increment,
 } from 'firebase/firestore';
 
 import {
@@ -123,6 +125,13 @@ export const getActivePresence = async (odId) => {
 /**
  * Check in to a gym with GPS validation
  *
+ * Uses Firestore transactions to prevent race conditions on currentPresenceCount.
+ * Atomically:
+ * 1. Validates no existing presence
+ * 2. Creates presence document
+ * 3. Increments gym's currentPresenceCount
+ * 4. Updates user's activePresence
+ *
  * @param {string} odId - User ID
  * @param {string} gymId - Gym ID
  * @param {Object} userLocation - { latitude, longitude }
@@ -136,13 +145,13 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     throw new Error('Unauthorized: Must be logged in as this user');
   }
 
-  // Check for existing active presence anywhere
+  // Check for existing active presence anywhere (outside transaction for early exit)
   const existingPresence = await getActivePresence(odId);
   if (existingPresence) {
     throw new Error(`Already checked in at ${existingPresence.gymName}. Please check out first.`);
   }
 
-  // Get gym data
+  // Get gym data (outside transaction for GPS validation)
   const gymRef = doc(db, 'gyms', gymId);
   const gymDoc = await getDoc(gymRef);
 
@@ -157,36 +166,59 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
 
   // GPS validation (can be skipped for testing)
   let distanceFromGym = 0;
+
+  console.log('🔐 [CHECK-IN] Starting GPS validation...');
+  console.log('🔐 [CHECK-IN] Skip GPS validation?', options.skipGpsValidation);
+
   if (!options.skipGpsValidation) {
+    console.log('🔐 [CHECK-IN] Validating user location...');
+
     if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
+      console.error('❌ [CHECK-IN] User location missing or invalid:', userLocation);
       throw new Error('Location is required for check-in');
     }
 
+    console.log('✅ [CHECK-IN] User location valid:', userLocation);
+
     if (!gymLocation || !gymLocation.latitude || !gymLocation.longitude) {
+      console.error('❌ [CHECK-IN] Gym location not configured:', gymLocation);
       throw new Error('Gym location not configured');
     }
 
+    console.log('✅ [CHECK-IN] Gym location:', gymLocation);
+    console.log('🔐 [CHECK-IN] Check-in radius:', checkInRadius, 'meters');
+
     distanceFromGym = calculateDistanceMeters(userLocation, gymLocation);
 
+    console.log('📍 [CHECK-IN] Distance from gym:', distanceFromGym.toFixed(2), 'meters');
+    console.log('📍 [CHECK-IN] Required radius:', checkInRadius, 'meters');
+
     if (distanceFromGym > checkInRadius) {
+      console.error('❌ [CHECK-IN] TOO FAR! Distance:', distanceFromGym.toFixed(2), 'm > Radius:', checkInRadius, 'm');
       throw new Error(
-        'You must be at the gym to check in. Try again when you arrive.'
+        `You must be at the gym to check in. You are ${distanceFromGym.toFixed(0)}m away (max ${checkInRadius}m).`
       );
     }
+
+    console.log('✅ [CHECK-IN] GPS validation passed! Distance OK:', distanceFromGym.toFixed(2), 'm <', checkInRadius, 'm');
+  } else {
+    console.warn('⚠️ [CHECK-IN] GPS validation SKIPPED (testing mode)');
   }
 
-  // Get user data
+  // Get user data (outside transaction)
   const userRef = doc(db, 'users', odId);
   const userDoc = await getDoc(userRef);
   const userData = userDoc.exists() ? userDoc.data() : {};
   const userName = userData.name || 'Anonymous';
   const skillLevel = userData.skillLevel || 'Beginner';
 
-  // Create presence
+  // Check if this fulfills a scheduled session (outside transaction)
+  const matchingSchedule = await findMatchingSchedule(odId, gymId);
+
   const presenceId = getPresenceId(odId, gymId);
   const presenceRef = doc(db, 'presence', presenceId);
-
   const now = new Date();
+
   const presenceData = {
     odId,
     userName,
@@ -199,33 +231,52 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     checkedInAt: Timestamp.fromDate(now),
     expiresAt: calculateExpiryTime(autoExpireMinutes),
     checkedOutAt: null,
-    scheduleId: null,
+    scheduleId: matchingSchedule?.id || null,
     createdAt: serverTimestamp(),
   };
 
-  await setDoc(presenceRef, presenceData);
-
-  // Update gym presence count
-  await updateGymPresenceCount(gymId, 1);
-
-  // Update user's activePresence
-  await updateDoc(userRef, {
-    activePresence: {
-      odId,
-      gymId,
-      gymName: gymData.name,
-      checkedInAt: Timestamp.fromDate(now),
-      expiresAt: presenceData.expiresAt,
-    },
+  console.log('💾 [CHECK-IN] GPS validation complete - Starting database transaction...');
+  console.log('💾 [CHECK-IN] Presence data:', {
+    userName,
+    gymName: gymData.name,
+    distanceFromGym: distanceFromGym.toFixed(2) + 'm',
   });
 
-  // Check if this fulfills a scheduled session
-  const matchingSchedule = await findMatchingSchedule(odId, gymId);
+  // Use transaction to atomically:
+  // 1. Create presence document
+  // 2. Increment gym's currentPresenceCount
+  // 3. Update user's activePresence
+  await runTransaction(db, async (transaction) => {
+    // Double-check no presence was created since we checked earlier
+    const existingPresenceDoc = await transaction.get(presenceRef);
+    if (existingPresenceDoc.exists() && existingPresenceDoc.data().status === PRESENCE_STATUS.ACTIVE) {
+      throw new Error('Already checked in at this gym');
+    }
+
+    // Create presence document
+    transaction.set(presenceRef, presenceData);
+
+    // Atomically increment gym's currentPresenceCount
+    transaction.update(gymRef, {
+      currentPresenceCount: increment(1),
+      updatedAt: serverTimestamp(),
+    });
+
+    // Update user's activePresence
+    transaction.update(userRef, {
+      activePresence: {
+        odId,
+        gymId,
+        gymName: gymData.name,
+        checkedInAt: Timestamp.fromDate(now),
+        expiresAt: presenceData.expiresAt,
+      },
+    });
+  });
+
+  // Mark schedule as attended (outside transaction - non-critical)
   if (matchingSchedule) {
     await markScheduleAttended(matchingSchedule.id, presenceId);
-    // Update presence with schedule link
-    await updateDoc(presenceRef, { scheduleId: matchingSchedule.id });
-    presenceData.scheduleId = matchingSchedule.id;
   }
 
   return { id: presenceId, ...presenceData };
@@ -233,6 +284,8 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
 
 /**
  * Check out from current gym
+ *
+ * Uses transaction to atomically update presence and decrement gym count.
  *
  * @returns {Promise<Object>} Checked out presence data
  * @throws {Error} If no active presence
@@ -249,18 +302,28 @@ export const checkOut = async () => {
   }
 
   const presenceRef = doc(db, 'presence', activePresence.id);
-
-  await updateDoc(presenceRef, {
-    status: PRESENCE_STATUS.CHECKED_OUT,
-    checkedOutAt: serverTimestamp(),
-  });
-
-  // Update gym presence count
-  await updateGymPresenceCount(activePresence.gymId, -1);
-
-  // Clear user's activePresence
+  const gymRef = doc(db, 'gyms', activePresence.gymId);
   const userRef = doc(db, 'users', user.uid);
-  await updateDoc(userRef, { activePresence: null });
+
+  // Use transaction to atomically:
+  // 1. Update presence status
+  // 2. Decrement gym's currentPresenceCount
+  // 3. Clear user's activePresence
+  await runTransaction(db, async (transaction) => {
+    transaction.update(presenceRef, {
+      status: PRESENCE_STATUS.CHECKED_OUT,
+      checkedOutAt: serverTimestamp(),
+    });
+
+    transaction.update(gymRef, {
+      currentPresenceCount: increment(-1),
+      updatedAt: serverTimestamp(),
+    });
+
+    transaction.update(userRef, {
+      activePresence: null,
+    });
+  });
 
   return { ...activePresence, status: PRESENCE_STATUS.CHECKED_OUT };
 };
@@ -332,7 +395,8 @@ export const expireStalePresences = async () => {
 };
 
 /**
- * Update gym's current presence count
+ * Update gym's current presence count using atomic increment
+ * (Used by markPresenceExpired - checkIn/checkOut now use transactions)
  *
  * @param {string} gymId - Gym ID
  * @param {number} delta - Change (+1 or -1)
@@ -340,18 +404,9 @@ export const expireStalePresences = async () => {
 export const updateGymPresenceCount = async (gymId, delta) => {
   try {
     const gymRef = doc(db, 'gyms', gymId);
-    const gymDoc = await getDoc(gymRef);
-
-    if (!gymDoc.exists()) {
-      console.warn(`Gym ${gymId} not found`);
-      return;
-    }
-
-    const currentCount = gymDoc.data().currentPresenceCount || 0;
-    const newCount = Math.max(0, currentCount + delta);
 
     await updateDoc(gymRef, {
-      currentPresenceCount: newCount,
+      currentPresenceCount: increment(delta),
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
