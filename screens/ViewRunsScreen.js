@@ -35,6 +35,40 @@ export default function ViewRunsScreen({ navigation }) {
     if (count < 10) return { label: 'Active', color: colors.activityActive };
     return { label: 'Busy', color: colors.activityBusy };
   };
+  const fakeGyms = [
+  {
+    id: 'fake1',
+    name: 'Pan American Recreation Center',
+    type: 'indoor',
+    address: '2100 E 3rd St, Austin, TX 78702',
+    currentPresenceCount: 10,
+    imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s',
+  },
+  {
+    id: 'fake2',
+    name: "Life Time Austin North",
+    type: 'indoor',
+    address: '13725 Ranch Rd 620 N, Austin, TX 78717',
+    currentPresenceCount: 9,
+    imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390',
+  },
+  {
+    id: 'fake3',
+    name: "Gold's Gym Hester's Crossing",
+    type: 'indoor',
+    address: '2400 S I-35 Frontage Rd, Round Rock, TX 78681',
+    currentPresenceCount: 12,
+    imageUrl: 'https://res.cloudinary.com/ggus-dev/image/private/s--HzKSnHnn--/c_auto%2Cg_center%2Cw_1200%2Ch_800/v1/25fcf1e9/austin-hesters-crossing-basketball.webp?_a=BAAAV6DQ',
+  },
+  {
+    id: 'fake4',
+    name: 'Clay Madsen Recreation Center',
+    type: 'indoor',
+    address: '1600 Gattis School Rd, Round Rock, TX 78664',
+    currentPresenceCount: 5,
+    imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg',
+  },
+];
 
   if (loading) {
     return (
@@ -51,8 +85,15 @@ export default function ViewRunsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        <Text style={styles.title}>Find a Run</Text>
-        <Text style={styles.subtitle}>See who's playing right now</Text>
+        <View style={styles.titleRow}>
+  <View>
+    <Text style={styles.title}>Find a Run</Text>
+    <Text style={styles.subtitle}>See who's playing right now</Text>
+  </View>
+  <TouchableOpacity onPress={() => navigation.navigate('GymMap')}>
+    <Ionicons name="map-outline" size={24} color={colors.textPrimary} />
+  </TouchableOpacity>
+</View>
 
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -60,7 +101,7 @@ export default function ViewRunsScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {gyms.length === 0 ? (
+          {fakeGyms.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>No gyms available</Text>
               <Text style={styles.emptySubtext}>
@@ -68,7 +109,7 @@ export default function ViewRunsScreen({ navigation }) {
               </Text>
             </View>
           ) : (
-            gyms.map((gym) => {
+            fakeGyms.map((gym) => {
               const count = gym.currentPresenceCount || 0;
               const activity = getActivityLevel(count);
 
@@ -95,7 +136,7 @@ export default function ViewRunsScreen({ navigation }) {
 
                   <View style={styles.gymInfo}>
                     <View style={styles.gymRow}>
-                      <Text style={styles.gymName} numberOfLines={1}>{gym.name}</Text>
+                      <Text style={styles.gymName} numberOfLines={2}>{gym.name}</Text>
                       <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
                         <Text style={styles.activityText}>{activity.label}</Text>
                       </View>
@@ -147,22 +188,26 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
+loadingText: {
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
   },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: SPACING.lg,
+  },
   title: {
-    fontSize: FONT_SIZES.h1,  // Design system: 32px
+    fontSize: FONT_SIZES.h1,
     fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
-    marginBottom: SPACING.xxs,  // 4px
     letterSpacing: 0.5,
   },
   subtitle: {
-    fontSize: FONT_SIZES.body,  // 16px
+    fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
-    marginBottom: SPACING.lg,  // 24px (more breathing room)
   },
   scroll: {
     paddingBottom: SPACING.lg,
@@ -184,24 +229,24 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginTop: SPACING.sm,
   },
   gymCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    marginBottom: 12,
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
-    ...(isDark && SHADOWS.lg),
-  },
+  flexDirection: 'row',
+  backgroundColor: colors.surface,
+  borderRadius: RADIUS.lg,
+  marginBottom: 12,
+  overflow: 'hidden',
+  ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  ...(isDark && SHADOWS.lg),
+},
   thumbnail: {
-    width: 72,
-    height: 72,
-    borderRadius: RADIUS.md,
-    marginRight: SPACING.md,
-  },
-  gymInfo: {
-    flex: 1,
-    justifyContent: 'center',
-  },
+  width: 100,
+  height: 100,
+  borderRadius: 0,
+},
+ gymInfo: {
+  flex: 1,
+  justifyContent: 'center',
+  padding: SPACING.md,
+},
   gymRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -209,13 +254,13 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginBottom: 2,
   },
   gymName: {
-    fontSize: FONT_SIZES.h3,  // Design system: 18px (card headers)
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: colors.textPrimary,
-    flex: 1,
-    marginRight: SPACING.xs,
-    letterSpacing: 0.3,
-  },
+  fontSize: FONT_SIZES.h3,
+  fontWeight: FONT_WEIGHTS.semibold,
+  color: colors.textPrimary,
+  marginRight: SPACING.xs,
+  letterSpacing: 0.3,
+  flexShrink: 1,
+},
   activityBadge: {
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,

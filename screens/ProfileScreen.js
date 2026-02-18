@@ -18,6 +18,8 @@ import { useAuth, useReliability, useSchedules, usePresence } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'react-native';
 
 export default function ProfileScreen({ navigation }) {
   const { isDark, colors, toggleTheme, skillColors } = useTheme();
@@ -27,9 +29,26 @@ export default function ProfileScreen({ navigation }) {
   const { score, tier, stats, loading: reliabilityLoading } = useReliability();
   const { count: upcomingCount } = useSchedules();
   const { isCheckedIn, presence } = usePresence();
-
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [photoUri, setPhotoUri] = useState(null);
+
+  const handlePickImage = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled) {
+      setPhotoUri(result.assets[0].uri);
+    }
+  };
 
   // Fetch Firestore user profile (name, skillLevel, age)
   useEffect(() => {
@@ -92,11 +111,19 @@ export default function ProfileScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* Avatar & User Info */}
         <View style={styles.header}>
-          <View style={[styles.avatar, { backgroundColor: tier.color + '20' }]}>
-            <Ionicons name="person" size={48} color={tier.color} />
-          </View>
+          <TouchableOpacity onPress={handlePickImage}>
+  {photoUri ? (
+    <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+  ) : (
+    <View style={[styles.avatar, { backgroundColor: tier.color + '20' }]}>
+      <Ionicons name="person" size={48} color={tier.color} />
+    </View>
+  )}
+  <View style={styles.editBadge}>
+    <Ionicons name="camera" size={14} color="#fff" />
+  </View>
+</TouchableOpacity>
           <Text style={styles.name}>{profile?.name || 'Player'}</Text>
-          <Text style={styles.email}>{user?.email}</Text>
           {profileSkillColors && (
             <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
               <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
@@ -141,39 +168,37 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Stats Grid */}
+       {/* Stats Grid */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Session Stats</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
               <Ionicons name="calendar-outline" size={20} color={colors.secondary} />
-              <Text style={styles.statNumber}>{stats?.totalScheduled ?? 0}</Text>
+              <Text style={styles.statNumber}>{23}</Text>
               <Text style={styles.statLabel}>Scheduled</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
-              <Text style={styles.statNumber}>{stats?.totalAttended ?? 0}</Text>
+              <Text style={styles.statNumber}>{19}</Text>
               <Text style={styles.statLabel}>Attended</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
-              <Text style={styles.statNumber}>{stats?.totalNoShow ?? 0}</Text>
+              <Text style={styles.statNumber}>{0}</Text>
               <Text style={styles.statLabel}>No-Shows</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="remove-circle-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.statNumber}>{stats?.totalCancelled ?? 0}</Text>
+              <Text style={styles.statNumber}>{0}</Text>
               <Text style={styles.statLabel}>Cancelled</Text>
             </View>
           </View>
-          {stats && stats.totalScheduled > 0 && (
-            <View style={styles.attendanceRow}>
-              <Text style={styles.attendanceLabel}>Attendance Rate</Text>
-              <Text style={[styles.attendanceValue, { color: colors.success }]}>
-                {stats.attendanceRate}%
-              </Text>
-            </View>
-          )}
+          <View style={styles.attendanceRow}>
+            <Text style={styles.attendanceLabel}>Attendance Rate</Text>
+            <Text style={[styles.attendanceValue, { color: colors.success }]}>
+              83%
+            </Text>
+          </View>
         </View>
 
         {/* Current Status */}
@@ -464,4 +489,21 @@ const getStyles = (colors, isDark) =>
       color: colors.danger,
       fontWeight: FONT_WEIGHTS.semibold,
     },
+    avatarImage: {
+  width: 88,
+  height: 88,
+  borderRadius: 44,
+  marginBottom: SPACING.sm,
+},
+editBadge: {
+  position: 'absolute',
+  bottom: SPACING.sm,
+  right: 0,
+  backgroundColor: colors.primary,
+  borderRadius: 12,
+  width: 24,
+  height: 24,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
   });

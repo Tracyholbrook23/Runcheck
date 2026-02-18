@@ -22,7 +22,7 @@ function HomeStack() {
   const { themeStyles } = useTheme();
   return (
     <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
-      <Stack.Screen name="HomeMain" component={HomeScreen} options={{ title: 'Home' }} />
+      <Stack.Screen name="HomeMain" component={HomeScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -34,18 +34,9 @@ function RunsStack() {
       <Stack.Screen
         name="ViewRunsMain"
         component={ViewRunsScreen}
-        options={({ navigation }) => ({
-          title: 'Find Runs',
-          headerRight: () => (
-            <Ionicons
-              name="map-outline"
-              size={24}
-              color={colors.textPrimary}
-              onPress={() => navigation.navigate('GymMap')}
-              style={{ marginRight: 8 }}
-            />
-          ),
-        })}
+        options={{
+          headerShown: false,
+        }}
       />
       <Stack.Screen name="GymMap" component={GymMapScreen} options={{ title: 'Gym Map' }} />
       <Stack.Screen name="RunDetails" component={RunDetailsScreen} options={{ title: 'Run Details' }} />
@@ -72,10 +63,9 @@ function PlanStack() {
 }
 
 function ProfileStack() {
-  const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
-      <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ title: 'Profile' }} />
+    <Stack.Navigator>
+      <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
