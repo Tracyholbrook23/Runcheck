@@ -169,12 +169,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginBottom: SPACING.md,
   },
   skillPill: {
+    width: '48%',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.sm,  // FitBuddy: 8px chip radius
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.sm,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
   },
   skillPillText: {
     fontSize: FONT_SIZES.small,

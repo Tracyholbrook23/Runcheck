@@ -42,6 +42,8 @@ export default function ViewRunsScreen({ navigation }) {
     type: 'indoor',
     address: '2100 E 3rd St, Austin, TX 78702',
     currentPresenceCount: 10,
+    plannedToday: 5,
+    plannedTomorrow: 8,
     imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s',
   },
   {
@@ -50,6 +52,8 @@ export default function ViewRunsScreen({ navigation }) {
     type: 'indoor',
     address: '13725 Ranch Rd 620 N, Austin, TX 78717',
     currentPresenceCount: 9,
+    plannedToday: 7,
+    plannedTomorrow: 12,
     imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390',
   },
   {
@@ -58,6 +62,8 @@ export default function ViewRunsScreen({ navigation }) {
     type: 'indoor',
     address: '2400 S I-35 Frontage Rd, Round Rock, TX 78681',
     currentPresenceCount: 12,
+    plannedToday: 3,
+    plannedTomorrow: 6,
     imageUrl: 'https://res.cloudinary.com/ggus-dev/image/private/s--HzKSnHnn--/c_auto%2Cg_center%2Cw_1200%2Ch_800/v1/25fcf1e9/austin-hesters-crossing-basketball.webp?_a=BAAAV6DQ',
   },
   {
@@ -66,6 +72,8 @@ export default function ViewRunsScreen({ navigation }) {
     type: 'indoor',
     address: '1600 Gattis School Rd, Round Rock, TX 78664',
     currentPresenceCount: 5,
+    plannedToday: 4,
+    plannedTomorrow: 9,
     imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg',
   },
 ];
@@ -122,6 +130,9 @@ export default function ViewRunsScreen({ navigation }) {
                       gymId: gym.id,
                       gymName: gym.name,
                       players: count,
+                      imageUrl: gym.imageUrl,
+                      plannedToday: gym.plannedToday || 0,
+                      plannedTomorrow: gym.plannedTomorrow || 0,
                     })
                   }
                 >
@@ -163,6 +174,14 @@ export default function ViewRunsScreen({ navigation }) {
                         </TouchableOpacity>
                       )}
                     </View>
+                    {gym.plannedTomorrow > 0 && (
+                      <View style={styles.plannedRow}>
+                        <Ionicons name="calendar-outline" size={11} color={colors.primary} />
+                        <Text style={styles.plannedText}>
+                          {gym.plannedTomorrow} planning tomorrow
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 </TouchableOpacity>
               );
@@ -293,5 +312,16 @@ loadingText: {
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
     flex: 1,
+  },
+  plannedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  plannedText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });

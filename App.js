@@ -14,6 +14,7 @@ import PlanVisitScreen from './screens/PlanVisitScreen';
 import GymMapScreen from './screens/GymMapScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import { ThemeProvider, useTheme } from './contexts';
+import SplashScreen from './screens/SplashScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -116,6 +117,7 @@ function AppContent() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen name="Main" component={MainTabs} />

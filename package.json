@@ -26,6 +26,7 @@
     "expo-status-bar": "~2.2.3",
     "firebase": "^12.1.0",
     "geofire-common": "^6.0.0",
+    "lottie-react-native": "~7.3.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.4",

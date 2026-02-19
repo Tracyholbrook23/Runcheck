@@ -49,7 +49,7 @@ const isTomorrow = (date) => {
 };
 
 export default function RunDetailsScreen({ route, navigation }) {
-  const { gymId, gymName } = route.params;
+  const { gymId, gymName, imageUrl: paramImageUrl, plannedToday: paramPlannedToday, plannedTomorrow: paramPlannedTomorrow } = route.params;
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
@@ -89,6 +89,8 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Pulse animation for active player indicator
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const playerCount = gym?.currentPresenceCount || 0;
+  const todayCount = todaySchedules.length || paramPlannedToday || 0;
+  const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
 
   useEffect(() => {
     if (playerCount > 0) {
@@ -121,7 +123,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
         <Image
-          source={gym?.imageUrl ? { uri: gym.imageUrl } : courtImage}
+          source={(gym?.imageUrl || paramImageUrl) ? { uri: gym?.imageUrl || paramImageUrl } : courtImage}
           style={styles.heroImage}
           resizeMode="cover"
         />
@@ -148,6 +150,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         </View>
 
         <View style={styles.statsCard}>
+          {/* Live now */}
           <View style={styles.statItem}>
             <View style={styles.statRow}>
               {playerCount > 0 && (
@@ -161,6 +164,22 @@ export default function RunDetailsScreen({ route, navigation }) {
             {playerCount > 0 && (
               <Text style={styles.gameOnLabel}>Game On</Text>
             )}
+          </View>
+
+          <View style={styles.statDivider} />
+
+          {/* Planning today */}
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{todayCount}</Text>
+            <Text style={styles.statLabel}>Planning{'\n'}Today</Text>
+          </View>
+
+          <View style={styles.statDivider} />
+
+          {/* Planning tomorrow */}
+          <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{tomorrowCount}</Text>
+            <Text style={styles.statLabel}>Planning{'\n'}Tomorrow</Text>
           </View>
         </View>
 
@@ -179,7 +198,8 @@ export default function RunDetailsScreen({ route, navigation }) {
           <PresenceList
             items={todaySchedules}
             type="schedule"
-            emptyMessage="No one scheduled today"
+            emptyMessage={todayCount > 0 ? `${todayCount} players planning to attend` : 'No one scheduled today'}
+            emptySubtext={todayCount > 0 ? "Plan your visit to join them!" : undefined}
           />
         </View>
 
@@ -188,7 +208,8 @@ export default function RunDetailsScreen({ route, navigation }) {
           <PresenceList
             items={tomorrowSchedules}
             type="schedule"
-            emptyMessage="No one scheduled tomorrow"
+            emptyMessage={tomorrowCount > 0 ? `${tomorrowCount} players planning to attend` : 'No one scheduled tomorrow'}
+            emptySubtext={tomorrowCount > 0 ? "Plan your visit to join them!" : undefined}
           />
         </View>
 
@@ -315,10 +336,16 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     color: colors.primary,
   },
+  statDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: colors.border,
+  },
   statLabel: {
-    fontSize: FONT_SIZES.body,
+    fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
     marginTop: SPACING.xs,
+    textAlign: 'center',
   },
   section: {
     padding: SPACING.lg,
@@ -343,15 +370,17 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
   },
   planButton: {
-    backgroundColor: colors.secondary,
+    backgroundColor: 'transparent',
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.sm,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   planButtonText: {
-    color: '#fff',
+    color: colors.primary,
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
   },

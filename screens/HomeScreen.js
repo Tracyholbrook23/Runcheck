@@ -153,7 +153,7 @@ const HomeScreen = ({ navigation }) => {
                 activeOpacity={0.8}
               >
                 <BlurView intensity={60} tint="dark" style={styles.actionCardSmall}>
-                  <Ionicons name="calendar-outline" size={24} color={colors.secondary} />
+                  <Ionicons name="calendar-outline" size={24} color={colors.primary} />
                   <Text style={styles.actionSmallTitle}>Plan a Visit</Text>
                   <Text style={styles.actionSmallSub}>Schedule ahead</Text>
                 </BlurView>
@@ -183,7 +183,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.70)',
+    backgroundColor: 'rgba(0,0,0,0.60)',
   },
   safe: {
     flex: 1,
