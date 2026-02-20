@@ -1,3 +1,21 @@
+/**
+ * ViewRunsScreen.js — Gym Discovery & Browsing List
+ *
+ * Displays a scrollable list of nearby gyms with real-time activity levels,
+ * player counts, and scheduled visit counts. Tapping a gym card navigates
+ * to RunDetailsScreen for the full breakdown.
+ *
+ * Features:
+ *   - Pull-to-refresh re-runs the gym seed/migration via `ensureGymsExist`
+ *   - Activity level badge (Empty / Light / Active / Busy) with color coding
+ *   - "Get Directions" shortcut opens Apple Maps / Google Maps via deep link
+ *   - Map icon in the header navigates to GymMapScreen
+ *   - Placeholder gym data is shown while live Firestore data is integrated
+ *
+ * Styles are memoized via `getStyles(colors, isDark)` and only recomputed
+ * when the theme changes.
+ */
+
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -17,24 +35,53 @@ import { useGyms } from '../hooks';
 import { Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 
+/**
+ * ViewRunsScreen — Gym discovery list screen.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop for navigating to GymMap or RunDetails.
+ * @returns {JSX.Element}
+ */
 export default function ViewRunsScreen({ navigation }) {
   const { gyms, loading, ensureGymsExist } = useGyms();
   const [refreshing, setRefreshing] = useState(false);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  /**
+   * onRefresh — Pull-to-refresh handler.
+   *
+   * Re-runs the gym seed to pick up any newly added gyms or updated GPS
+   * coordinates, then dismisses the refresh spinner.
+   */
   const onRefresh = async () => {
     setRefreshing(true);
     await ensureGymsExist();
     setRefreshing(false);
   };
 
+  /**
+   * getActivityLevel — Maps a presence count to a display label and badge color.
+   *
+   * Thresholds match `useGyms.getActivityLevel` for consistency:
+   *   0      → Empty  (grey)
+   *   1–4    → Light  (green)
+   *   5–9    → Active (amber)
+   *   10+    → Busy   (red)
+   *
+   * @param {number} count — Current number of checked-in players at the gym.
+   * @returns {{ label: string, color: string }} Label text and hex color for the badge.
+   */
   const getActivityLevel = (count) => {
     if (count === 0) return { label: 'Empty', color: colors.activityEmpty };
     if (count < 5) return { label: 'Light', color: colors.activityLight };
     if (count < 10) return { label: 'Active', color: colors.activityActive };
     return { label: 'Busy', color: colors.activityBusy };
   };
+
+  // Placeholder gym data — will be replaced by live Firestore records once
+  // the real-time integration with the Runs tab is complete.
   const fakeGyms = [
   {
     id: 'fake1',
@@ -93,6 +140,7 @@ export default function ViewRunsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
+        {/* Header row — title/subtitle on the left, map icon on the right */}
         <View style={styles.titleRow}>
   <View>
     <Text style={styles.title}>Find a Run</Text>
@@ -126,6 +174,8 @@ export default function ViewRunsScreen({ navigation }) {
                   key={gym.id}
                   style={styles.gymCard}
                   onPress={() =>
+                    // Pass all display data as route params so RunDetailsScreen
+                    // can render immediately without an extra Firestore read
                     navigation.navigate('RunDetails', {
                       gymId: gym.id,
                       gymName: gym.name,
@@ -148,6 +198,7 @@ export default function ViewRunsScreen({ navigation }) {
                   <View style={styles.gymInfo}>
                     <View style={styles.gymRow}>
                       <Text style={styles.gymName} numberOfLines={2}>{gym.name}</Text>
+                      {/* Activity badge — color dynamically set by getActivityLevel */}
                       <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
                         <Text style={styles.activityText}>{activity.label}</Text>
                       </View>
@@ -166,6 +217,7 @@ export default function ViewRunsScreen({ navigation }) {
                     <View style={styles.addressRow}>
                       <Text style={styles.gymAddress} numberOfLines={1}>{gym.address}</Text>
                       {gym.location && (
+                        // Directions button — only shown when the gym has GPS coords
                         <TouchableOpacity
                           onPress={() => openDirections(gym.location, gym.name)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -193,6 +245,13 @@ export default function ViewRunsScreen({ navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for ViewRunsScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,

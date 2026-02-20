@@ -1,3 +1,26 @@
+/**
+ * CheckInScreen.js — Gym Check-In Interface
+ *
+ * Allows users to select a gym and check in, proving they are physically
+ * present via GPS validation (handled inside `usePresence.checkIn`).
+ *
+ * Screen states:
+ *   1. Loading — shows a spinner while gyms and presence data are fetched.
+ *   2. Already Checked In — if the user has an active presence, shows the
+ *      current gym name, time remaining, and a hint to check out from Home.
+ *   3. Check-In Form — the main state: a gym dropdown, info box, "Hot Right
+ *      Now" nearby activity scroll, Check In button, and Back to Home button.
+ *
+ * GPS error handling maps raw `usePresence` errors to user-friendly alerts:
+ *   - "permission denied" → prompts to enable location services
+ *   - "Unable to retrieve" → prompts to check GPS is on
+ *   - Any other error     → shows the raw error message
+ *
+ * The DropDownPicker uses `zIndex: 5000` so its dropdown overlay appears
+ * above all other content when open. `containerStyle` is dynamically
+ * adjusted to reserve space below the picker when it is open.
+ */
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
@@ -18,7 +41,16 @@ import {
 import DropDownPicker from 'react-native-dropdown-picker';
 import { usePresence, useGyms } from '../hooks';
 
+/**
+ * CheckInScreen — GPS-gated gym check-in screen.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop for hiding the header and navigating to other tabs.
+ * @returns {JSX.Element}
+ */
 export default function CheckInScreen({ navigation }) {
+  // Dropdown open/close and selected value state — required by DropDownPicker API
   const [open, setOpen] = useState(false);
   const [selectedGym, setSelectedGym] = useState(null);
   const [gymItems, setGymItems] = useState([]);
@@ -40,14 +72,18 @@ export default function CheckInScreen({ navigation }) {
     ensureGymsExist,
   } = useGyms();
 
+  // Hide the default stack header — this screen uses its own layout
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
+  // Trigger gym seed/migration on mount to ensure GPS coordinates are available
   useEffect(() => {
     ensureGymsExist();
   }, [ensureGymsExist]);
 
+  // Transform the Firestore gyms array into the format DropDownPicker expects:
+  // { label: string, value: string, gymName: string }
   useEffect(() => {
     const items = gyms.map((gym) => ({
       label: `${gym.name} (${gym.currentPresenceCount || 0} here)`,
@@ -57,6 +93,14 @@ export default function CheckInScreen({ navigation }) {
     setGymItems(items);
   }, [gyms]);
 
+  /**
+   * handleCheckIn — Validates selection and triggers GPS-gated check-in.
+   *
+   * Looks up the selected gym's display name from `gymItems` before calling
+   * `checkIn(gymId)` so the success alert can show the gym name.
+   * On success, shows a confirmation alert with a shortcut to the Runs tab.
+   * On failure, maps the error to a user-friendly message.
+   */
   const handleCheckIn = async () => {
     if (!selectedGym) {
       Alert.alert('Select a Gym', 'Please select a gym to check into.');
@@ -97,6 +141,8 @@ export default function CheckInScreen({ navigation }) {
     }
   };
 
+  // Placeholder activity data sorted by current player count descending
+  // so the busiest courts appear first in the horizontal scroll
   const fakeActivityGyms = [
     { id: 'fa1', name: 'Pan American Rec Center', currentPresenceCount: 10, plannedToday: 5 },
     { id: 'fa2', name: 'Life Time Austin North', currentPresenceCount: 9, plannedToday: 7 },
@@ -104,9 +150,11 @@ export default function CheckInScreen({ navigation }) {
     { id: 'fa4', name: 'Clay Madsen Rec Center', currentPresenceCount: 5, plannedToday: 4 },
   ].sort((a, b) => b.currentPresenceCount - a.currentPresenceCount);
 
+  // Combine presence and gyms loading states for a single loading flag
   const loading = presenceLoading || gymsLoading;
   const isProcessing = checkingIn;
 
+  // State 2: Already checked in — show active session info instead of the form
   if (isCheckedIn && presence) {
     const timeRemaining = getTimeRemaining();
 
@@ -134,6 +182,7 @@ export default function CheckInScreen({ navigation }) {
     );
   }
 
+  // State 1: Loading spinner
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -146,8 +195,13 @@ export default function CheckInScreen({ navigation }) {
     );
   }
 
+  // State 3: Check-in form
   return (
     <SafeAreaView style={styles.safe}>
+      {/*
+       * KeyboardAvoidingView prevents the dropdown and button from being
+       * covered by the software keyboard on iOS when the picker is open.
+       */}
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -160,6 +214,12 @@ export default function CheckInScreen({ navigation }) {
 
           <Text style={styles.label}>Select Gym:</Text>
 
+          {/*
+           * DropDownPicker — controlled component with high zIndex so its
+           * dropdown overlay appears above sibling Views.
+           * containerStyle height expands when open to push content down
+           * and prevent overlap with the dropdown list.
+           */}
           <DropDownPicker
             open={open}
             value={selectedGym}
@@ -180,6 +240,7 @@ export default function CheckInScreen({ navigation }) {
             listMode="SCROLLVIEW"
           />
 
+          {/* Info box explaining auto-expiry behavior */}
           <View style={styles.infoBox}>
             <Text style={styles.infoText}>
               Your check-in will automatically expire after 3 hours, or you can
@@ -187,7 +248,7 @@ export default function CheckInScreen({ navigation }) {
             </Text>
           </View>
 
-          {/* Nearby Activity */}
+          {/* Hot Right Now — horizontally scrollable chips sorted by player count */}
           <View style={styles.nearbySection}>
             <Text style={styles.nearbyTitle}>Hot Right Now</Text>
             <ScrollView
@@ -212,6 +273,7 @@ export default function CheckInScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Sticky footer with primary Check In and secondary Back to Home buttons */}
         <View style={styles.footer}>
           <TouchableOpacity
             style={[styles.checkInButton, isProcessing && styles.buttonDisabled]}
@@ -237,6 +299,13 @@ export default function CheckInScreen({ navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for CheckInScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
@@ -284,7 +353,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   dropdown: {
     borderColor: colors.border,
     borderRadius: RADIUS.md,
-    backgroundColor: colors.surfaceLight,  // FitBuddy: elevated input surface
+    backgroundColor: colors.surfaceLight,  // Elevated input surface
     ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
   dropdownContainer: {

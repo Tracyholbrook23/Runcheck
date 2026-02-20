@@ -1,3 +1,32 @@
+/**
+ * RunDetailsScreen.js — Individual Gym Detail View
+ *
+ * Shows a comprehensive breakdown of a single gym: live player count,
+ * today/tomorrow scheduled visit counts, player lists, reviews preview,
+ * and action buttons to check in or plan a visit.
+ *
+ * Data sources:
+ *   - `useGym(gymId)`           — live gym document (name, address, type, notes)
+ *   - `useGymPresences(gymId)`  — real-time "Now Playing" list
+ *   - `useGymSchedules(gymId)`  — real-time scheduled visits, filtered by date
+ *
+ * When Firestore data is available it takes priority; placeholder arrays
+ * (`fakePlayers`, `fakeScheduledToday`, etc.) are sliced to fill in the
+ * count if real data hasn't loaded yet, giving the screen a populated feel.
+ *
+ * Animations:
+ *   - Pulsing live indicator dot on the "Players Here" stat — a looping
+ *     opacity animation (1 ↔ 0.3) starts when playerCount > 0 and stops
+ *     when the gym becomes empty.
+ *   - A 60-second interval timer forces re-renders so "X minutes ago"
+ *     timestamps stay fresh while the screen is open.
+ *
+ * Navigation:
+ *   - Receives `gymId`, `gymName`, `imageUrl`, `plannedToday`,
+ *     `plannedTomorrow`, and `players` as route params.
+ *   - Falls back to param values if Firestore data hasn't arrived yet.
+ */
+
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -20,8 +49,9 @@ import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules } from '../hooks';
 
 /**
- * Check if a date is today
- * @param {Date} date
+ * isToday — Checks whether a given Date falls on the current calendar day.
+ *
+ * @param {Date} date — The date to check.
  * @returns {boolean}
  */
 const isToday = (date) => {
@@ -34,8 +64,9 @@ const isToday = (date) => {
 };
 
 /**
- * Check if a date is tomorrow
- * @param {Date} date
+ * isTomorrow — Checks whether a given Date falls on the next calendar day.
+ *
+ * @param {Date} date — The date to check.
  * @returns {boolean}
  */
 const isTomorrow = (date) => {
@@ -48,18 +79,28 @@ const isTomorrow = (date) => {
   );
 };
 
+/**
+ * RunDetailsScreen — Full gym detail screen.
+ *
+ * @param {object} props
+ * @param {object} props.route — React Navigation route object carrying gym params.
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ * @returns {JSX.Element}
+ */
 export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName, imageUrl: paramImageUrl, plannedToday: paramPlannedToday, plannedTomorrow: paramPlannedTomorrow, players: paramPlayers } = route.params;
   const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  // Subscribe to live Firestore data for this gym
   const { gym, loading: gymLoading } = useGym(gymId);
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
   const { schedules, loading: schedulesLoading } = useGymSchedules(gymId);
 
   const loading = gymLoading || presencesLoading || schedulesLoading;
 
-  // Filter schedules into today and tomorrow
+  // Split the flat schedules array into today's and tomorrow's lists.
+  // useMemo ensures this only recalculates when the schedules array changes.
   const { todaySchedules, tomorrowSchedules } = useMemo(() => {
     const today = [];
     const tomorrow = [];
@@ -78,7 +119,8 @@ export default function RunDetailsScreen({ route, navigation }) {
     return { todaySchedules: today, tomorrowSchedules: tomorrow };
   }, [schedules]);
 
-  // Live timer: tick every 60s to re-render durations
+  // Tick counter forces a re-render every 60 seconds so "X minutes ago"
+  // timestamps on presence cards stay current without a full data refetch.
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (presences.length === 0) return;
@@ -86,16 +128,20 @@ export default function RunDetailsScreen({ route, navigation }) {
     return () => clearInterval(interval);
   }, [presences.length]);
 
+  // Hide the default navigation header — this screen uses a custom hero image header
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // Pulse animation for active player indicator
+  // Animated value for the pulsing live indicator dot next to the player count
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Prefer live Firestore counts; fall back to route params for instant display
   const playerCount = gym?.currentPresenceCount ?? paramPlayers ?? 0;
   const todayCount = todaySchedules.length || paramPlannedToday || 0;
   const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
 
+  // Placeholder player and review data — displayed when Firestore data is empty
   const fakeReviews = [
     { id: 'r1', name: 'Big Ray',    avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   rating: 5, comment: 'Best run in the city. Good competition, everybody plays the right way. Been coming here for years.', date: '2 days ago',  skillLevel: 'Pro' },
     { id: 'r2', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', rating: 4, comment: 'Good spot. Gets packed on weekends but the courts are clean and well-lit at night.', date: '5 days ago',  skillLevel: 'Advanced' },
@@ -136,6 +182,8 @@ export default function RunDetailsScreen({ route, navigation }) {
     { id: 'sm8', name: 'Rasheed V.',   skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/48.jpg',   time: '7:30 PM' },
   ];
 
+  // Start or stop the pulse animation based on whether anyone is currently checked in.
+  // Uses Animated.loop + Animated.sequence for a smooth, continuous opacity breath effect.
   useEffect(() => {
     if (playerCount > 0) {
       const pulse = Animated.loop(
@@ -147,6 +195,7 @@ export default function RunDetailsScreen({ route, navigation }) {
       pulse.start();
       return () => pulse.stop();
     } else {
+      // Reset to full opacity when the gym is empty
       pulseAnim.setValue(1);
     }
   }, [playerCount]);
@@ -166,6 +215,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
+        {/* Hero image header with an absolute-positioned back button */}
         <View style={styles.heroContainer}>
           <Image
             source={(gym?.imageUrl || paramImageUrl) ? { uri: gym?.imageUrl || paramImageUrl } : courtImage}
@@ -176,6 +226,8 @@ export default function RunDetailsScreen({ route, navigation }) {
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {/* Gym name, address, directions button, and type badge */}
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
@@ -198,11 +250,13 @@ export default function RunDetailsScreen({ route, navigation }) {
           ) : null}
         </View>
 
+        {/* Stats card — Players Here (with pulse dot), Planning Today, Planning Tomorrow */}
         <View style={styles.statsCard}>
-          {/* Live now */}
+          {/* Live now stat */}
           <View style={styles.statItem}>
             <View style={styles.statRow}>
               {playerCount > 0 && (
+                // Pulsing dot only shown when at least one player is checked in
                 <Animated.View style={[styles.pulseDot, { opacity: pulseAnim }]} />
               )}
               <Text style={styles.statNumber}>{playerCount}</Text>
@@ -217,7 +271,7 @@ export default function RunDetailsScreen({ route, navigation }) {
 
           <View style={styles.statDivider} />
 
-          {/* Planning today */}
+          {/* Planning today stat */}
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{todayCount}</Text>
             <Text style={styles.statLabel}>Planning{'\n'}Today</Text>
@@ -225,18 +279,20 @@ export default function RunDetailsScreen({ route, navigation }) {
 
           <View style={styles.statDivider} />
 
-          {/* Planning tomorrow */}
+          {/* Planning tomorrow stat */}
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{tomorrowCount}</Text>
             <Text style={styles.statLabel}>Planning{'\n'}Tomorrow</Text>
           </View>
         </View>
 
+        {/* Now Playing section — real presences first, fake data as fallback */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Now Playing</Text>
           {presences.length > 0 ? (
             <PresenceList items={presences} type="presence" />
           ) : playerCount > 0 ? (
+            // Slice placeholder players to match the reported count
             <View style={styles.playerList}>
               {fakePlayers.slice(0, playerCount).map((player) => (
                 <View key={player.id} style={styles.playerRow}>
@@ -260,6 +316,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
+        {/* Scheduled Today — real Firestore schedules first, fake data as fallback */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scheduled Today</Text>
           {todaySchedules.length > 0 ? (
@@ -288,6 +345,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
+        {/* Scheduled Tomorrow — real Firestore schedules first, fake data as fallback */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scheduled Tomorrow</Text>
           {tomorrowSchedules.length > 0 ? (
@@ -316,7 +374,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Reviews Preview */}
+        {/* Reviews Preview — aggregate rating + first 2 reviews */}
         <View style={styles.section}>
           <View style={styles.reviewsHeaderRow}>
             <Text style={styles.sectionTitle}>Player Reviews</Text>
@@ -325,7 +383,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Rating summary */}
+          {/* Aggregate rating summary */}
           <View style={styles.ratingSummary}>
             <Text style={styles.ratingBig}>4.7</Text>
             <View style={styles.ratingDetails}>
@@ -338,7 +396,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             </View>
           </View>
 
-          {/* Preview 2 reviews */}
+          {/* Preview first 2 reviews; full list available via GymReviewsScreen */}
           {fakeReviews.slice(0, 2).map((review) => (
             <View key={review.id} style={styles.reviewCard}>
               <View style={styles.reviewHeader}>
@@ -366,6 +424,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* Primary CTA — Check In Here */}
         <TouchableOpacity
           style={styles.checkInButton}
           onPress={() => navigation.getParent()?.navigate('CheckIn')}
@@ -373,6 +432,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           <Text style={styles.checkInButtonText}>Check In Here</Text>
         </TouchableOpacity>
 
+        {/* Secondary CTA — Plan a Visit */}
         <TouchableOpacity
           style={styles.planButton}
           onPress={() => navigation.getParent()?.navigate('Plan')}
@@ -386,6 +446,13 @@ export default function RunDetailsScreen({ route, navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for RunDetailsScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
@@ -597,7 +664,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     letterSpacing: 0.3,
   },
 
-  // Reviews
+  // Reviews section
   reviewsHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

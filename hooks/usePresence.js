@@ -1,19 +1,18 @@
 /**
- * usePresence Hook
+ * usePresence.js — User Check-In / Check-Out Hook
  *
- * Manages user's current presence (check-in state).
+ * Manages the currently signed-in user's gym presence. Subscribes to
+ * Firestore in real-time so the UI always reflects the live check-in
+ * state without manual polling.
  *
- * USAGE:
- * const {
- *   presence,        // Current active presence or null
- *   loading,         // Initial loading state
- *   isCheckedIn,     // Boolean shorthand
- *   checkIn,         // Function to check in
- *   checkOut,        // Function to check out
- *   checkingIn,      // Loading state for check-in
- *   checkingOut,     // Loading state for check-out
- *   error,           // Last error message
- * } = usePresence();
+ * Check-in uses a two-layer GPS validation strategy:
+ *   1. Client-side distance check (fast, no server round-trip) using
+ *      the Haversine formula in `locationUtils`.
+ *   2. Service-layer check (second validation inside `presenceService`)
+ *      as a safety net against spoofed client data.
+ *
+ * @example
+ * const { isCheckedIn, checkIn, checkOut, getTimeRemaining } = usePresence();
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -27,6 +26,21 @@ import { getCurrentLocation, calculateDistanceMeters } from '../utils/locationUt
 import { getGym } from '../services/gymService';
 import { DEFAULT_CHECK_IN_RADIUS_METERS } from '../services/models';
 
+/**
+ * usePresence — Hook for managing the current user's gym check-in state.
+ *
+ * @returns {{
+ *   presence: object | null,      Active presence document from Firestore, or null.
+ *   loading: boolean,             True while the initial Firestore subscription resolves.
+ *   isCheckedIn: boolean,         Shorthand — true when presence is non-null.
+ *   checkIn: (gymId: string) => Promise<void>,  GPS-validated check-in function.
+ *   checkOut: () => Promise<void>,              Removes the user's active presence.
+ *   checkingIn: boolean,          True while a check-in request is in flight.
+ *   checkingOut: boolean,         True while a check-out request is in flight.
+ *   error: string | null,         Last error message, cleared on each new action.
+ *   getTimeRemaining: () => string | null  Human-readable time until auto-expiry.
+ * }}
+ */
 export const usePresence = () => {
   const [presence, setPresence] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -34,7 +48,8 @@ export const usePresence = () => {
   const [checkingOut, setCheckingOut] = useState(false);
   const [error, setError] = useState(null);
 
-  // Subscribe to user's presence
+  // Subscribe to the user's active presence document in Firestore.
+  // When the document changes (e.g., auto-expiry deletes it), React state updates automatically.
   useEffect(() => {
     if (!auth.currentUser) {
       setLoading(false);
@@ -50,7 +65,22 @@ export const usePresence = () => {
     return unsubscribe;
   }, [auth.currentUser?.uid]);
 
-  // Check in to a gym with GPS validation
+  /**
+   * checkIn — Validates GPS proximity then writes a presence document to Firestore.
+   *
+   * Steps:
+   *   1. Acquire the device's current GPS coordinates.
+   *   2. Fetch the target gym's stored `location` from Firestore.
+   *   3. Calculate straight-line distance (Haversine) between user and gym.
+   *   4. Reject if distance exceeds the gym's configured radius (defaults to
+   *      `DEFAULT_CHECK_IN_RADIUS_METERS` if the gym hasn't set a custom value).
+   *   5. Delegate to `presenceService.checkIn` for the actual Firestore write
+   *      (the service performs a second server-side validation as an extra layer).
+   *
+   * @param {string} gymId — Firestore document ID of the gym to check into.
+   * @throws {Error} If location permission is denied, GPS is unavailable, or the
+   *                 user is outside the allowed check-in radius.
+   */
   const checkIn = useCallback(async (gymId) => {
     if (!auth.currentUser) {
       throw new Error('Must be logged in to check in');
@@ -79,6 +109,7 @@ export const usePresence = () => {
       console.log('🎯 [HOOK] Gym:', gym.name);
       console.log('🎯 [HOOK] Gym location:', gym.location);
 
+      // Calculate straight-line distance between the user and the gym entrance
       const distance = calculateDistanceMeters(userLocation, gym.location);
       const radius = gym.checkInRadiusMeters || DEFAULT_CHECK_IN_RADIUS_METERS;
 
@@ -106,7 +137,14 @@ export const usePresence = () => {
     }
   }, []);
 
-  // Check out from current gym
+  /**
+   * checkOut — Removes the user's active presence document from Firestore.
+   *
+   * Delegates entirely to `presenceService.checkOut`. Manages loading and
+   * error state locally so the calling screen can react to the outcome.
+   *
+   * @throws {Error} If the Firestore write fails.
+   */
   const checkOut = useCallback(async () => {
     setCheckingOut(true);
     setError(null);
@@ -122,7 +160,15 @@ export const usePresence = () => {
     }
   }, []);
 
-  // Calculate time remaining
+  /**
+   * getTimeRemaining — Calculates a human-readable countdown to presence expiry.
+   *
+   * Reads the `expiresAt` Firestore Timestamp from the active presence document,
+   * converts it to a JS Date, and formats the difference from now.
+   *
+   * @returns {string | null} Formatted string like "45m" or "1h 12m", or null
+   *                          if there is no active presence.
+   */
   const getTimeRemaining = useCallback(() => {
     if (!presence?.expiresAt) return null;
 

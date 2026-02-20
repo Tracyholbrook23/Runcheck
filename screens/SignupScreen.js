@@ -1,3 +1,23 @@
+/**
+ * SignupScreen.js — New User Registration Screen
+ *
+ * Allows new users to create a RunCheck account by providing their name,
+ * age, skill level, email, and password. On successful registration:
+ *   1. Creates a Firebase Auth user with `createUserWithEmailAndPassword`.
+ *   2. Writes a Firestore user profile document under `users/{uid}` with
+ *      the collected form data (name, age, skillLevel, email).
+ *   3. Navigates to the Main tab navigator.
+ *
+ * Skill level is selected via a row of pill-style buttons styled with the
+ * skill-level color palette from the theme constants. The selected pill
+ * gets its background and text color updated to match the skill's brand color.
+ *
+ * UI:
+ *   - Same court background + overlay as LoginScreen for brand consistency
+ *   - Ghost "Back to Login" button at the top
+ *   - Form card with all inputs and skill picker inside
+ */
+
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -14,8 +34,17 @@ import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 
+/** The four skill tiers a user can choose from during registration. */
 const SKILL_OPTIONS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'];
 
+/**
+ * SignupScreen — Account creation form.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop for navigating back to Login or forward to Main.
+ * @returns {JSX.Element}
+ */
 export default function SignupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
@@ -24,8 +53,20 @@ export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { colors, isDark } = useTheme();
+
+  // Recompute styles only when the theme changes
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  /**
+   * handleSignup — Validates the form then creates the Firebase Auth user
+   * and Firestore profile document.
+   *
+   * Firestore write path: `users/{uid}` with fields:
+   *   { name, age, skillLevel, email }
+   *
+   * Both the Auth creation and Firestore write must succeed for the user
+   * to proceed. If either fails, the raw Firebase error message is shown.
+   */
   const handleSignup = async () => {
     if (!name || !email || !password || !age || !skillLevel) {
       alert('Please fill out all fields');
@@ -35,9 +76,11 @@ export default function SignupScreen({ navigation }) {
     setLoading(true);
 
     try {
+      // Step 1: Create the Firebase Auth account
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
+      // Step 2: Write the user profile to Firestore under users/{uid}
       await setDoc(doc(db, 'users', user.uid), {
         name,
         age,
@@ -61,6 +104,7 @@ export default function SignupScreen({ navigation }) {
       style={styles.bgImage}
       resizeMode="cover"
     >
+      {/* Semi-transparent overlay for text legibility over the court image */}
       <View style={styles.overlay} />
       <ScrollView
         contentContainerStyle={styles.container}
@@ -84,16 +128,19 @@ export default function SignupScreen({ navigation }) {
           <Input label="Full Name" placeholder="Your name" value={name} onChangeText={setName} />
           <Input label="Age" placeholder="Your age" keyboardType="numeric" value={age} onChangeText={setAge} />
 
+          {/* Skill Level Picker — pill buttons styled by the selected skill's theme color */}
           <Text style={styles.fieldLabel}>Skill Level</Text>
           <View style={styles.skillRow}>
             {SKILL_OPTIONS.map((level) => {
               const selected = skillLevel === level;
+              // Look up this skill's brand colors from the theme constants
               const skillColors = SKILL_LEVEL_COLORS[level];
               return (
                 <TouchableOpacity
                   key={level}
                   style={[
                     styles.skillPill,
+                    // Apply skill-specific bg + border only when this pill is selected
                     selected && { backgroundColor: skillColors.bg, borderColor: skillColors.text },
                   ]}
                   onPress={() => setSkillLevel(level)}
@@ -142,6 +189,13 @@ export default function SignupScreen({ navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for SignupScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   bgImage: {
     flex: 1,

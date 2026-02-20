@@ -1,3 +1,31 @@
+/**
+ * HomeScreen.js — Main Dashboard
+ *
+ * The landing screen users see after signing in. Provides a high-level
+ * snapshot of current activity and quick navigation into the app's core
+ * features.
+ *
+ * Key sections:
+ *   - Header           — RunCheck logo + profile icon shortcut
+ *   - Welcome          — Large hero text "Find Your Next Run"
+ *   - Presence Card    — Shows the user's active check-in (gym name +
+ *                        time remaining) with a Check Out action. Only
+ *                        rendered when `isCheckedIn` is true.
+ *   - Quick Actions    — Three BlurView cards linking to Check In,
+ *                        Find Runs, and Plan a Visit tabs
+ *   - Hot Courts       — Horizontal scroll list of nearby active gyms
+ *                        (currently seeded with placeholder data)
+ *   - Recent Activity  — Feed of recent community check-ins and plans
+ *                        (currently seeded with placeholder data)
+ *
+ * Layout uses a full-screen `ImageBackground` with a dark overlay so
+ * all content renders on top of the court photo with consistent contrast.
+ * BlurView cards from `expo-blur` give the frosted-glass UI feel.
+ *
+ * Styles are memoized per `(colors, isDark)` to avoid re-computing on
+ * every state change.
+ */
+
 import React, { useMemo } from 'react';
 import {
   View,
@@ -18,8 +46,18 @@ import { useTheme } from '../contexts';
 import { usePresence } from '../hooks';
 import { Logo } from '../components';
 
+/**
+ * HomeScreen — Main dashboard component.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop used to navigate between tabs and nested screens.
+ * @returns {JSX.Element}
+ */
 const HomeScreen = ({ navigation }) => {
   const { colors, isDark, themeStyles } = useTheme();
+
+  // Recompute styles only when the theme changes
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const {
@@ -31,6 +69,12 @@ const HomeScreen = ({ navigation }) => {
     getTimeRemaining,
   } = usePresence();
 
+  /**
+   * handleCheckOut — Prompts the user for confirmation then calls `checkOut()`.
+   *
+   * Uses a destructive-style Alert so the user doesn't accidentally check
+   * out of their gym session. Shows a success alert on completion.
+   */
   const handleCheckOut = async () => {
     Alert.alert(
       'Check Out',
@@ -54,10 +98,21 @@ const HomeScreen = ({ navigation }) => {
     );
   };
 
+  /**
+   * goToTab — Navigates to a top-level bottom tab by name.
+   *
+   * `navigation.getParent()` is needed because HomeScreen lives inside
+   * HomeStack, which itself is a child of the MainTabs navigator.
+   *
+   * @param {string} tabName — Name of the tab to navigate to (e.g., 'CheckIn', 'Runs').
+   */
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
 
+  // --- Placeholder data ---
+  // These will be replaced with real Firestore data in a future iteration.
+  // Kept as static arrays rather than state to avoid unnecessary re-renders.
   const fakeHotCourts = [
     { id: 'fake1', name: 'Pan American Recreation Center', players: 10, type: 'Indoor', plannedToday: 5,  plannedTomorrow: 8,  imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s' },
     { id: 'fake2', name: 'Life Time Austin North',         players: 9,  type: 'Indoor', plannedToday: 7,  plannedTomorrow: 12, imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390' },
@@ -77,7 +132,7 @@ const HomeScreen = ({ navigation }) => {
       style={styles.bgImage}
       resizeMode="cover"
     >
-      {/* Dark overlay */}
+      {/* Dark overlay sits between the background image and all content */}
       <View style={styles.overlay} />
 
       <SafeAreaView style={styles.safe}>
@@ -99,13 +154,18 @@ const HomeScreen = ({ navigation }) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Welcome */}
+          {/* Welcome hero text */}
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeTitle}>Find Your{'\n'}Next Run</Text>
             <Text style={styles.welcomeSubtitle}>Join a pickup run near you</Text>
           </View>
 
-          {/* Presence Card */}
+          {/*
+           * Presence Card — only shown when user is checked in.
+           * During the initial load we show a skeleton spinner inside the blur card.
+           * Once loaded, if the user is checked in we render the full card with
+           * gym name, time remaining, and a check-out button.
+           */}
           {loading ? (
             <BlurView intensity={60} tint="dark" style={styles.presenceCard}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -132,7 +192,7 @@ const HomeScreen = ({ navigation }) => {
             </BlurView>
           ) : null}
 
-          {/* Quick Actions */}
+          {/* Quick Actions — Check In (disabled when already checked in), Find Runs, Plan */}
           <View style={styles.actionsSection}>
             <TouchableOpacity
               onPress={() => goToTab('CheckIn')}
@@ -175,7 +235,7 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Hot Courts Near You */}
+          {/* Hot Courts — horizontal scroll of nearby active gyms */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Hot Courts Near You</Text>
             <View style={styles.liveActivity}>
@@ -194,6 +254,7 @@ const HomeScreen = ({ navigation }) => {
                 key={court.id}
                 activeOpacity={0.8}
                 onPress={() =>
+                  // Navigate into the Runs tab's nested RunDetails screen, passing gym data
                   navigation.getParent()?.navigate('Runs', {
                     screen: 'RunDetails',
                     params: {
@@ -223,7 +284,7 @@ const HomeScreen = ({ navigation }) => {
             ))}
           </ScrollView>
 
-          {/* Recent Activity */}
+          {/* Recent Activity feed */}
           <Text style={styles.sectionTitleStandalone}>Recent Activity</Text>
           <View style={styles.activityFeed}>
             {fakeActivity.map((item) => (
@@ -241,7 +302,7 @@ const HomeScreen = ({ navigation }) => {
             ))}
           </View>
 
-          {/* Footer */}
+          {/* Footer tagline */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Built for hoopers. Powered by community.</Text>
           </View>
@@ -251,6 +312,13 @@ const HomeScreen = ({ navigation }) => {
   );
 };
 
+/**
+ * getStyles — Generates a themed StyleSheet for HomeScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   bgImage: {
     flex: 1,
@@ -459,7 +527,7 @@ actionCard: {
     marginBottom: SPACING.sm,
   },
 
-  // Hot Courts
+  // Hot Courts horizontal scroll
   courtScroll: {
     marginHorizontal: -SPACING.md,
   },
@@ -519,7 +587,7 @@ actionCard: {
     color: 'rgba(255,255,255,0.5)',
   },
 
-  // Recent Activity
+  // Recent Activity feed
   activityFeed: {
     gap: SPACING.xs,
   },

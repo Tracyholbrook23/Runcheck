@@ -1,3 +1,26 @@
+/**
+ * App.js — Root Application Entry Point
+ *
+ * Defines the entire navigation structure for RunCheck using React Navigation.
+ * The app uses a two-layer navigation model:
+ *
+ *   Root Stack (no header):
+ *     ├── Splash    → Animated intro screen
+ *     ├── Login     → Email/password sign-in
+ *     ├── Signup    → New account registration
+ *     └── Main      → MainTabs (authenticated shell)
+ *
+ *   MainTabs (bottom tab navigator):
+ *     ├── Home      → HomeStack  (HomeScreen)
+ *     ├── Runs      → RunsStack  (ViewRuns → GymMap | RunDetails → GymReviews)
+ *     ├── CheckIn   → CheckInStack
+ *     ├── Plan      → PlanStack
+ *     └── Profile   → ProfileStack
+ *
+ * ThemeProvider wraps the entire tree so every screen and navigator can
+ * access the current color palette and toggle dark/light mode.
+ */
+
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -15,10 +38,19 @@ import GymMapScreen from './screens/GymMapScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import { ThemeProvider, useTheme } from './contexts';
 import SplashScreen from './screens/SplashScreen';
+import GymReviewsScreen from './screens/GymReviewsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+/**
+ * HomeStack — Stack navigator for the Home tab.
+ *
+ * Currently contains only HomeScreen. Wrapped in its own stack so the
+ * tab bar's header theme tokens are applied consistently via `themeStyles.NAV_HEADER`.
+ *
+ * @returns {JSX.Element} Stack navigator with HomeScreen as the sole route.
+ */
 function HomeStack() {
   const { themeStyles } = useTheme();
   return (
@@ -28,6 +60,15 @@ function HomeStack() {
   );
 }
 
+/**
+ * RunsStack — Stack navigator for the Runs tab.
+ *
+ * Manages the gym-browsing flow:
+ *   ViewRunsMain → GymMap (optional detour to map view)
+ *   ViewRunsMain → RunDetails → GymReviews
+ *
+ * @returns {JSX.Element} Stack navigator with four gym-related screens.
+ */
 function RunsStack() {
   const { themeStyles, colors } = useTheme();
   return (
@@ -41,10 +82,19 @@ function RunsStack() {
       />
       <Stack.Screen name="GymMap" component={GymMapScreen} options={{ title: 'Gym Map' }} />
       <Stack.Screen name="RunDetails" component={RunDetailsScreen} options={{ title: 'Run Details' }} />
+      <Stack.Screen name="GymReviews" component={GymReviewsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
 
+/**
+ * CheckInStack — Stack navigator for the Check In tab.
+ *
+ * Single-screen stack. Wrapping in a Stack lets us inherit the themed
+ * header styles even though CheckIn hides its own header in useEffect.
+ *
+ * @returns {JSX.Element} Stack navigator with CheckInScreen.
+ */
 function CheckInStack() {
   const { themeStyles } = useTheme();
   return (
@@ -54,6 +104,13 @@ function CheckInStack() {
   );
 }
 
+/**
+ * PlanStack — Stack navigator for the Plan a Visit tab.
+ *
+ * Hosts the multi-step gym scheduling wizard (PlanVisitScreen).
+ *
+ * @returns {JSX.Element} Stack navigator with PlanVisitScreen.
+ */
 function PlanStack() {
   const { themeStyles } = useTheme();
   return (
@@ -63,6 +120,14 @@ function PlanStack() {
   );
 }
 
+/**
+ * ProfileStack — Stack navigator for the Profile tab.
+ *
+ * ProfileScreen manages its own header-free layout, so no shared
+ * header options are applied here.
+ *
+ * @returns {JSX.Element} Stack navigator with ProfileScreen.
+ */
 function ProfileStack() {
   return (
     <Stack.Navigator>
@@ -71,6 +136,16 @@ function ProfileStack() {
   );
 }
 
+/**
+ * MainTabs — Bottom tab navigator shown after authentication.
+ *
+ * Reads the active theme's color tokens to style the tab bar so it
+ * respects dark/light mode without a full re-mount. Tab icons are
+ * resolved from the route name using a simple lookup inside
+ * `tabBarIcon`.
+ *
+ * @returns {JSX.Element} Bottom tab navigator with five top-level tabs.
+ */
 function MainTabs() {
   const { colors } = useTheme();
   return (
@@ -93,6 +168,7 @@ function MainTabs() {
           elevation: 0,
           shadowOpacity: 0,
         },
+        // Map each tab's route name to an Ionicons icon name
         tabBarIcon: ({ color, size }) => {
           let iconName;
           if (route.name === 'Home') iconName = 'home-outline';
@@ -113,6 +189,15 @@ function MainTabs() {
   );
 }
 
+/**
+ * AppContent — Root navigation tree.
+ *
+ * Renders the NavigationContainer and the top-level root stack.
+ * This component is intentionally separate from `App` so it can sit
+ * inside `ThemeProvider` and call `useTheme` through child navigators.
+ *
+ * @returns {JSX.Element} NavigationContainer wrapping the full app flow.
+ */
 function AppContent() {
   return (
     <NavigationContainer>
@@ -126,6 +211,15 @@ function AppContent() {
   );
 }
 
+/**
+ * App — Application root component.
+ *
+ * Wraps everything in `ThemeProvider` so that dark/light mode state and
+ * the derived color tokens are available throughout the entire component
+ * tree via `useTheme()`.
+ *
+ * @returns {JSX.Element} The fully themed and navigable RunCheck app.
+ */
 export default function App() {
   return (
     <ThemeProvider>

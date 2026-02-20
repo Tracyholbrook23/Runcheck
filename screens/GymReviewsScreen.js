@@ -1,3 +1,26 @@
+/**
+ * GymReviewsScreen.js — Full Player Reviews List
+ *
+ * Displays the complete review history for a gym, accessible from the
+ * "See All Reviews" link in RunDetailsScreen. Includes an aggregate
+ * rating summary with a star-breakdown bar chart, a "Write a Review"
+ * button (coming soon placeholder), and the full reviews list.
+ *
+ * Each review card shows:
+ *   - Reviewer's avatar, name, and skill-level badge (color-coded)
+ *   - Star rating and relative date
+ *   - Full review comment text
+ *
+ * This screen uses a custom header (back button + title + gym name)
+ * instead of the default React Navigation header, keeping `headerShown: false`
+ * in the navigator and managing the header manually in JSX.
+ *
+ * Data:
+ *   `reviews` can be passed via `route.params` from RunDetailsScreen.
+ *   `FAKE_REVIEWS` and `RATING_BREAKDOWN` are static placeholder constants
+ *   until a real Firestore reviews collection is implemented.
+ */
+
 import React, { useMemo } from 'react';
 import {
   View,
@@ -13,6 +36,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 
+/** Placeholder review data — to be replaced by a Firestore reviews collection. */
 const FAKE_REVIEWS = [
   { id: 'r1', name: 'Big Ray',    avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   rating: 5, comment: 'Best run in the city. Good competition, everybody plays the right way. Been coming here for years. If you want a real game, this is the spot.', date: '2 days ago',  skillLevel: 'Pro' },
   { id: 'r2', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', rating: 4, comment: 'Good spot. Gets packed on weekends but the courts are clean and well-lit at night. Staff is cool too.', date: '5 days ago',  skillLevel: 'Advanced' },
@@ -23,6 +47,10 @@ const FAKE_REVIEWS = [
   { id: 'r7', name: 'O.G. Andre', avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   rating: 5, comment: "Been playing here since '09. This gym has character. The regulars look out for each other.", date: '1 month ago', skillLevel: 'Pro' },
 ];
 
+/**
+ * Rating breakdown used to render the star distribution bar chart.
+ * `pct` is a 0–1 value representing the proportion of reviews at that star level.
+ */
 const RATING_BREAKDOWN = [
   { stars: 5, count: 14, pct: 0.78 },
   { stars: 4, count: 3,  pct: 0.17 },
@@ -31,18 +59,34 @@ const RATING_BREAKDOWN = [
   { stars: 1, count: 0,  pct: 0 },
 ];
 
+/**
+ * GymReviewsScreen — Full reviews list for a specific gym.
+ *
+ * @param {object} props
+ * @param {object} props.route — React Navigation route object.
+ * @param {object} props.route.params
+ * @param {string} props.route.params.gymName — Display name of the gym for the header.
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ * @returns {JSX.Element}
+ */
 export default function GymReviewsScreen({ route, navigation }) {
   const { gymName } = route.params || {};
   const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  /**
+   * handleWriteReview — Placeholder for the review submission flow.
+   *
+   * Shows a "Coming Soon" alert until the review creation feature is
+   * built out with a Firestore write and a dedicated input screen.
+   */
   const handleWriteReview = () => {
     Alert.alert('Coming Soon', 'Review writing will be available in a future update!');
   };
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* Custom header */}
+      {/* Custom header — back button on the left, title + gym name centered */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
@@ -51,13 +95,15 @@ export default function GymReviewsScreen({ route, navigation }) {
           <Text style={styles.headerTitle}>Player Reviews</Text>
           <Text style={styles.headerSub} numberOfLines={1}>{gymName}</Text>
         </View>
+        {/* Empty view on the right balances the header layout */}
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* Rating summary card */}
+        {/* Rating Summary Card — aggregate score + star breakdown bars */}
         <View style={styles.summaryCard}>
+          {/* Left: large numeric rating + stars + review count */}
           <View style={styles.summaryLeft}>
             <Text style={styles.bigRating}>4.7</Text>
             <View style={styles.starsRow}>
@@ -67,11 +113,13 @@ export default function GymReviewsScreen({ route, navigation }) {
             </View>
             <Text style={styles.ratingCount}>{FAKE_REVIEWS.length} reviews</Text>
           </View>
+          {/* Right: star distribution bar chart (5★ → 1★) */}
           <View style={styles.summaryRight}>
             {RATING_BREAKDOWN.map(row => (
               <View key={row.stars} style={styles.breakdownRow}>
                 <Text style={styles.breakdownStarLabel}>{row.stars}</Text>
                 <Ionicons name="star" size={11} color="#F97316" style={{ marginRight: 4 }} />
+                {/* Track bar with a proportionally-filled inner view */}
                 <View style={styles.breakdownTrack}>
                   <View style={[styles.breakdownFill, { width: `${row.pct * 100}%` }]} />
                 </View>
@@ -81,15 +129,16 @@ export default function GymReviewsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Write a review */}
+        {/* Write a Review CTA */}
         <TouchableOpacity style={styles.writeReviewBtn} onPress={handleWriteReview}>
           <Ionicons name="create-outline" size={18} color={colors.primary} />
           <Text style={styles.writeReviewText}>Write a Review</Text>
         </TouchableOpacity>
 
-        {/* Reviews list */}
+        {/* Full Reviews List */}
         <View style={styles.reviewsList}>
           {FAKE_REVIEWS.map((review) => {
+            // Look up the skill level's badge colors from the theme's skillColors map
             const badgeColors = skillColors?.[review.skillLevel];
             return (
               <View key={review.id} style={styles.reviewCard}>
@@ -98,6 +147,7 @@ export default function GymReviewsScreen({ route, navigation }) {
                   <View style={styles.reviewMeta}>
                     <View style={styles.nameRow}>
                       <Text style={styles.reviewerName}>{review.name}</Text>
+                      {/* Skill badge — only rendered if the level has a mapped color */}
                       {badgeColors && (
                         <View style={[styles.skillBadge, { backgroundColor: badgeColors.bg }]}>
                           <Text style={[styles.skillBadgeText, { color: badgeColors.text }]}>
@@ -128,6 +178,13 @@ export default function GymReviewsScreen({ route, navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for GymReviewsScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,

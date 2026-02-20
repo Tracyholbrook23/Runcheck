@@ -1,3 +1,29 @@
+/**
+ * PlanVisitScreen.js — Multi-Step Gym Visit Scheduler
+ *
+ * A three-step wizard that lets users plan a future gym visit so other
+ * players know they're coming. The current step is tracked with a simple
+ * `step` integer state rather than nested navigators, keeping the flow
+ * contained in a single screen component.
+ *
+ * Step 1 — Planned Visits:
+ *   Shows all upcoming scheduled visits with a cancel option. If none
+ *   exist, an empty state prompts the user to schedule one.
+ *
+ * Step 2 — Select Gym:
+ *   Displays a selectable list of gyms. The selected gym gets a primary-
+ *   colored border and checkmark icon.
+ *
+ * Step 3 — Select Time:
+ *   A horizontal day picker (today + next 6 days) followed by a grid of
+ *   30-minute time slots from 6 AM to 10 PM. Past time slots are filtered
+ *   out when "Today" is selected.
+ *
+ * Helper functions:
+ *   - `getAvailableDays` — builds the 7-day array with display labels
+ *   - `getTimeSlotsForDay` — builds 30-min time slots, skipping past times
+ */
+
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -14,6 +40,17 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms } from '../hooks';
 
+/**
+ * getAvailableDays — Builds a 7-day date array starting from today.
+ *
+ * Each entry contains:
+ *   - `label`   — "Today", "Tomorrow", or the short weekday name (e.g. "Mon")
+ *   - `dateStr` — Short date string for the second line of the chip (e.g. "Jan 15")
+ *   - `dateObj` — JavaScript Date object for building time slots
+ *   - `key`     — Unique string key for React list rendering
+ *
+ * @returns {{ label: string, dateStr: string, dateObj: Date, key: string }[]}
+ */
 const getAvailableDays = () => {
   const days = [];
   const now = new Date();
@@ -30,6 +67,21 @@ const getAvailableDays = () => {
   return days;
 };
 
+/**
+ * getTimeSlotsForDay — Generates 30-minute time slots for a given day.
+ *
+ * Covers 6:00 AM to 10:00 PM in 30-minute increments. When the day is
+ * today, any slot that has already passed is filtered out so users can't
+ * schedule in the past.
+ *
+ * Each slot contains:
+ *   - `date`     — Full JavaScript Date for the slot's start time
+ *   - `label`    — Formatted time string (e.g. "6:30 PM")
+ *   - `timeSlot` — ISO string used as a unique key and for Firestore writes
+ *
+ * @param {{ dateObj: Date } | null} dayObj — The selected day object from `getAvailableDays`.
+ * @returns {{ date: Date, label: string, timeSlot: string }[]} Array of available time slots.
+ */
 const getTimeSlotsForDay = (dayObj) => {
   if (!dayObj) return [];
   const slots = [];
@@ -39,6 +91,7 @@ const getTimeSlotsForDay = (dayObj) => {
     for (let min = 0; min < 60; min += 30) {
       const date = new Date(dayObj.dateObj);
       date.setHours(hour, min, 0, 0);
+      // Skip past time slots when the selected day is today
       if (isToday && date <= now) continue;
       const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
       const displayMin = min === 0 ? '00' : '30';
@@ -53,6 +106,7 @@ const getTimeSlotsForDay = (dayObj) => {
   return slots;
 };
 
+// Placeholder gym data — mirrors the list used in ViewRunsScreen and CheckInScreen
 const fakeGyms = [
   {
     id: 'fake1',
@@ -84,6 +138,14 @@ const fakeGyms = [
   },
 ];
 
+/**
+ * PlanVisitScreen — Three-step gym scheduling wizard.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop for hiding the header.
+ * @returns {JSX.Element}
+ */
 export default function PlanVisitScreen({ navigation }) {
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -92,11 +154,15 @@ export default function PlanVisitScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  // Hide the default navigation header — this screen uses its own title layout
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
   const availableDays = getAvailableDays();
+
+  // Recompute time slots whenever the selected day changes.
+  // Returns an empty array until a day is chosen.
   const timeSlots = selectedDay ? getTimeSlotsForDay(selectedDay) : [];
 
   const {
@@ -112,6 +178,13 @@ export default function PlanVisitScreen({ navigation }) {
 
   const loading = schedulesLoading || gymsLoading;
 
+  /**
+   * handleCreateSchedule — Writes the new schedule to Firestore and resets wizard.
+   *
+   * Calls `createSchedule` with the selected gym's ID, name, and the chosen
+   * time slot's Date object. On success, shows a confirmation alert and
+   * resets all selection state before returning to Step 1.
+   */
   const handleCreateSchedule = async () => {
     if (!selectedGym || !selectedSlot) return;
     try {
@@ -122,6 +195,7 @@ export default function PlanVisitScreen({ navigation }) {
         `You're planning to visit ${selectedGym.name} ${dayDesc} at ${selectedSlot.label}`,
         [{ text: 'OK', onPress: () => setStep(1) }]
       );
+      // Reset all selections so the wizard is clean for the next use
       setSelectedGym(null);
       setSelectedSlot(null);
       setSelectedDay(null);
@@ -130,6 +204,14 @@ export default function PlanVisitScreen({ navigation }) {
     }
   };
 
+  /**
+   * handleCancelSchedule — Prompts the user then cancels a scheduled visit.
+   *
+   * Uses a destructive-style Alert to prevent accidental cancellations.
+   * Calls `cancelSchedule` with the schedule's Firestore document ID.
+   *
+   * @param {object} schedule — Schedule document from Firestore with `id` and `gymName`.
+   */
   const handleCancelSchedule = async (schedule) => {
     Alert.alert(
       'Cancel Visit',
@@ -161,7 +243,7 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 1 — Planned Visits
+  // ─── Step 1: Planned Visits ────────────────────────────────────────────────
   if (step === 1) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -183,6 +265,7 @@ export default function PlanVisitScreen({ navigation }) {
                   </View>
                   <View style={styles.intentInfo}>
                     <Text style={styles.intentGym}>{schedule.gymName}</Text>
+                    {/* formatScheduleTime converts the Firestore Timestamp to a readable label */}
                     <Text style={styles.intentTime}>{formatScheduleTime(schedule)}</Text>
                   </View>
                   <TouchableOpacity
@@ -211,7 +294,7 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 2 — Select Gym
+  // ─── Step 2: Select Gym ────────────────────────────────────────────────────
   if (step === 2) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -228,11 +311,13 @@ export default function PlanVisitScreen({ navigation }) {
               key={gym.id}
               style={[
                 styles.gymCard,
+                // Highlight the selected gym with a primary-color border
                 selectedGym?.id === gym.id && styles.gymCardSelected,
               ]}
               onPress={() => setSelectedGym(gym)}
             >
               <View style={styles.gymCardLeft}>
+                {/* Checkmark when selected, outline circle otherwise */}
                 <Ionicons
                   name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
                   size={22}
@@ -247,6 +332,7 @@ export default function PlanVisitScreen({ navigation }) {
                   <Text style={styles.gymCardAccent}>OPEN RUN</Text>
                 </Text>
               </View>
+              {/* Live presence badge — shows if anyone is currently there */}
               {gym.currentPresenceCount > 0 && (
                 <View style={styles.presenceBadge}>
                   <Text style={styles.presenceBadgeText}>{gym.currentPresenceCount} here</Text>
@@ -272,7 +358,7 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
-  // Step 3 — Select Time
+  // ─── Step 3: Select Time ────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -283,7 +369,11 @@ export default function PlanVisitScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Day Picker */}
+        {/*
+         * Day Picker — horizontal scroll of 7 day chips.
+         * Selecting a day clears the time slot so users can't carry over
+         * an invalid selection from a previous day.
+         */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -306,17 +396,19 @@ export default function PlanVisitScreen({ navigation }) {
           ))}
         </ScrollView>
 
-        {/* Time Slots */}
+        {/* Time Slots — shown only after a day is selected */}
         {!selectedDay ? (
           <View style={styles.selectDayPrompt}>
             <Ionicons name="calendar-outline" size={36} color={colors.textMuted} />
             <Text style={styles.selectDayText}>Select a day above to see available times</Text>
           </View>
         ) : timeSlots.length === 0 ? (
+          // Edge case: user selected today but it's already past 10 PM
           <View style={styles.selectDayPrompt}>
             <Text style={styles.selectDayText}>No more times available for today</Text>
           </View>
         ) : (
+          // 2-column grid of 30-minute time slot cards
           <View style={styles.slotsContainer}>
             {timeSlots.map((slot) => (
               <TouchableOpacity
@@ -353,6 +445,13 @@ export default function PlanVisitScreen({ navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for PlanVisitScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,

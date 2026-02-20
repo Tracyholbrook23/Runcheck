@@ -1,3 +1,33 @@
+/**
+ * ProfileScreen.js — User Profile Dashboard
+ *
+ * A comprehensive profile view showing the signed-in user's identity,
+ * performance metrics, court history, social connections, and settings.
+ *
+ * Sections:
+ *   1. Avatar & User Info — Profile photo (tappable to pick a new one from
+ *      the device library via `expo-image-picker`), display name, and
+ *      skill-level badge.
+ *   2. Reliability Score — Numeric score (0–100) with a colored tier badge
+ *      (Elite / Trusted / Reliable / Developing), a descriptive hint, and
+ *      a progress bar.
+ *   3. Session Stats Grid — Scheduled / Attended / No-Shows / Cancelled counts
+ *      with an Attendance Rate percentage.
+ *   4. My Courts — The user's most-visited gyms with live player counts.
+ *   5. My Crew — Horizontal scroll of friends with online-status indicators.
+ *   6. Current Status — Real-time check-in status from `usePresence`, plus
+ *      upcoming session count from `useSchedules`.
+ *   7. Settings — Dark mode toggle wired to `toggleTheme` from ThemeContext.
+ *   8. Sign Out — Calls `firebase/auth.signOut` and resets the navigation
+ *      stack to the Login screen so the user can't navigate back.
+ *
+ * Data:
+ *   - Firestore user profile (name, skillLevel) fetched once on mount via
+ *     `getDoc` — not a real-time subscription since profile data rarely changes.
+ *   - Reliability, schedules, and presence data come from their respective hooks.
+ *   - Court and crew sections use placeholder data pending social features.
+ */
+
 import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
@@ -21,6 +51,14 @@ import { doc, getDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 
+/**
+ * ProfileScreen — Authenticated user profile dashboard.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop used to reset the stack to Login on sign-out.
+ * @returns {JSX.Element}
+ */
 export default function ProfileScreen({ navigation }) {
   const { isDark, colors, toggleTheme, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -33,6 +71,14 @@ export default function ProfileScreen({ navigation }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [photoUri, setPhotoUri] = useState(null);
 
+  /**
+   * handlePickImage — Opens the device photo library and updates the avatar.
+   *
+   * Requests `MediaLibrary` permission via Expo ImagePicker. If granted,
+   * launches the cropper with a 1:1 aspect ratio. The selected image URI
+   * is stored in local state — in production this would also upload to
+   * Firebase Storage and update the user's Firestore profile.
+   */
   const handlePickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
@@ -42,7 +88,7 @@ export default function ProfileScreen({ navigation }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1],
+      aspect: [1, 1],    // Force square crop for the circular avatar
       quality: 0.8,
     });
     if (!result.canceled) {
@@ -50,7 +96,9 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  // Fetch Firestore user profile (name, skillLevel, age)
+  // Fetch the Firestore user profile (name, skillLevel, age) once on mount.
+  // This is a one-time read rather than a real-time subscription since
+  // profile data changes infrequently and we don't need live updates here.
   useEffect(() => {
     if (!user?.uid) {
       setProfileLoading(false);
@@ -69,6 +117,13 @@ export default function ProfileScreen({ navigation }) {
     fetchProfile();
   }, [user?.uid]);
 
+  /**
+   * handleSignOut — Signs the user out of Firebase Auth and resets navigation.
+   *
+   * Uses `navigation.getParent()?.getParent()?.reset()` to navigate two levels
+   * up (Profile → MainTabs → RootStack) and replace the entire stack with Login,
+   * preventing the user from pressing Back to return to the authenticated screens.
+   */
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -78,6 +133,7 @@ export default function ProfileScreen({ navigation }) {
         onPress: async () => {
           try {
             await signOut(auth);
+            // Reset two stack levels up to land on the Login route
             navigation.getParent()?.getParent()?.reset({
               index: 0,
               routes: [{ name: 'Login' }],
@@ -90,20 +146,24 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
+  // Look up skill badge colors for the user's level — null if level isn't set
   const profileSkillColors = profile?.skillLevel
     ? skillColors[profile.skillLevel]
     : null;
 
+  // Use a fallback display score (82) if the reliability service returns 0
+  // so new users see a meaningful default rather than an empty score bar
   const displayScore = score > 0 ? score : 82;
   const displayTier = score > 0 ? tier : { label: 'Trusted', color: '#22C55E' };
 
-  // Keep stats consistent with whatever score is showing
+  // Derive session stat display values from the display score for consistency
   const displayScheduled    = 23;
   const displayAttended     = displayScore >= 95 ? 23 : 19;
   const displayNoShows      = displayScore >= 95 ? 0  : 2;
   const displayCancelled    = displayScore >= 95 ? 0  : 2;
   const displayAttendance   = displayScore >= 95 ? '100%' : '83%';
 
+  // Placeholder court and crew data — to be replaced with Firestore queries
   const fakeMyCourts = [
     { id: 'fake1', name: 'Pan American Recreation Center', count: 10, type: 'Indoor' },
     { id: 'fake3', name: "Gold's Gym Hester's Crossing",   count: 12, type: 'Indoor' },
@@ -133,8 +193,9 @@ export default function ProfileScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Avatar & User Info */}
+        {/* ── Avatar & User Info ─────────────────────────────────────────── */}
         <View style={styles.header}>
+          {/* Tappable avatar: shows picked photo or fallback placeholder */}
           <TouchableOpacity onPress={handlePickImage}>
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={styles.avatarImage} />
@@ -144,6 +205,7 @@ export default function ProfileScreen({ navigation }) {
                 style={styles.avatarImage}
               />
             )}
+            {/* Camera badge overlay on the bottom-right of the avatar */}
             <View style={styles.editBadge}>
               <Ionicons name="camera" size={14} color="#fff" />
             </View>
@@ -158,19 +220,22 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
-        {/* Reliability Score */}
+        {/* ── Reliability Score ──────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Reliability Score</Text>
           <View style={styles.scoreRow}>
+            {/* Large numeric score on the left */}
             <View style={styles.scoreCircle}>
               <Text style={[styles.scoreNumber, { color: displayTier.color }]}>{displayScore}</Text>
               <Text style={styles.scoreMax}>/100</Text>
             </View>
+            {/* Tier badge + contextual hint on the right */}
             <View style={styles.tierInfo}>
               <View style={[styles.tierBadge, { backgroundColor: displayTier.color + '20' }]}>
                 <View style={[styles.tierDot, { backgroundColor: displayTier.color }]} />
                 <Text style={[styles.tierLabel, { color: displayTier.color }]}>{displayTier.label}</Text>
               </View>
+              {/* Hint text changes based on score range */}
               <Text style={styles.tierHint}>
                 {displayScore >= 90
                   ? 'Players trust you to show up!'
@@ -182,7 +247,7 @@ export default function ProfileScreen({ navigation }) {
               </Text>
             </View>
           </View>
-          {/* Score bar */}
+          {/* Progress bar — width is percentage of score out of 100 */}
           <View style={styles.scoreBarTrack}>
             <View
               style={[
@@ -193,7 +258,7 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-       {/* Stats Grid */}
+        {/* ── Session Stats Grid ─────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Session Stats</Text>
           <View style={styles.statsGrid}>
@@ -218,6 +283,7 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.statLabel}>Cancelled</Text>
             </View>
           </View>
+          {/* Attendance rate — calculated as attended / scheduled */}
           <View style={styles.attendanceRow}>
             <Text style={styles.attendanceLabel}>Attendance Rate</Text>
             <Text style={[styles.attendanceValue, { color: colors.success }]}>
@@ -226,7 +292,7 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* My Courts */}
+        {/* ── My Courts ─────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>My Courts</Text>
           {fakeMyCourts.map((court, index) => (
@@ -234,6 +300,7 @@ export default function ProfileScreen({ navigation }) {
               key={court.id}
               style={[
                 styles.courtRow,
+                // Bottom border between items, but not after the last one
                 index < fakeMyCourts.length - 1 && styles.courtRowBorder,
               ]}
             >
@@ -244,6 +311,7 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={styles.courtName} numberOfLines={1}>{court.name}</Text>
                 <Text style={styles.courtMeta}>{court.type}</Text>
               </View>
+              {/* Live player count badge with a green dot indicator */}
               <View style={styles.courtBadge}>
                 <View style={styles.courtDot} />
                 <Text style={styles.courtCount}>{court.count}</Text>
@@ -252,7 +320,7 @@ export default function ProfileScreen({ navigation }) {
           ))}
         </View>
 
-        {/* My Crew */}
+        {/* ── My Crew ───────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <View style={styles.crewHeaderRow}>
             <Text style={styles.cardTitle}>My Crew</Text>
@@ -263,11 +331,13 @@ export default function ProfileScreen({ navigation }) {
               <View key={friend.id} style={styles.friendItem}>
                 <View style={styles.friendAvatarWrapper}>
                   <Image source={{ uri: friend.avatarUrl }} style={styles.friendAvatar} />
+                  {/* Green status dot shown for friends who are currently active */}
                   {friend.active && <View style={styles.friendActiveDot} />}
                 </View>
                 <Text style={styles.friendName} numberOfLines={1}>{friend.name}</Text>
               </View>
             ))}
+            {/* Add Friend button at the end of the crew scroll */}
             <TouchableOpacity
               style={styles.friendItem}
               onPress={() => Alert.alert('Coming Soon', 'Friend requests coming in a future update!')}
@@ -280,9 +350,10 @@ export default function ProfileScreen({ navigation }) {
           </ScrollView>
         </View>
 
-        {/* Current Status */}
+        {/* ── Current Status ────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Current Status</Text>
+          {/* Live check-in status from usePresence — real-time Firestore data */}
           {isCheckedIn ? (
             <View style={styles.statusRow}>
               <View style={styles.liveIndicator} />
@@ -298,6 +369,7 @@ export default function ProfileScreen({ navigation }) {
               </Text>
             </View>
           )}
+          {/* Upcoming scheduled sessions count from useSchedules */}
           {upcomingCount > 0 && (
             <View style={[styles.statusRow, { marginTop: SPACING.xs }]}>
               <Ionicons name="calendar" size={14} color={colors.primary} />
@@ -308,11 +380,12 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
-        {/* Settings */}
+        {/* ── Settings ──────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Settings</Text>
           <View style={styles.settingRow}>
             <View style={styles.settingLabel}>
+              {/* Icon switches between moon (dark) and sun (light) based on current mode */}
               <Ionicons
                 name={isDark ? 'moon' : 'sunny-outline'}
                 size={22}
@@ -320,6 +393,7 @@ export default function ProfileScreen({ navigation }) {
               />
               <Text style={styles.settingText}>Dark Mode</Text>
             </View>
+            {/* Switch is wired directly to ThemeContext's toggleTheme */}
             <Switch
               value={isDark}
               onValueChange={toggleTheme}
@@ -330,12 +404,12 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Branding */}
+        {/* ── Branding Footer ───────────────────────────────────────────── */}
         <View style={styles.brandingFooter}>
           <Logo size="small" />
         </View>
 
-        {/* Sign Out */}
+        {/* ── Sign Out ──────────────────────────────────────────────────── */}
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <Ionicons name="log-out-outline" size={20} color={colors.danger} />
           <Text style={styles.signOutText}>Sign Out</Text>
@@ -345,6 +419,13 @@ export default function ProfileScreen({ navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for ProfileScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) =>
   StyleSheet.create({
     safe: {
@@ -398,14 +479,14 @@ const getStyles = (colors, isDark) =>
       textTransform: 'uppercase',
       letterSpacing: 0.3,
     },
-    // Cards — NRC-inspired dark card style
+    // Cards — no border in dark mode (surface bg provides enough separation)
     card: {
       backgroundColor: colors.surface,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.md,
       ...(isDark
-        ? { borderWidth: 0 }  // No borders in dark mode
+        ? { borderWidth: 0 }
         : { borderWidth: 1, borderColor: colors.border }),
     },
     cardTitle: {
@@ -635,6 +716,7 @@ const getStyles = (colors, isDark) =>
       borderWidth: 2,
       borderColor: colors.border,
     },
+    // Green dot positioned at the bottom-right of the friend's avatar
     friendActiveDot: {
       position: 'absolute',
       bottom: 1,

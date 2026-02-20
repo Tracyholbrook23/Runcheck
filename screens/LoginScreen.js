@@ -1,3 +1,21 @@
+/**
+ * LoginScreen.js — Email / Password Sign-In Screen
+ *
+ * Entry point for returning users. Authenticates via Firebase Auth's
+ * `signInWithEmailAndPassword` and navigates to the Main tab navigator
+ * on success. Provides user-friendly error messages for the most common
+ * Firebase Auth error codes rather than surfacing raw SDK messages.
+ *
+ * UI:
+ *   - Full-bleed basketball court background image with dark overlay
+ *   - RunCheck logo and tagline centered above the form
+ *   - Email + password inputs inside a frosted-glass card
+ *   - Primary "Log In" button and secondary "Create Account" navigation
+ *
+ * Styles are memoized via `getStyles(colors, isDark)` so they update
+ * correctly when the user toggles dark/light mode.
+ */
+
 import React, { useState, useMemo } from 'react';
 import {
   View,
@@ -12,13 +30,34 @@ import { Logo, Button, Input } from '../components';
 import { auth } from '../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 
+/**
+ * LoginScreen — Sign-in screen component.
+ *
+ * @param {object} props
+ * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
+ *   React Navigation prop for navigating to Main or Signup.
+ * @returns {JSX.Element}
+ */
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { colors, isDark } = useTheme();
+
+  // Recompute styles only when the theme changes, not on every keystroke
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  /**
+   * handleLogin — Validates inputs and authenticates with Firebase Auth.
+   *
+   * Translates Firebase Auth error codes into human-readable messages:
+   *   - `auth/user-not-found`    → "No account found with this email."
+   *   - `auth/wrong-password`    → "Incorrect password."
+   *   - `auth/invalid-email`     → "Please enter a valid email address."
+   *   - `auth/too-many-requests` → "Too many failed attempts. Please try again later."
+   *
+   * On success, navigates to the 'Main' route (the bottom tab navigator).
+   */
   const handleLogin = async () => {
     if (!email || !password) {
       alert('Please enter both email and password');
@@ -54,6 +93,7 @@ export default function LoginScreen({ navigation }) {
       style={styles.bgImage}
       resizeMode="cover"
     >
+      {/* Semi-transparent overlay darkens the background for text legibility */}
       <View style={styles.overlay} />
       <ScrollView
         contentContainerStyle={styles.container}
@@ -107,6 +147,13 @@ export default function LoginScreen({ navigation }) {
   );
 }
 
+/**
+ * getStyles — Generates a themed StyleSheet for LoginScreen.
+ *
+ * @param {object} colors — Active color palette from ThemeContext.
+ * @param {boolean} isDark — Whether dark mode is active.
+ * @returns {object} React Native StyleSheet object.
+ */
 const getStyles = (colors, isDark) => StyleSheet.create({
   bgImage: {
     flex: 1,
