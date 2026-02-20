@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  ImageBackground,
 } from 'react-native';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
@@ -48,75 +49,100 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Logo size="large" style={{ marginBottom: SPACING.md }} />
-      <Text style={styles.title}>Welcome Back</Text>
-      <Text style={styles.subtitle}>Log in to your RunCheck account</Text>
+    <ImageBackground
+      source={require('../assets/images/court-bg.jpg')}
+      style={styles.bgImage}
+      resizeMode="cover"
+    >
+      <View style={styles.overlay} />
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.brandSection}>
+          <Logo size="large" style={{ marginBottom: SPACING.md }} />
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.tagline}>Your City. Your Court. Your People.</Text>
+        </View>
 
-      <View style={styles.form}>
-        <Input
-          label="Email"
-          placeholder="your@email.com"
-          keyboardType="email-address"
-          autoCapitalize="none"
-          value={email}
-          onChangeText={setEmail}
-          testID="email-input"
-        />
-        <Input
-          label="Password"
-          placeholder="Enter your password"
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-          testID="password-input"
-        />
+        <View style={styles.formCard}>
+          <Input
+            label="Email"
+            placeholder="your@email.com"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            value={email}
+            onChangeText={setEmail}
+            testID="email-input"
+          />
+          <Input
+            label="Password"
+            placeholder="Enter your password"
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+            testID="password-input"
+          />
 
-        <Button
-          title="Log In"
-          variant="primary"
-          size="lg"
-          onPress={handleLogin}
-          loading={loading}
-          testID="login-button"
-          style={{ marginTop: SPACING.sm }}
-        />
+          <Button
+            title="Log In"
+            variant="primary"
+            size="lg"
+            onPress={handleLogin}
+            loading={loading}
+            testID="login-button"
+            style={{ marginTop: SPACING.sm }}
+          />
 
-        <Button
-          title="Create Account"
-          variant="outline"
-          size="lg"
-          onPress={() => navigation.navigate('Signup')}
-          style={{ marginTop: SPACING.sm }}
-        />
-      </View>
-    </ScrollView>
+          <Button
+            title="Create Account"
+            variant="outline"
+            size="lg"
+            onPress={() => navigation.navigate('Signup')}
+            style={{ marginTop: SPACING.sm }}
+          />
+        </View>
+      </ScrollView>
+    </ImageBackground>
   );
 }
 
 const getStyles = (colors, isDark) => StyleSheet.create({
+  bgImage: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.70)',
+  },
   container: {
     flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
     padding: SPACING.lg,
-    backgroundColor: colors.background,
+  },
+  brandSection: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
   },
   title: {
-    fontSize: FONT_SIZES.title,
+    fontSize: FONT_SIZES.h1,
     fontWeight: FONT_WEIGHTS.extraBold,
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     textAlign: 'center',
     letterSpacing: -0.3,
+    marginBottom: SPACING.xs,
   },
-  subtitle: {
+  tagline: {
     fontSize: FONT_SIZES.body,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.60)',
     textAlign: 'center',
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.xxl,
+    letterSpacing: 0.2,
   },
-  form: {
-    width: '100%',
+  formCard: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
 });

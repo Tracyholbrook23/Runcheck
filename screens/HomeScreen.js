@@ -9,6 +9,7 @@ import {
   Alert,
   ScrollView,
   ImageBackground,
+  Image,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +57,19 @@ const HomeScreen = ({ navigation }) => {
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
+
+  const fakeHotCourts = [
+    { id: 'fake1', name: 'Pan American Recreation Center', players: 10, type: 'Indoor', plannedToday: 5,  plannedTomorrow: 8,  imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s' },
+    { id: 'fake2', name: 'Life Time Austin North',         players: 9,  type: 'Indoor', plannedToday: 7,  plannedTomorrow: 12, imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390' },
+    { id: 'fake3', name: "Gold's Gym Hester's Crossing",   players: 12, type: 'Indoor', plannedToday: 3,  plannedTomorrow: 6,  imageUrl: 'https://res.cloudinary.com/ggus-dev/image/private/s--HzKSnHnn--/c_auto%2Cg_center%2Cw_1200%2Ch_800/v1/25fcf1e9/austin-hesters-crossing-basketball.webp?_a=BAAAV6DQ' },
+    { id: 'fake4', name: 'Clay Madsen Recreation Center',  players: 5,  type: 'Indoor', plannedToday: 4,  plannedTomorrow: 9,  imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg' },
+  ];
+
+  const fakeActivity = [
+    { id: 'a1', name: 'Big Ray',    action: 'checked in at',      gym: 'Pan American Recreation Center', time: '3m ago',  avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg'   },
+    { id: 'a2', name: 'Aaliyah S.', action: 'planned a visit to', gym: "Gold's Gym Hester's Crossing",   time: '7m ago',  avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg' },
+    { id: 'a3', name: 'Coach D',    action: 'checked in at',      gym: 'Life Time Austin North',         time: '12m ago', avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg'   },
+  ];
 
   return (
     <ImageBackground
@@ -161,10 +175,70 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/* Live Activity */}
-          <View style={styles.liveActivity}>
-            <View style={styles.liveDot} />
-            <Text style={styles.liveText}>14 players checked in nearby</Text>
+          {/* Hot Courts Near You */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Hot Courts Near You</Text>
+            <View style={styles.liveActivity}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>36 active</Text>
+            </View>
+          </View>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.courtScroll}
+            contentContainerStyle={styles.courtScrollContent}
+          >
+            {fakeHotCourts.map((court) => (
+              <TouchableOpacity
+                key={court.id}
+                activeOpacity={0.8}
+                onPress={() =>
+                  navigation.getParent()?.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: {
+                      gymId: court.id,
+                      gymName: court.name,
+                      players: court.players,
+                      imageUrl: court.imageUrl,
+                      plannedToday: court.plannedToday,
+                      plannedTomorrow: court.plannedTomorrow,
+                    },
+                  })
+                }
+              >
+                <BlurView intensity={60} tint="dark" style={styles.courtCard}>
+                  <View style={styles.courtCardTop}>
+                    <View style={styles.courtLiveDot} />
+                    <Text style={styles.courtPlayerCount}>{court.players} playing</Text>
+                  </View>
+                  <Text style={styles.courtName}>{court.name}</Text>
+                  <View style={styles.courtMeta}>
+                    <Text style={styles.courtType}>{court.type}</Text>
+                    <Text style={styles.courtDot}> · </Text>
+                    <Text style={styles.courtDistance}>+{court.plannedToday} today</Text>
+                  </View>
+                </BlurView>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {/* Recent Activity */}
+          <Text style={styles.sectionTitleStandalone}>Recent Activity</Text>
+          <View style={styles.activityFeed}>
+            {fakeActivity.map((item) => (
+              <BlurView key={item.id} intensity={40} tint="dark" style={styles.activityRow}>
+                <Image source={{ uri: item.avatarUrl }} style={styles.activityAvatar} />
+                <View style={styles.activityInfo}>
+                  <Text style={styles.activityText} numberOfLines={1}>
+                    <Text style={styles.activityName}>{item.name}</Text>
+                    <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
+                    <Text style={styles.activityGym}>{item.gym}</Text>
+                  </Text>
+                  <Text style={styles.activityTime}>{item.time}</Text>
+                </View>
+              </BlurView>
+            ))}
           </View>
 
           {/* Footer */}
@@ -360,6 +434,132 @@ actionCard: {
     fontSize: FONT_SIZES.small,
     color: 'rgba(255,255,255,0.4)',
     letterSpacing: 0.2,
+  },
+
+  // Section headers
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.sm,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+  },
+  sectionTitleStandalone: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
+    marginTop: SPACING.xl,
+    marginBottom: SPACING.sm,
+  },
+
+  // Hot Courts
+  courtScroll: {
+    marginHorizontal: -SPACING.md,
+  },
+  courtScrollContent: {
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  courtCard: {
+    width: 150,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    gap: 4,
+  },
+  courtCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xxs,
+    marginBottom: 2,
+  },
+  courtLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  courtPlayerCount: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.success,
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 0.2,
+  },
+  courtName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
+  },
+  courtMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  courtType: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  courtDot: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  courtDistance: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.5)',
+  },
+
+  // Recent Activity
+  activityFeed: {
+    gap: SPACING.xs,
+  },
+  activityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    gap: SPACING.sm,
+  },
+  activityAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  activityInfo: {
+    flex: 1,
+  },
+  activityText: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  activityName: {
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+  },
+  activityAction: {
+    color: 'rgba(255,255,255,0.6)',
+  },
+  activityGym: {
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  activityTime: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.4)',
+    marginTop: 2,
   },
 });
 

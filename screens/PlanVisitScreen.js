@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -91,6 +91,10 @@ export default function PlanVisitScreen({ navigation }) {
   const [step, setStep] = useState(1);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
   const availableDays = getAvailableDays();
   const timeSlots = selectedDay ? getTimeSlotsForDay(selectedDay) : [];
@@ -356,6 +360,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   scroll: {
     padding: SPACING.md,
+    paddingTop: SPACING.lg,
     paddingBottom: SPACING.xl,
   },
   centered: {

@@ -94,6 +94,30 @@ export default function ProfileScreen({ navigation }) {
     ? skillColors[profile.skillLevel]
     : null;
 
+  const displayScore = score > 0 ? score : 82;
+  const displayTier = score > 0 ? tier : { label: 'Trusted', color: '#22C55E' };
+
+  // Keep stats consistent with whatever score is showing
+  const displayScheduled    = 23;
+  const displayAttended     = displayScore >= 95 ? 23 : 19;
+  const displayNoShows      = displayScore >= 95 ? 0  : 2;
+  const displayCancelled    = displayScore >= 95 ? 0  : 2;
+  const displayAttendance   = displayScore >= 95 ? '100%' : '83%';
+
+  const fakeMyCourts = [
+    { id: 'fake1', name: 'Pan American Recreation Center', count: 10, type: 'Indoor' },
+    { id: 'fake3', name: "Gold's Gym Hester's Crossing",   count: 12, type: 'Indoor' },
+    { id: 'fake4', name: 'Clay Madsen Recreation Center',  count: 5,  type: 'Indoor' },
+  ];
+
+  const fakeFriends = [
+    { id: 'f1', name: 'Big Ray',   avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   active: true },
+    { id: 'f2', name: 'Jordan T.', avatarUrl: 'https://randomuser.me/api/portraits/men/44.jpg',   active: true },
+    { id: 'f3', name: 'Keisha L.', avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', active: false },
+    { id: 'f4', name: 'Coach D',   avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   active: true },
+    { id: 'f5', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', active: false },
+  ];
+
   const loading = profileLoading || reliabilityLoading;
 
   if (loading) {
@@ -112,18 +136,19 @@ export default function ProfileScreen({ navigation }) {
         {/* Avatar & User Info */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handlePickImage}>
-  {photoUri ? (
-    <Image source={{ uri: photoUri }} style={styles.avatarImage} />
-  ) : (
-    <View style={[styles.avatar, { backgroundColor: tier.color + '20' }]}>
-      <Ionicons name="person" size={48} color={tier.color} />
-    </View>
-  )}
-  <View style={styles.editBadge}>
-    <Ionicons name="camera" size={14} color="#fff" />
-  </View>
-</TouchableOpacity>
-          <Text style={styles.name}>{profile?.name || 'Player'}</Text>
+            {photoUri ? (
+              <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+            ) : (
+              <Image
+                source={{ uri: 'https://randomuser.me/api/portraits/men/32.jpg' }}
+                style={styles.avatarImage}
+              />
+            )}
+            <View style={styles.editBadge}>
+              <Ionicons name="camera" size={14} color="#fff" />
+            </View>
+          </TouchableOpacity>
+          <Text style={styles.name}>{profile?.name || 'Marcus W.'}</Text>
           {profileSkillColors && (
             <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
               <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
@@ -138,20 +163,20 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.cardTitle}>Reliability Score</Text>
           <View style={styles.scoreRow}>
             <View style={styles.scoreCircle}>
-              <Text style={[styles.scoreNumber, { color: tier.color }]}>{score}</Text>
+              <Text style={[styles.scoreNumber, { color: displayTier.color }]}>{displayScore}</Text>
               <Text style={styles.scoreMax}>/100</Text>
             </View>
             <View style={styles.tierInfo}>
-              <View style={[styles.tierBadge, { backgroundColor: tier.color + '20' }]}>
-                <View style={[styles.tierDot, { backgroundColor: tier.color }]} />
-                <Text style={[styles.tierLabel, { color: tier.color }]}>{tier.label}</Text>
+              <View style={[styles.tierBadge, { backgroundColor: displayTier.color + '20' }]}>
+                <View style={[styles.tierDot, { backgroundColor: displayTier.color }]} />
+                <Text style={[styles.tierLabel, { color: displayTier.color }]}>{displayTier.label}</Text>
               </View>
               <Text style={styles.tierHint}>
-                {score >= 90
+                {displayScore >= 90
                   ? 'Players trust you to show up!'
-                  : score >= 75
+                  : displayScore >= 75
                   ? 'Solid track record. Keep it up!'
-                  : score >= 50
+                  : displayScore >= 50
                   ? 'Room for improvement.'
                   : 'Attend more sessions to rebuild trust.'}
               </Text>
@@ -162,7 +187,7 @@ export default function ProfileScreen({ navigation }) {
             <View
               style={[
                 styles.scoreBarFill,
-                { width: `${score}%`, backgroundColor: tier.color },
+                { width: `${displayScore}%`, backgroundColor: displayTier.color },
               ]}
             />
           </View>
@@ -173,32 +198,86 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.cardTitle}>Session Stats</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
-              <Ionicons name="calendar-outline" size={20} color={colors.secondary} />
-              <Text style={styles.statNumber}>{23}</Text>
+              <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+              <Text style={styles.statNumber}>{displayScheduled}</Text>
               <Text style={styles.statLabel}>Scheduled</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
-              <Text style={styles.statNumber}>{19}</Text>
+              <Text style={styles.statNumber}>{displayAttended}</Text>
               <Text style={styles.statLabel}>Attended</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
-              <Text style={styles.statNumber}>{0}</Text>
+              <Text style={styles.statNumber}>{displayNoShows}</Text>
               <Text style={styles.statLabel}>No-Shows</Text>
             </View>
             <View style={styles.statItem}>
               <Ionicons name="remove-circle-outline" size={20} color={colors.textMuted} />
-              <Text style={styles.statNumber}>{0}</Text>
+              <Text style={styles.statNumber}>{displayCancelled}</Text>
               <Text style={styles.statLabel}>Cancelled</Text>
             </View>
           </View>
           <View style={styles.attendanceRow}>
             <Text style={styles.attendanceLabel}>Attendance Rate</Text>
             <Text style={[styles.attendanceValue, { color: colors.success }]}>
-              83%
+              {displayAttendance}
             </Text>
           </View>
+        </View>
+
+        {/* My Courts */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>My Courts</Text>
+          {fakeMyCourts.map((court, index) => (
+            <View
+              key={court.id}
+              style={[
+                styles.courtRow,
+                index < fakeMyCourts.length - 1 && styles.courtRowBorder,
+              ]}
+            >
+              <View style={styles.courtIcon}>
+                <Ionicons name="basketball-outline" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.courtInfo}>
+                <Text style={styles.courtName} numberOfLines={1}>{court.name}</Text>
+                <Text style={styles.courtMeta}>{court.type}</Text>
+              </View>
+              <View style={styles.courtBadge}>
+                <View style={styles.courtDot} />
+                <Text style={styles.courtCount}>{court.count}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* My Crew */}
+        <View style={styles.card}>
+          <View style={styles.crewHeaderRow}>
+            <Text style={styles.cardTitle}>My Crew</Text>
+            <Text style={styles.crewCount}>{fakeFriends.length} friends</Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.crewScroll}>
+            {fakeFriends.map((friend) => (
+              <View key={friend.id} style={styles.friendItem}>
+                <View style={styles.friendAvatarWrapper}>
+                  <Image source={{ uri: friend.avatarUrl }} style={styles.friendAvatar} />
+                  {friend.active && <View style={styles.friendActiveDot} />}
+                </View>
+                <Text style={styles.friendName} numberOfLines={1}>{friend.name}</Text>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={styles.friendItem}
+              onPress={() => Alert.alert('Coming Soon', 'Friend requests coming in a future update!')}
+            >
+              <View style={styles.addFriendCircle}>
+                <Ionicons name="person-add-outline" size={20} color={colors.primary} />
+              </View>
+              <Text style={styles.friendName}>Add</Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         {/* Current Status */}
@@ -221,8 +300,8 @@ export default function ProfileScreen({ navigation }) {
           )}
           {upcomingCount > 0 && (
             <View style={[styles.statusRow, { marginTop: SPACING.xs }]}>
-              <Ionicons name="calendar" size={14} color={colors.secondary} />
-              <Text style={[styles.statusText, { color: colors.secondary }]}>
+              <Ionicons name="calendar" size={14} color={colors.primary} />
+              <Text style={[styles.statusText, { color: colors.primary }]}>
                 {upcomingCount} upcoming {upcomingCount === 1 ? 'session' : 'sessions'}
               </Text>
             </View>
@@ -293,6 +372,8 @@ const getStyles = (colors, isDark) =>
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: SPACING.sm,
+      borderWidth: 3,
+      borderColor: colors.primary,
     },
     name: {
       fontSize: FONT_SIZES.title,
@@ -475,6 +556,112 @@ const getStyles = (colors, isDark) =>
       paddingVertical: SPACING.md,
       opacity: 0.6,
     },
+    // My Courts
+    courtRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: SPACING.sm,
+      gap: SPACING.sm,
+    },
+    courtRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    courtIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: RADIUS.sm,
+      backgroundColor: colors.primary + '18',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    courtInfo: {
+      flex: 1,
+    },
+    courtName: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textPrimary,
+    },
+    courtMeta: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    courtBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    courtDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.success,
+    },
+    courtCount: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.success,
+    },
+    // My Crew
+    crewHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: SPACING.md,
+    },
+    crewCount: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.textMuted,
+      fontWeight: FONT_WEIGHTS.medium,
+    },
+    crewScroll: {
+      gap: SPACING.md,
+      paddingBottom: SPACING.xs,
+    },
+    friendItem: {
+      alignItems: 'center',
+      width: 58,
+    },
+    friendAvatarWrapper: {
+      position: 'relative',
+      marginBottom: 5,
+    },
+    friendAvatar: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      borderWidth: 2,
+      borderColor: colors.border,
+    },
+    friendActiveDot: {
+      position: 'absolute',
+      bottom: 1,
+      right: 1,
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: colors.success,
+      borderWidth: 2,
+      borderColor: colors.surface,
+    },
+    friendName: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    addFriendCircle: {
+      width: 50,
+      height: 50,
+      borderRadius: 25,
+      borderWidth: 2,
+      borderColor: colors.primary,
+      borderStyle: 'dashed',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: 5,
+    },
     // Sign out
     signOutButton: {
       flexDirection: 'row',
@@ -494,6 +681,8 @@ const getStyles = (colors, isDark) =>
   height: 88,
   borderRadius: 44,
   marginBottom: SPACING.sm,
+  borderWidth: 3,
+  borderColor: colors.primary,
 },
 editBadge: {
   position: 'absolute',

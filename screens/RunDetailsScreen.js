@@ -49,8 +49,8 @@ const isTomorrow = (date) => {
 };
 
 export default function RunDetailsScreen({ route, navigation }) {
-  const { gymId, gymName, imageUrl: paramImageUrl, plannedToday: paramPlannedToday, plannedTomorrow: paramPlannedTomorrow } = route.params;
-  const { colors, isDark } = useTheme();
+  const { gymId, gymName, imageUrl: paramImageUrl, plannedToday: paramPlannedToday, plannedTomorrow: paramPlannedTomorrow, players: paramPlayers } = route.params;
+  const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const { gym, loading: gymLoading } = useGym(gymId);
@@ -86,11 +86,55 @@ export default function RunDetailsScreen({ route, navigation }) {
     return () => clearInterval(interval);
   }, [presences.length]);
 
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
+
   // Pulse animation for active player indicator
   const pulseAnim = useRef(new Animated.Value(1)).current;
-  const playerCount = gym?.currentPresenceCount || 0;
+  const playerCount = gym?.currentPresenceCount ?? paramPlayers ?? 0;
   const todayCount = todaySchedules.length || paramPlannedToday || 0;
   const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
+
+  const fakeReviews = [
+    { id: 'r1', name: 'Big Ray',    avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   rating: 5, comment: 'Best run in the city. Good competition, everybody plays the right way. Been coming here for years.', date: '2 days ago',  skillLevel: 'Pro' },
+    { id: 'r2', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', rating: 4, comment: 'Good spot. Gets packed on weekends but the courts are clean and well-lit at night.', date: '5 days ago',  skillLevel: 'Advanced' },
+    { id: 'r3', name: 'Coach D',    avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   rating: 5, comment: 'Community is welcoming to all skill levels. Perfect for beginners wanting to improve.', date: '1 week ago', skillLevel: 'Pro' },
+    { id: 'r4', name: 'Lil TJ',     avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    rating: 4, comment: 'Rims are a little tight but the competition is real. Usually run 5v5 full court here.', date: '2 weeks ago', skillLevel: 'Beginner' },
+    { id: 'r5', name: 'Marcus W.',  avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   rating: 5, comment: 'Always a good run. Respectful players, no ball hogs. Great for evening games after work.', date: '3 weeks ago', skillLevel: 'Advanced' },
+  ];
+
+  const fakePlayers = [
+    { id: 'fp1', name: 'Big Ray',      skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   minutesAgo: 8  },
+    { id: 'fp2', name: 'Marcus W.',    skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   minutesAgo: 15 },
+    { id: 'fp3', name: 'Lil TJ',       skillLevel: 'Beginner',     avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    minutesAgo: 22 },
+    { id: 'fp4', name: 'Aaliyah S.',   skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', minutesAgo: 31 },
+    { id: 'fp5', name: 'Coach D',      skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   minutesAgo: 40 },
+    { id: 'fp6', name: 'Jordan T.',    skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/44.jpg',   minutesAgo: 52 },
+    { id: 'fp7', name: 'Lil Kev',      skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/men/7.jpg',    minutesAgo: 58 },
+    { id: 'fp8', name: 'Keisha L.',    skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', minutesAgo: 67 },
+    { id: 'fp9', name: 'O.G. Andre',   skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   minutesAgo: 75 },
+    { id: 'fp10', name: 'DeShawn R.',  skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/67.jpg',   minutesAgo: 82 },
+  ];
+
+  const fakeScheduledToday = [
+    { id: 'st1', name: 'Young Buck',   skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/men/10.jpg',   time: '6:00 PM' },
+    { id: 'st2', name: 'Brianna C.',   skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/14.jpg', time: '6:30 PM' },
+    { id: 'st3', name: 'Mr. Williams', skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/80.jpg',   time: '7:00 PM' },
+    { id: 'st4', name: 'Devon W.',     skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/36.jpg',   time: '7:00 PM' },
+    { id: 'st5', name: 'Simone R.',    skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/women/33.jpg', time: '7:30 PM' },
+  ];
+
+  const fakeScheduledTomorrow = [
+    { id: 'sm1', name: 'Isaiah T.',    skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/17.jpg',   time: '5:30 PM' },
+    { id: 'sm2', name: 'Kayla N.',     skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/52.jpg', time: '6:00 PM' },
+    { id: 'sm3', name: 'Lil Chris',    skillLevel: 'Beginner',     avatarUrl: 'https://randomuser.me/api/portraits/men/8.jpg',    time: '6:00 PM' },
+    { id: 'sm4', name: 'Trina D.',     skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/61.jpg', time: '6:30 PM' },
+    { id: 'sm5', name: 'Pop',          skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',   time: '6:30 PM' },
+    { id: 'sm6', name: 'Nadia P.',     skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/women/19.jpg', time: '7:00 PM' },
+    { id: 'sm7', name: 'Elijah F.',    skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/29.jpg',   time: '7:00 PM' },
+    { id: 'sm8', name: 'Rasheed V.',   skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/48.jpg',   time: '7:30 PM' },
+  ];
 
   useEffect(() => {
     if (playerCount > 0) {
@@ -122,11 +166,16 @@ export default function RunDetailsScreen({ route, navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView style={styles.container}>
-        <Image
-          source={(gym?.imageUrl || paramImageUrl) ? { uri: gym?.imageUrl || paramImageUrl } : courtImage}
-          style={styles.heroImage}
-          resizeMode="cover"
-        />
+        <View style={styles.heroContainer}>
+          <Image
+            source={(gym?.imageUrl || paramImageUrl) ? { uri: gym?.imageUrl || paramImageUrl } : courtImage}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color="#fff" />
+          </TouchableOpacity>
+        </View>
         <View style={styles.header}>
           <Text style={styles.gymName}>{gym?.name || gymName}</Text>
           <Text style={styles.gymAddress}>{gym?.address}</Text>
@@ -185,32 +234,136 @@ export default function RunDetailsScreen({ route, navigation }) {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Now Playing</Text>
-          <PresenceList
-            items={presences}
-            type="presence"
-            emptyMessage="No one here yet"
-            emptySubtext="Be the first to check in!"
-          />
+          {presences.length > 0 ? (
+            <PresenceList items={presences} type="presence" />
+          ) : playerCount > 0 ? (
+            <View style={styles.playerList}>
+              {fakePlayers.slice(0, playerCount).map((player) => (
+                <View key={player.id} style={styles.playerRow}>
+                  <Image source={{ uri: player.avatarUrl }} style={styles.playerAvatar} />
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName}>{player.name}</Text>
+                    <Text style={styles.playerMeta}>{player.minutesAgo}m ago</Text>
+                  </View>
+                  {skillColors?.[player.skillLevel] && (
+                    <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
+                      <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
+                        {player.skillLevel}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <PresenceList items={[]} type="presence" emptyMessage="No one here yet" emptySubtext="Be the first to check in!" />
+          )}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scheduled Today</Text>
-          <PresenceList
-            items={todaySchedules}
-            type="schedule"
-            emptyMessage={todayCount > 0 ? `${todayCount} players planning to attend` : 'No one scheduled today'}
-            emptySubtext={todayCount > 0 ? "Plan your visit to join them!" : undefined}
-          />
+          {todaySchedules.length > 0 ? (
+            <PresenceList items={todaySchedules} type="schedule" />
+          ) : todayCount > 0 ? (
+            <View style={styles.playerList}>
+              {fakeScheduledToday.slice(0, todayCount).map((player) => (
+                <View key={player.id} style={styles.playerRow}>
+                  <Image source={{ uri: player.avatarUrl }} style={styles.playerAvatar} />
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName}>{player.name}</Text>
+                    <Text style={styles.playerMeta}>{player.time}</Text>
+                  </View>
+                  {skillColors?.[player.skillLevel] && (
+                    <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
+                      <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
+                        {player.skillLevel}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <PresenceList items={[]} type="schedule" emptyMessage="No one scheduled today" />
+          )}
         </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scheduled Tomorrow</Text>
-          <PresenceList
-            items={tomorrowSchedules}
-            type="schedule"
-            emptyMessage={tomorrowCount > 0 ? `${tomorrowCount} players planning to attend` : 'No one scheduled tomorrow'}
-            emptySubtext={tomorrowCount > 0 ? "Plan your visit to join them!" : undefined}
-          />
+          {tomorrowSchedules.length > 0 ? (
+            <PresenceList items={tomorrowSchedules} type="schedule" />
+          ) : tomorrowCount > 0 ? (
+            <View style={styles.playerList}>
+              {fakeScheduledTomorrow.slice(0, tomorrowCount).map((player) => (
+                <View key={player.id} style={styles.playerRow}>
+                  <Image source={{ uri: player.avatarUrl }} style={styles.playerAvatar} />
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName}>{player.name}</Text>
+                    <Text style={styles.playerMeta}>{player.time}</Text>
+                  </View>
+                  {skillColors?.[player.skillLevel] && (
+                    <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
+                      <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
+                        {player.skillLevel}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <PresenceList items={[]} type="schedule" emptyMessage="No one scheduled tomorrow" />
+          )}
+        </View>
+
+        {/* Reviews Preview */}
+        <View style={styles.section}>
+          <View style={styles.reviewsHeaderRow}>
+            <Text style={styles.sectionTitle}>Player Reviews</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('GymReviews', { gymId, gymName: gym?.name || gymName, reviews: fakeReviews })}>
+              <Text style={styles.seeAllLink}>See All ({fakeReviews.length})</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Rating summary */}
+          <View style={styles.ratingSummary}>
+            <Text style={styles.ratingBig}>4.7</Text>
+            <View style={styles.ratingDetails}>
+              <View style={styles.starsRow}>
+                {[1,2,3,4,5].map(i => (
+                  <Ionicons key={i} name={i <= 4 ? 'star' : 'star-half'} size={16} color="#F97316" />
+                ))}
+              </View>
+              <Text style={styles.ratingCount}>Based on {fakeReviews.length} reviews</Text>
+            </View>
+          </View>
+
+          {/* Preview 2 reviews */}
+          {fakeReviews.slice(0, 2).map((review) => (
+            <View key={review.id} style={styles.reviewCard}>
+              <View style={styles.reviewHeader}>
+                <Image source={{ uri: review.avatarUrl }} style={styles.reviewAvatar} />
+                <View style={styles.reviewMeta}>
+                  <Text style={styles.reviewerName}>{review.name}</Text>
+                  <View style={styles.reviewStarsRow}>
+                    {[1,2,3,4,5].map(i => (
+                      <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={12} color="#F97316" />
+                    ))}
+                    <Text style={styles.reviewDate}> · {review.date}</Text>
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.reviewComment}>{review.comment}</Text>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            style={styles.seeAllButton}
+            onPress={() => navigation.navigate('GymReviews', { gymId, gymName: gym?.name || gymName, reviews: fakeReviews })}
+          >
+            <Text style={styles.seeAllButtonText}>See All {fakeReviews.length} Reviews</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -241,9 +394,23 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
   },
+  heroContainer: {
+    position: 'relative',
+  },
   heroImage: {
     width: '100%',
-    height: 200,
+    height: 260,
+  },
+  backButton: {
+    position: 'absolute',
+    top: SPACING.lg,
+    left: SPACING.md,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   centered: {
     flex: 1,
@@ -386,5 +553,143 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   bottomPadding: {
     height: SPACING.lg * 2,
+  },
+  playerList: {
+    gap: SPACING.xs,
+  },
+  playerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    gap: SPACING.sm,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  playerAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceLight,
+  },
+  playerInfo: {
+    flex: 1,
+  },
+  playerName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  playerMeta: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  skillBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.sm,
+  },
+  skillBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+
+  // Reviews
+  reviewsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+  },
+  seeAllLink: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  ratingSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  ratingBig: {
+    fontSize: 42,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: colors.textPrimary,
+  },
+  ratingDetails: {
+    gap: 4,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 2,
+  },
+  ratingCount: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  reviewCard: {
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  reviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.xs,
+  },
+  reviewAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+  },
+  reviewMeta: {
+    flex: 1,
+  },
+  reviewerName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  reviewStarsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  reviewDate: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+  },
+  reviewComment: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  seeAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    marginTop: SPACING.xs,
+  },
+  seeAllButtonText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });

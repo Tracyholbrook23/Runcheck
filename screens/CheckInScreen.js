@@ -8,6 +8,7 @@ import {
   Text,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
@@ -38,6 +39,10 @@ export default function CheckInScreen({ navigation }) {
     loading: gymsLoading,
     ensureGymsExist,
   } = useGyms();
+
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
   useEffect(() => {
     ensureGymsExist();
@@ -91,6 +96,13 @@ export default function CheckInScreen({ navigation }) {
       }
     }
   };
+
+  const fakeActivityGyms = [
+    { id: 'fa1', name: 'Pan American Rec Center', currentPresenceCount: 10, plannedToday: 5 },
+    { id: 'fa2', name: 'Life Time Austin North', currentPresenceCount: 9, plannedToday: 7 },
+    { id: 'fa3', name: "Gold's Gym Hester's Crossing", currentPresenceCount: 12, plannedToday: 3 },
+    { id: 'fa4', name: 'Clay Madsen Rec Center', currentPresenceCount: 5, plannedToday: 4 },
+  ].sort((a, b) => b.currentPresenceCount - a.currentPresenceCount);
 
   const loading = presenceLoading || gymsLoading;
   const isProcessing = checkingIn;
@@ -174,6 +186,30 @@ export default function CheckInScreen({ navigation }) {
               check out manually from the Home screen.
             </Text>
           </View>
+
+          {/* Nearby Activity */}
+          <View style={styles.nearbySection}>
+            <Text style={styles.nearbyTitle}>Hot Right Now</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.nearbyScroll}
+              contentContainerStyle={styles.nearbyScrollContent}
+            >
+              {fakeActivityGyms.map((gym) => (
+                <View key={gym.id} style={styles.nearbyChip}>
+                  <View style={styles.nearbyDot} />
+                  <View>
+                    <Text style={styles.nearbyGymName} numberOfLines={1}>{gym.name}</Text>
+                    <Text style={styles.nearbyCount}>{gym.currentPresenceCount} playing now</Text>
+                    {gym.plannedToday > 0 && (
+                      <Text style={styles.nearbyPlanned}>+{gym.plannedToday} planned today</Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
         </View>
 
         <View style={styles.footer}>
@@ -222,20 +258,21 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   innerContainer: {
     padding: SPACING.lg,
+    paddingTop: SPACING.xl,
     zIndex: 1000,
   },
   title: {
     fontSize: FONT_SIZES.title,
     fontWeight: FONT_WEIGHTS.bold,
     marginBottom: SPACING.xs,
-    textAlign: 'center',
+    textAlign: 'left',
     color: colors.textPrimary,
     letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
-    textAlign: 'center',
+    textAlign: 'left',
     marginBottom: SPACING.lg,
   },
   label: {
@@ -266,6 +303,57 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.infoText,
     lineHeight: 20,
+  },
+  nearbySection: {
+    marginTop: SPACING.lg,
+  },
+  nearbyTitle: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+  },
+  nearbyScroll: {
+    marginHorizontal: -SPACING.lg,
+  },
+  nearbyScrollContent: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  nearbyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  nearbyDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  nearbyGymName: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+    maxWidth: 150,
+  },
+  nearbyCount: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.success,
+    fontWeight: FONT_WEIGHTS.medium,
+    marginTop: 1,
+  },
+  nearbyPlanned: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 1,
   },
   footer: {
     padding: SPACING.lg,

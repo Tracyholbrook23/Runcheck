@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -32,6 +32,10 @@ export default function GymMapScreen({ navigation }) {
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { gyms, loading } = useGyms();
   const { location } = useLocation();
+
+  useEffect(() => {
+    navigation.setOptions({ title: 'Nearby Courts' });
+  }, [navigation]);
 
   const initialRegion = location
     ? {
