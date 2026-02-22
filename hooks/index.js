@@ -48,6 +48,9 @@
  * - useGyms: All gyms list with real-time updates
  * - useGym: Single gym with real-time updates
  *
+ * User Profile:
+ * - useProfile: Current user's Firestore profile including followedGyms
+ *
  * Location:
  * - useLocation: GPS location and permissions
  */
@@ -69,6 +72,9 @@ export { useReliability } from './useReliability';
 // Gyms
 export { useGyms } from './useGyms';
 export { useGym } from './useGym';
+
+// User Profile
+export { useProfile } from './useProfile';
 
 // Location
 export { useLocation } from './useLocation';

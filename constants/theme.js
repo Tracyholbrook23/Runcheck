@@ -118,18 +118,16 @@ export const COLORS_DARK = {
 
 // ─── Skill Level Colors (works on both themes) ───────────────
 export const SKILL_LEVEL_COLORS = {
-  Beginner:     { bg: '#DBEAFE', text: '#2563EB' },
-  Intermediate: { bg: '#DCFCE7', text: '#16A34A' },
-  Advanced:     { bg: '#FEF3C7', text: '#D97706' },
-  Pro:          { bg: '#FEE2E2', text: '#DC2626' },
+  Casual:      { bg: '#DBEAFE', text: '#2563EB' },
+  Competitive: { bg: '#FEE2E2', text: '#DC2626' },
+  Either:      { bg: '#DCFCE7', text: '#16A34A' },
 };
 
 // Dark-aware skill level colors
 export const SKILL_LEVEL_COLORS_DARK = {
-  Beginner:     { bg: '#1E2A3A', text: '#60A5FA' },
-  Intermediate: { bg: '#132A1F', text: '#34D399' },
-  Advanced:     { bg: '#2A1F0E', text: '#FBBF24' },
-  Pro:          { bg: '#2A1010', text: '#F87171' },
+  Casual:      { bg: '#1E2A3A', text: '#60A5FA' },
+  Competitive: { bg: '#2A1010', text: '#F87171' },
+  Either:      { bg: '#132A1F', text: '#34D399' },
 };
 
 // ─── Typography ───────────────────────────────────────────────

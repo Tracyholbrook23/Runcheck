@@ -44,12 +44,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { useAuth, useReliability, useSchedules, usePresence, useGyms } from '../hooks';
+import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
+import { registerPushToken } from '../utils/notifications';
 
 /**
  * ProfileScreen — Authenticated user profile dashboard.
@@ -68,7 +69,15 @@ export default function ProfileScreen({ navigation }) {
   const { count: upcomingCount } = useSchedules();
   const { isCheckedIn, presence } = usePresence();
   const { gyms } = useGyms();
+  const { followedGyms } = useProfile();
   const [profile, setProfile] = useState(null);
+
+  // Derive the list of followed gym objects from the full gyms array.
+  // Preserves the user's follow order and limits display to 3.
+  const followedGymsList = followedGyms
+    .map((id) => gyms.find((g) => g.id === id))
+    .filter(Boolean)
+    .slice(0, 3);
   const [profileLoading, setProfileLoading] = useState(true);
   const [photoUri, setPhotoUri] = useState(null);
 
@@ -100,6 +109,7 @@ export default function ProfileScreen({ navigation }) {
   // Fetch the Firestore user profile (name, skillLevel, age) once on mount.
   // This is a one-time read rather than a real-time subscription since
   // profile data changes infrequently and we don't need live updates here.
+  // Also registers the device's Expo push token on first load.
   useEffect(() => {
     if (!user?.uid) {
       setProfileLoading(false);
@@ -116,6 +126,9 @@ export default function ProfileScreen({ navigation }) {
       }
     };
     fetchProfile();
+
+    // Register push token once per session — non-critical, errors are swallowed
+    registerPushToken();
   }, [user?.uid]);
 
   /**
@@ -152,25 +165,18 @@ export default function ProfileScreen({ navigation }) {
     ? skillColors[profile.skillLevel]
     : null;
 
-  // Use a fallback display score (82) if the reliability service returns 0
-  // so new users see a meaningful default rather than an empty score bar
-  const displayScore = score > 0 ? score : 82;
-  const displayTier = score > 0 ? tier : { label: 'Trusted', color: '#22C55E' };
+  // Real reliability data from the hook — zero-state for brand new users
+  const displayScore = score || 0;
+  const displayTier = tier || { label: 'New', color: colors.textMuted };
 
-  // Derive session stat display values from the display score for consistency
-  const displayScheduled    = 23;
-  const displayAttended     = displayScore >= 95 ? 23 : 19;
-  const displayNoShows      = displayScore >= 95 ? 0  : 2;
-  const displayCancelled    = displayScore >= 95 ? 0  : 2;
-  const displayAttendance   = displayScore >= 95 ? '100%' : '83%';
-
-  const fakeFriends = [
-    { id: 'f1', name: 'Big Ray',   avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   active: true },
-    { id: 'f2', name: 'Jordan T.', avatarUrl: 'https://randomuser.me/api/portraits/men/44.jpg',   active: true },
-    { id: 'f3', name: 'Keisha L.', avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', active: false },
-    { id: 'f4', name: 'Coach D',   avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   active: true },
-    { id: 'f5', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', active: false },
-  ];
+  // Real session stats from the reliability hook
+  const displayScheduled  = stats?.scheduled  || 0;
+  const displayAttended   = stats?.attended   || 0;
+  const displayNoShows    = stats?.noShows    || 0;
+  const displayCancelled  = stats?.cancelled  || 0;
+  const displayAttendance = displayScheduled > 0
+    ? `${Math.round((displayAttended / displayScheduled) * 100)}%`
+    : '—';
 
   const loading = profileLoading || reliabilityLoading;
 
@@ -194,17 +200,16 @@ export default function ProfileScreen({ navigation }) {
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={styles.avatarImage} />
             ) : (
-              <Image
-                source={{ uri: 'https://randomuser.me/api/portraits/men/32.jpg' }}
-                style={styles.avatarImage}
-              />
+              <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
+                <Ionicons name="person" size={40} color={colors.textMuted} />
+              </View>
             )}
             {/* Camera badge overlay on the bottom-right of the avatar */}
             <View style={styles.editBadge}>
               <Ionicons name="camera" size={14} color="#fff" />
             </View>
           </TouchableOpacity>
-          <Text style={styles.name}>{profile?.name || 'Marcus W.'}</Text>
+          <Text style={styles.name}>{profile?.name || user?.displayName || 'Player'}</Text>
           {profileSkillColors && (
             <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
               <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
@@ -289,49 +294,50 @@ export default function ProfileScreen({ navigation }) {
         {/* ── My Courts ─────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>My Courts</Text>
-          {gyms.slice(0, 3).map((gym, index) => (
-            <View
-              key={gym.id}
-              style={[
-                styles.courtRow,
-                // Bottom border between items, but not after the last one
-                index < gyms.slice(0, 3).length - 1 && styles.courtRowBorder,
-              ]}
-            >
-              <View style={styles.courtIcon}>
-                <Ionicons name="basketball-outline" size={18} color={colors.primary} />
+          {followedGymsList.length > 0 ? (
+            followedGymsList.map((gym, index) => (
+              <View
+                key={gym.id}
+                style={[
+                  styles.courtRow,
+                  // Bottom border between items, but not after the last one
+                  index < followedGymsList.length - 1 && styles.courtRowBorder,
+                ]}
+              >
+                <View style={styles.courtIcon}>
+                  <Ionicons name="basketball-outline" size={18} color={colors.primary} />
+                </View>
+                <View style={styles.courtInfo}>
+                  <Text style={styles.courtName} numberOfLines={1}>{gym.name}</Text>
+                  <Text style={styles.courtMeta}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
+                </View>
+                {/* Live player count badge with a green dot indicator */}
+                <View style={styles.courtBadge}>
+                  <View style={styles.courtDot} />
+                  <Text style={styles.courtCount}>{gym.currentPresenceCount || 0}</Text>
+                </View>
               </View>
-              <View style={styles.courtInfo}>
-                <Text style={styles.courtName} numberOfLines={1}>{gym.name}</Text>
-                <Text style={styles.courtMeta}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
-              </View>
-              {/* Live player count badge with a green dot indicator */}
-              <View style={styles.courtBadge}>
-                <View style={styles.courtDot} />
-                <Text style={styles.courtCount}>{gym.currentPresenceCount || 0}</Text>
-              </View>
+            ))
+          ) : (
+            /* Empty state — shown until the user follows at least one gym */
+            <View style={styles.courtsEmpty}>
+              <Ionicons name="heart-outline" size={24} color={colors.textMuted} />
+              <Text style={styles.courtsEmptyText}>No courts followed yet</Text>
+              <Text style={styles.courtsEmptySubtext}>
+                Follow a gym to see it here
+              </Text>
             </View>
-          ))}
+          )}
         </View>
 
         {/* ── My Crew ───────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <View style={styles.crewHeaderRow}>
             <Text style={styles.cardTitle}>My Crew</Text>
-            <Text style={styles.crewCount}>{fakeFriends.length} friends</Text>
+            <Text style={styles.crewCount}>0 friends</Text>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.crewScroll}>
-            {fakeFriends.map((friend) => (
-              <View key={friend.id} style={styles.friendItem}>
-                <View style={styles.friendAvatarWrapper}>
-                  <Image source={{ uri: friend.avatarUrl }} style={styles.friendAvatar} />
-                  {/* Green status dot shown for friends who are currently active */}
-                  {friend.active && <View style={styles.friendActiveDot} />}
-                </View>
-                <Text style={styles.friendName} numberOfLines={1}>{friend.name}</Text>
-              </View>
-            ))}
-            {/* Add Friend button at the end of the crew scroll */}
+            {/* Add Friend button — crew feature coming in a future update */}
             <TouchableOpacity
               style={styles.friendItem}
               onPress={() => Alert.alert('Coming Soon', 'Friend requests coming in a future update!')}
@@ -679,6 +685,21 @@ const getStyles = (colors, isDark) =>
       fontWeight: FONT_WEIGHTS.bold,
       color: colors.success,
     },
+    courtsEmpty: {
+      alignItems: 'center',
+      paddingVertical: SPACING.lg,
+      gap: SPACING.xs,
+    },
+    courtsEmptyText: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textSecondary,
+      marginTop: SPACING.xs,
+    },
+    courtsEmptySubtext: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textMuted,
+    },
     // My Crew
     crewHeaderRow: {
       flexDirection: 'row',
@@ -759,6 +780,11 @@ const getStyles = (colors, isDark) =>
   marginBottom: SPACING.sm,
   borderWidth: 3,
   borderColor: colors.primary,
+},
+    avatarPlaceholder: {
+  backgroundColor: colors.surface,
+  justifyContent: 'center',
+  alignItems: 'center',
 },
 editBadge: {
   position: 'absolute',

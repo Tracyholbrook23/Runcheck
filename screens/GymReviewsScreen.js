@@ -38,13 +38,13 @@ import { useTheme } from '../contexts';
 
 /** Placeholder review data — to be replaced by a Firestore reviews collection. */
 const FAKE_REVIEWS = [
-  { id: 'r1', name: 'Big Ray',    avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   rating: 5, comment: 'Best run in the city. Good competition, everybody plays the right way. Been coming here for years. If you want a real game, this is the spot.', date: '2 days ago',  skillLevel: 'Pro' },
-  { id: 'r2', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', rating: 4, comment: 'Good spot. Gets packed on weekends but the courts are clean and well-lit at night. Staff is cool too.', date: '5 days ago',  skillLevel: 'Advanced' },
-  { id: 'r3', name: 'Coach D',    avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   rating: 5, comment: 'Community is welcoming to all skill levels. Perfect for beginners wanting to improve in a real environment.', date: '1 week ago', skillLevel: 'Pro' },
-  { id: 'r4', name: 'Lil TJ',     avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    rating: 4, comment: 'Rims are a little tight but the competition is real. Usually run 5v5 full court here after school.', date: '2 weeks ago', skillLevel: 'Beginner' },
-  { id: 'r5', name: 'Marcus W.',  avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   rating: 5, comment: 'Always a good run. Respectful players, no ball hogs. Great for evening games after work.', date: '3 weeks ago', skillLevel: 'Advanced' },
-  { id: 'r6', name: 'Keisha L.',  avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', rating: 4, comment: 'Love seeing women out here holding their own. Inclusive environment, no weird vibes.', date: '1 month ago', skillLevel: 'Intermediate' },
-  { id: 'r7', name: 'O.G. Andre', avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   rating: 5, comment: "Been playing here since '09. This gym has character. The regulars look out for each other.", date: '1 month ago', skillLevel: 'Pro' },
+  { id: 'r1', name: 'Big Ray',    avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   rating: 5, comment: 'Best run in the city. Good competition, everybody plays the right way. Been coming here for years. If you want a real game, this is the spot.', date: '2 days ago',  skillLevel: 'Competitive' },
+  { id: 'r2', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', rating: 4, comment: 'Good spot. Gets packed on weekends but the courts are clean and well-lit at night. Staff is cool too.', date: '5 days ago',  skillLevel: 'Either' },
+  { id: 'r3', name: 'Coach D',    avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   rating: 5, comment: 'Community is welcoming to all skill levels. Perfect for beginners wanting to improve in a real environment.', date: '1 week ago', skillLevel: 'Competitive' },
+  { id: 'r4', name: 'Lil TJ',     avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    rating: 4, comment: 'Rims are a little tight but the competition is real. Usually run 5v5 full court here after school.', date: '2 weeks ago', skillLevel: 'Casual' },
+  { id: 'r5', name: 'Marcus W.',  avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   rating: 5, comment: 'Always a good run. Respectful players, no ball hogs. Great for evening games after work.', date: '3 weeks ago', skillLevel: 'Either' },
+  { id: 'r6', name: 'Keisha L.',  avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', rating: 4, comment: 'Love seeing women out here holding their own. Inclusive environment, no weird vibes.', date: '1 month ago', skillLevel: 'Casual' },
+  { id: 'r7', name: 'O.G. Andre', avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   rating: 5, comment: "Been playing here since '09. This gym has character. The regulars look out for each other.", date: '1 month ago', skillLevel: 'Competitive' },
 ];
 
 /**

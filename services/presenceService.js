@@ -210,7 +210,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   const userDoc = await getDoc(userRef);
   const userData = userDoc.exists() ? userDoc.data() : {};
   const userName = userData.name || 'Anonymous';
-  const skillLevel = userData.skillLevel || 'Beginner';
+  const skillLevel = userData.skillLevel || 'Casual';
 
   // Check if this fulfills a scheduled session (outside transaction)
   const matchingSchedule = await findMatchingSchedule(odId, gymId);

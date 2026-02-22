@@ -46,7 +46,9 @@ import { openDirections } from '../utils/openMapsDirections';
 
 const courtImage = require('../assets/basketball-court.png');
 import { useTheme } from '../contexts';
-import { useGym, useGymPresences, useGymSchedules } from '../hooks';
+import { useGym, useGymPresences, useGymSchedules, useProfile } from '../hooks';
+import { auth, db } from '../config/firebase';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 /**
  * isToday — Checks whether a given Date falls on the current calendar day.
@@ -97,6 +99,33 @@ export default function RunDetailsScreen({ route, navigation }) {
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
   const { schedules, loading: schedulesLoading } = useGymSchedules(gymId);
 
+  // Live user profile — provides followedGyms so the button reflects current state
+  const { followedGyms } = useProfile();
+  const isFollowed = followedGyms.includes(gymId);
+  const [followLoading, setFollowLoading] = useState(false);
+
+  /**
+   * toggleFollow — Adds or removes this gym from the user's `followedGyms` array
+   * in Firestore using arrayUnion / arrayRemove so the update is atomic.
+   *
+   * The button optimistically shows the new state immediately via the live
+   * useProfile subscription — no extra local state needed.
+   */
+  const toggleFollow = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setFollowLoading(true);
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        followedGyms: isFollowed ? arrayRemove(gymId) : arrayUnion(gymId),
+      });
+    } catch (err) {
+      console.error('toggleFollow error:', err);
+    } finally {
+      setFollowLoading(false);
+    }
+  };
+
   const loading = gymLoading || presencesLoading || schedulesLoading;
 
   // Split the flat schedules array into today's and tomorrow's lists.
@@ -141,45 +170,37 @@ export default function RunDetailsScreen({ route, navigation }) {
   const todayCount = todaySchedules.length || paramPlannedToday || 0;
   const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
 
-  // Placeholder player and review data — displayed when Firestore data is empty
-  const fakeReviews = [
-    { id: 'r1', name: 'Big Ray',    avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   rating: 5, comment: 'Best run in the city. Good competition, everybody plays the right way. Been coming here for years.', date: '2 days ago',  skillLevel: 'Pro' },
-    { id: 'r2', name: 'Aaliyah S.', avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', rating: 4, comment: 'Good spot. Gets packed on weekends but the courts are clean and well-lit at night.', date: '5 days ago',  skillLevel: 'Advanced' },
-    { id: 'r3', name: 'Coach D',    avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   rating: 5, comment: 'Community is welcoming to all skill levels. Perfect for beginners wanting to improve.', date: '1 week ago', skillLevel: 'Pro' },
-    { id: 'r4', name: 'Lil TJ',     avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    rating: 4, comment: 'Rims are a little tight but the competition is real. Usually run 5v5 full court here.', date: '2 weeks ago', skillLevel: 'Beginner' },
-    { id: 'r5', name: 'Marcus W.',  avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   rating: 5, comment: 'Always a good run. Respectful players, no ball hogs. Great for evening games after work.', date: '3 weeks ago', skillLevel: 'Advanced' },
-  ];
-
+  // Placeholder player data — displayed when Firestore data is empty
   const fakePlayers = [
-    { id: 'fp1', name: 'Big Ray',      skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   minutesAgo: 8  },
-    { id: 'fp2', name: 'Marcus W.',    skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   minutesAgo: 15 },
-    { id: 'fp3', name: 'Lil TJ',       skillLevel: 'Beginner',     avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    minutesAgo: 22 },
-    { id: 'fp4', name: 'Aaliyah S.',   skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', minutesAgo: 31 },
-    { id: 'fp5', name: 'Coach D',      skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   minutesAgo: 40 },
-    { id: 'fp6', name: 'Jordan T.',    skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/44.jpg',   minutesAgo: 52 },
-    { id: 'fp7', name: 'Lil Kev',      skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/men/7.jpg',    minutesAgo: 58 },
-    { id: 'fp8', name: 'Keisha L.',    skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', minutesAgo: 67 },
-    { id: 'fp9', name: 'O.G. Andre',   skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   minutesAgo: 75 },
-    { id: 'fp10', name: 'DeShawn R.',  skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/67.jpg',   minutesAgo: 82 },
+    { id: 'fp1', name: 'Big Ray',      skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   minutesAgo: 8  },
+    { id: 'fp2', name: 'Marcus W.',    skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   minutesAgo: 15 },
+    { id: 'fp3', name: 'Lil TJ',       skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    minutesAgo: 22 },
+    { id: 'fp4', name: 'Aaliyah S.',   skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', minutesAgo: 31 },
+    { id: 'fp5', name: 'Coach D',      skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   minutesAgo: 40 },
+    { id: 'fp6', name: 'Jordan T.',    skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/44.jpg',   minutesAgo: 52 },
+    { id: 'fp7', name: 'Lil Kev',      skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/7.jpg',    minutesAgo: 58 },
+    { id: 'fp8', name: 'Keisha L.',    skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', minutesAgo: 67 },
+    { id: 'fp9', name: 'O.G. Andre',   skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   minutesAgo: 75 },
+    { id: 'fp10', name: 'DeShawn R.',  skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/men/67.jpg',   minutesAgo: 82 },
   ];
 
   const fakeScheduledToday = [
-    { id: 'st1', name: 'Young Buck',   skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/men/10.jpg',   time: '6:00 PM' },
-    { id: 'st2', name: 'Brianna C.',   skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/14.jpg', time: '6:30 PM' },
-    { id: 'st3', name: 'Mr. Williams', skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/80.jpg',   time: '7:00 PM' },
-    { id: 'st4', name: 'Devon W.',     skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/36.jpg',   time: '7:00 PM' },
-    { id: 'st5', name: 'Simone R.',    skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/women/33.jpg', time: '7:30 PM' },
+    { id: 'st1', name: 'Young Buck',   skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/10.jpg',   time: '6:00 PM' },
+    { id: 'st2', name: 'Brianna C.',   skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/women/14.jpg', time: '6:30 PM' },
+    { id: 'st3', name: 'Mr. Williams', skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/80.jpg',   time: '7:00 PM' },
+    { id: 'st4', name: 'Devon W.',     skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/men/36.jpg',   time: '7:00 PM' },
+    { id: 'st5', name: 'Simone R.',    skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/women/33.jpg', time: '7:30 PM' },
   ];
 
   const fakeScheduledTomorrow = [
-    { id: 'sm1', name: 'Isaiah T.',    skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/17.jpg',   time: '5:30 PM' },
-    { id: 'sm2', name: 'Kayla N.',     skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/52.jpg', time: '6:00 PM' },
-    { id: 'sm3', name: 'Lil Chris',    skillLevel: 'Beginner',     avatarUrl: 'https://randomuser.me/api/portraits/men/8.jpg',    time: '6:00 PM' },
-    { id: 'sm4', name: 'Trina D.',     skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/women/61.jpg', time: '6:30 PM' },
-    { id: 'sm5', name: 'Pop',          skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',   time: '6:30 PM' },
-    { id: 'sm6', name: 'Nadia P.',     skillLevel: 'Intermediate', avatarUrl: 'https://randomuser.me/api/portraits/women/19.jpg', time: '7:00 PM' },
-    { id: 'sm7', name: 'Elijah F.',    skillLevel: 'Advanced',     avatarUrl: 'https://randomuser.me/api/portraits/men/29.jpg',   time: '7:00 PM' },
-    { id: 'sm8', name: 'Rasheed V.',   skillLevel: 'Pro',          avatarUrl: 'https://randomuser.me/api/portraits/men/48.jpg',   time: '7:30 PM' },
+    { id: 'sm1', name: 'Isaiah T.',    skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/17.jpg',   time: '5:30 PM' },
+    { id: 'sm2', name: 'Kayla N.',     skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/52.jpg', time: '6:00 PM' },
+    { id: 'sm3', name: 'Lil Chris',    skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/8.jpg',    time: '6:00 PM' },
+    { id: 'sm4', name: 'Trina D.',     skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/women/61.jpg', time: '6:30 PM' },
+    { id: 'sm5', name: 'Pop',          skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',   time: '6:30 PM' },
+    { id: 'sm6', name: 'Nadia P.',     skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/19.jpg', time: '7:00 PM' },
+    { id: 'sm7', name: 'Elijah F.',    skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/men/29.jpg',   time: '7:00 PM' },
+    { id: 'sm8', name: 'Rasheed V.',   skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/48.jpg',   time: '7:30 PM' },
   ];
 
   // Start or stop the pulse animation based on whether anyone is currently checked in.
@@ -229,7 +250,41 @@ export default function RunDetailsScreen({ route, navigation }) {
 
         {/* Gym name, address, directions button, and type badge */}
         <View style={styles.header}>
-          <Text style={styles.gymName}>{gym?.name || gymName}</Text>
+          {/* Gym name row — name on the left, Follow button on the right */}
+          <View style={styles.gymNameRow}>
+            <Text style={[styles.gymName, { flex: 1 }]}>{gym?.name || gymName}</Text>
+            <TouchableOpacity
+              style={[
+                styles.followButton,
+                isFollowed && styles.followButtonActive,
+              ]}
+              onPress={toggleFollow}
+              disabled={followLoading}
+            >
+              <Ionicons
+                name={isFollowed ? 'heart' : 'heart-outline'}
+                size={16}
+                color={isFollowed ? '#EF4444' : colors.textSecondary}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.followButtonText,
+                  isFollowed && styles.followButtonTextActive,
+                ]}
+              >
+                {isFollowed ? 'Following' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {/* Access type badge — shown immediately below the name */}
+          {gym?.accessType && (
+            <View style={[styles.accessBadge, { backgroundColor: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
+              <Text style={styles.accessBadgeText}>
+                {gym.accessType === 'free' ? 'Free' : 'Membership / Day Pass'}
+              </Text>
+            </View>
+          )}
           <Text style={styles.gymAddress}>{gym?.address}</Text>
           {gym?.location && (
             <TouchableOpacity
@@ -374,54 +429,16 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Reviews Preview — aggregate rating + first 2 reviews */}
+        {/* Reviews — empty state until real reviews are available */}
         <View style={styles.section}>
           <View style={styles.reviewsHeaderRow}>
             <Text style={styles.sectionTitle}>Player Reviews</Text>
-            <TouchableOpacity onPress={() => navigation.navigate('GymReviews', { gymId, gymName: gym?.name || gymName, reviews: fakeReviews })}>
-              <Text style={styles.seeAllLink}>See All ({fakeReviews.length})</Text>
-            </TouchableOpacity>
           </View>
-
-          {/* Aggregate rating summary */}
-          <View style={styles.ratingSummary}>
-            <Text style={styles.ratingBig}>4.7</Text>
-            <View style={styles.ratingDetails}>
-              <View style={styles.starsRow}>
-                {[1,2,3,4,5].map(i => (
-                  <Ionicons key={i} name={i <= 4 ? 'star' : 'star-half'} size={16} color="#F97316" />
-                ))}
-              </View>
-              <Text style={styles.ratingCount}>Based on {fakeReviews.length} reviews</Text>
-            </View>
+          <View style={styles.reviewsEmpty}>
+            <Ionicons name="star-outline" size={28} color={colors.textMuted} />
+            <Text style={styles.reviewsEmptyText}>No reviews yet</Text>
+            <Text style={styles.reviewsEmptySubtext}>Be the first to leave a review</Text>
           </View>
-
-          {/* Preview first 2 reviews; full list available via GymReviewsScreen */}
-          {fakeReviews.slice(0, 2).map((review) => (
-            <View key={review.id} style={styles.reviewCard}>
-              <View style={styles.reviewHeader}>
-                <Image source={{ uri: review.avatarUrl }} style={styles.reviewAvatar} />
-                <View style={styles.reviewMeta}>
-                  <Text style={styles.reviewerName}>{review.name}</Text>
-                  <View style={styles.reviewStarsRow}>
-                    {[1,2,3,4,5].map(i => (
-                      <Ionicons key={i} name={i <= review.rating ? 'star' : 'star-outline'} size={12} color="#F97316" />
-                    ))}
-                    <Text style={styles.reviewDate}> · {review.date}</Text>
-                  </View>
-                </View>
-              </View>
-              <Text style={styles.reviewComment}>{review.comment}</Text>
-            </View>
-          ))}
-
-          <TouchableOpacity
-            style={styles.seeAllButton}
-            onPress={() => navigation.navigate('GymReviews', { gymId, gymName: gym?.name || gymName, reviews: fakeReviews })}
-          >
-            <Text style={styles.seeAllButtonText}>See All {fakeReviews.length} Reviews</Text>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-          </TouchableOpacity>
         </View>
 
         {/* Primary CTA — Check In Here */}
@@ -495,12 +512,52 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
+  gymNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
   gymName: {
     fontSize: FONT_SIZES.title,
     fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
-    marginBottom: SPACING.xs,
     letterSpacing: 0.5,
+  },
+  followButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginLeft: SPACING.sm,
+    flexShrink: 0,
+  },
+  followButtonActive: {
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  followButtonText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textSecondary,
+  },
+  followButtonTextActive: {
+    color: '#EF4444',
+  },
+  accessBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+    marginBottom: SPACING.sm,
+  },
+  accessBadgeText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   gymAddress: {
     fontSize: FONT_SIZES.body,
@@ -671,10 +728,25 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     alignItems: 'center',
     marginBottom: SPACING.md,
   },
+  // Styles below are ready for when real reviews are wired in
   seeAllLink: {
     fontSize: FONT_SIZES.small,
     color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  reviewsEmpty: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+    gap: SPACING.xs,
+  },
+  reviewsEmptyText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textSecondary,
+  },
+  reviewsEmptySubtext: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
   },
   ratingSummary: {
     flexDirection: 'row',

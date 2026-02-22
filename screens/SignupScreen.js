@@ -34,8 +34,8 @@ import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { setDoc, doc } from 'firebase/firestore';
 
-/** The four skill tiers a user can choose from during registration. */
-const SKILL_OPTIONS = ['Beginner', 'Intermediate', 'Advanced', 'Pro'];
+/** The three play-style options a user can choose from during registration. */
+const SKILL_OPTIONS = ['Casual', 'Competitive', 'Either'];
 
 /**
  * SignupScreen — Account creation form.
@@ -89,7 +89,7 @@ export default function SignupScreen({ navigation }) {
       });
 
       alert('Signup successful!');
-      navigation.navigate('Main');
+      navigation.navigate('CityGate');
     } catch (error) {
       console.error('Signup error:', error);
       alert(error.message);

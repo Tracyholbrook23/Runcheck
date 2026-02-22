@@ -52,7 +52,7 @@ beforeEach(() => {
     data: () => ({
       name: 'Tracy',
       age: '25',
-      skillLevel: 'Advanced',
+      skillLevel: 'Competitive',
       email: 'player@test.com',
     }),
   });
@@ -76,7 +76,7 @@ describe('ProfileScreen', () => {
     );
 
     await waitFor(() => {
-      expect(getByText('Advanced')).toBeTruthy();
+      expect(getByText('Competitive')).toBeTruthy();
     });
   });
 

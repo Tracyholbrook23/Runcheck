@@ -8,6 +8,7 @@
  *     ├── Splash    → Animated intro screen
  *     ├── Login     → Email/password sign-in
  *     ├── Signup    → New account registration
+ *     ├── CityGate  → One-time city availability gate (shown after signup)
  *     └── Main      → MainTabs (authenticated shell)
  *
  *   MainTabs (bottom tab navigator):
@@ -39,6 +40,7 @@ import ProfileScreen from './screens/ProfileScreen';
 import { ThemeProvider, useTheme } from './contexts';
 import SplashScreen from './screens/SplashScreen';
 import GymReviewsScreen from './screens/GymReviewsScreen';
+import CityGateScreen from './screens/CityGateScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -205,6 +207,7 @@ function AppContent() {
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
+        <Stack.Screen name="CityGate" component={CityGateScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>

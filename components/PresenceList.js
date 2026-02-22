@@ -86,7 +86,7 @@ export const PresenceList = ({
         const name = item.userName || 'Anonymous';
         const initial = name.charAt(0).toUpperCase();
         const skillLevel = item.skillLevel;
-        const skillColors = SKILL_LEVEL_COLORS[skillLevel] || SKILL_LEVEL_COLORS.Beginner;
+        const skillColors = SKILL_LEVEL_COLORS[skillLevel] || SKILL_LEVEL_COLORS.Casual;
 
         // Determine time info based on type
         const timeInfo =

@@ -31,9 +31,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { useGyms } from '../hooks';
+import { useGyms, useProfile } from '../hooks';
 import { Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
+import { auth, db } from '../config/firebase';
+import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 
 /**
  * ViewRunsScreen — Gym discovery list screen.
@@ -45,9 +47,29 @@ import { openDirections } from '../utils/openMapsDirections';
  */
 export default function ViewRunsScreen({ navigation }) {
   const { gyms, loading, ensureGymsExist } = useGyms();
+  const { followedGyms } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  /**
+   * toggleFollow — Adds or removes a gym from the user's `followedGyms` array
+   * in Firestore using arrayUnion / arrayRemove.
+   *
+   * @param {string} gymId — Firestore ID of the gym to follow or unfollow.
+   * @param {boolean} isFollowed — Current follow state (true = currently following).
+   */
+  const toggleFollow = async (gymId, isFollowed) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        followedGyms: isFollowed ? arrayRemove(gymId) : arrayUnion(gymId),
+      });
+    } catch (err) {
+      console.error('toggleFollow error:', err);
+    }
+  };
 
   /**
    * onRefresh — Pull-to-refresh handler.
@@ -125,6 +147,8 @@ export default function ViewRunsScreen({ navigation }) {
               const count = gym.currentPresenceCount || 0;
               const activity = getActivityLevel(count);
 
+              const isFollowed = followedGyms.includes(gym.id);
+
               return (
                 <TouchableOpacity
                   key={gym.id}
@@ -153,12 +177,35 @@ export default function ViewRunsScreen({ navigation }) {
 
                   <View style={styles.gymInfo}>
                     <View style={styles.gymRow}>
-                      <Text style={styles.gymName} numberOfLines={2}>{gym.name}</Text>
+                      <Text style={[styles.gymName, { flex: 1 }]} numberOfLines={2}>{gym.name}</Text>
                       {/* Activity badge — color dynamically set by getActivityLevel */}
                       <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
                         <Text style={styles.activityText}>{activity.label}</Text>
                       </View>
+                      {/* Heart icon — follow / unfollow toggle */}
+                      <TouchableOpacity
+                        style={styles.heartButton}
+                        onPress={() => toggleFollow(gym.id, isFollowed)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={isFollowed ? 'heart' : 'heart-outline'}
+                          size={18}
+                          color={isFollowed ? '#EF4444' : colors.textMuted}
+                        />
+                      </TouchableOpacity>
                     </View>
+
+                    {/* Access type badge — Free (green) or Membership / Day Pass (amber) */}
+                    {gym.accessType && (
+                      <View style={styles.accessBadgeRow}>
+                        <View style={[styles.accessBadge, { backgroundColor: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
+                          <Text style={styles.accessBadgeText}>
+                            {gym.accessType === 'free' ? 'Free' : 'Membership / Day Pass'}
+                          </Text>
+                        </View>
+                      </View>
+                    )}
 
                     <View style={styles.gymRow}>
                       <Text style={styles.runType}>
@@ -295,12 +342,30 @@ loadingText: {
   letterSpacing: 0.3,
   flexShrink: 1,
 },
+  heartButton: {
+    marginLeft: SPACING.xs,
+  },
   activityBadge: {
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     borderRadius: RADIUS.full,
   },
   activityText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  accessBadgeRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  accessBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: RADIUS.full,
+    alignSelf: 'flex-start',
+  },
+  accessBadgeText: {
     color: '#fff',
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.semibold,

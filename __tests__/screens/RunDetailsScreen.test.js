@@ -25,13 +25,13 @@ const mockPresences = [
   {
     id: 'presence-1',
     userName: 'John',
-    skillLevel: 'Advanced',
+    skillLevel: 'Competitive',
     checkedInAt: { toDate: () => new Date(Date.now() - 30 * 60000) }, // 30 mins ago
   },
   {
     id: 'presence-2',
     userName: 'Jane',
-    skillLevel: 'Beginner',
+    skillLevel: 'Casual',
     checkedInAt: { toDate: () => new Date(Date.now() - 5 * 60000) }, // 5 mins ago
   },
 ];
@@ -172,8 +172,8 @@ describe('RunDetailsScreen', () => {
       <RunDetailsScreen route={mockRoute} navigation={mockNavigation} />
     );
 
-    expect(getByText('Advanced')).toBeTruthy();
-    expect(getByText('Beginner')).toBeTruthy();
+    expect(getByText('Competitive')).toBeTruthy();
+    expect(getByText('Casual')).toBeTruthy();
   });
 
   // --- Live Timer Tests ---

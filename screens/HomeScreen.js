@@ -26,7 +26,7 @@
  * every state change.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -45,6 +45,8 @@ import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants
 import { useTheme } from '../contexts';
 import { usePresence, useGyms } from '../hooks';
 import { Logo } from '../components';
+import { db } from '../config/firebase';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
 
 /**
  * HomeScreen — Main dashboard component.
@@ -70,6 +72,50 @@ const HomeScreen = ({ navigation }) => {
   } = usePresence();
 
   const { gyms } = useGyms();
+
+  const [activityFeed, setActivityFeed] = useState([]);
+
+  // Subscribe to the 10 most recent activity documents in real time
+  useEffect(() => {
+    const q = query(
+      collection(db, 'activity'),
+      orderBy('createdAt', 'desc'),
+      limit(10)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        setActivityFeed(items);
+      },
+      (error) => {
+        console.error('Error subscribing to activity feed:', error);
+        setActivityFeed([]);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  /**
+   * getRelativeTime — Converts a Firestore Timestamp (or Date) to a short
+   * human-readable relative string like "3m ago" or "2h ago".
+   *
+   * @param {import('firebase/firestore').Timestamp|Date|null} timestamp
+   * @returns {string}
+   */
+  const getRelativeTime = (timestamp) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const diffMs = Date.now() - date.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${Math.floor(diffHours / 24)}d ago`;
+  };
 
   /**
    * handleCheckOut — Prompts the user for confirmation then calls `checkOut()`.
@@ -112,11 +158,8 @@ const HomeScreen = ({ navigation }) => {
     navigation.getParent()?.navigate(tabName);
   };
 
-  const fakeActivity = [
-    { id: 'a1', name: 'Big Ray',    action: 'checked in at',      gym: 'Pan American Recreation Center', time: '3m ago',  avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg'   },
-    { id: 'a2', name: 'Aaliyah S.', action: 'planned a visit to', gym: "Gold's Gym Hester's Crossing",   time: '7m ago',  avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg' },
-    { id: 'a3', name: 'Coach D',    action: 'checked in at',      gym: 'Life Time Austin North',         time: '12m ago', avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg'   },
-  ];
+  // Sum of currentPresenceCount across all gyms for the live badge
+  const totalActive = gyms.reduce((sum, g) => sum + (g.currentPresenceCount || 0), 0);
 
   return (
     <ImageBackground
@@ -230,10 +273,12 @@ const HomeScreen = ({ navigation }) => {
           {/* Hot Courts — horizontal scroll of nearby active gyms */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Hot Courts Near You</Text>
-            <View style={styles.liveActivity}>
-              <View style={styles.liveDot} />
-              <Text style={styles.liveText}>36 active</Text>
-            </View>
+            {totalActive > 0 && (
+              <View style={styles.liveActivity}>
+                <View style={styles.liveDot} />
+                <Text style={styles.liveText}>{totalActive} active</Text>
+              </View>
+            )}
           </View>
           <ScrollView
             horizontal
@@ -279,19 +324,33 @@ const HomeScreen = ({ navigation }) => {
           {/* Recent Activity feed */}
           <Text style={styles.sectionTitleStandalone}>Recent Activity</Text>
           <View style={styles.activityFeed}>
-            {fakeActivity.map((item) => (
-              <BlurView key={item.id} intensity={40} tint="dark" style={styles.activityRow}>
-                <Image source={{ uri: item.avatarUrl }} style={styles.activityAvatar} />
+            {activityFeed.length === 0 ? (
+              <BlurView intensity={40} tint="dark" style={styles.activityRow}>
                 <View style={styles.activityInfo}>
-                  <Text style={styles.activityText} numberOfLines={1}>
-                    <Text style={styles.activityName}>{item.name}</Text>
-                    <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
-                    <Text style={styles.activityGym}>{item.gym}</Text>
-                  </Text>
-                  <Text style={styles.activityTime}>{item.time}</Text>
+                  <Text style={styles.activityTime}>No recent activity yet</Text>
                 </View>
               </BlurView>
-            ))}
+            ) : (
+              activityFeed.map((item) => (
+                <BlurView key={item.id} intensity={40} tint="dark" style={styles.activityRow}>
+                  {item.userAvatar ? (
+                    <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
+                  ) : (
+                    <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
+                      <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+                    </View>
+                  )}
+                  <View style={styles.activityInfo}>
+                    <Text style={styles.activityText} numberOfLines={1}>
+                      <Text style={styles.activityName}>{item.userName}</Text>
+                      <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
+                      <Text style={styles.activityGym}>{item.gymName}</Text>
+                    </Text>
+                    <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
+                  </View>
+                </BlurView>
+              ))
+            )}
           </View>
 
           {/* Footer tagline */}
@@ -597,6 +656,11 @@ actionCard: {
     width: 38,
     height: 38,
     borderRadius: 19,
+  },
+  activityAvatarPlaceholder: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   activityInfo: {
     flex: 1,

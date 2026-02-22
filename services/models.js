@@ -14,7 +14,7 @@
  *   email: string,
  *   name: string,
  *   age: string,
- *   skillLevel: string,              // "Beginner" | "Intermediate" | "Advanced" | "Pro"
+ *   skillLevel: string,              // "Casual" | "Competitive" | "Either"
  *
  *   // Reliability tracking
  *   reliability: {
@@ -98,7 +98,7 @@
  *   },
  *   distanceFromGym: number,         // Meters at check-in time
  *
- *   skillLevel: string,              // "Beginner" | "Intermediate" | "Advanced" | "Pro"
+ *   skillLevel: string,              // "Casual" | "Competitive" | "Either"
  *
  *   checkedInAt: Timestamp,
  *   expiresAt: Timestamp,
@@ -150,10 +150,9 @@
  */
 
 export const SKILL_LEVELS = {
-  BEGINNER: 'Beginner',
-  INTERMEDIATE: 'Intermediate',
-  ADVANCED: 'Advanced',
-  PRO: 'Pro',
+  CASUAL: 'Casual',
+  COMPETITIVE: 'Competitive',
+  EITHER: 'Either',
 };
 
 export const GYM_TYPE = {
