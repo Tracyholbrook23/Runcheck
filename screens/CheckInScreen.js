@@ -141,14 +141,6 @@ export default function CheckInScreen({ navigation }) {
     }
   };
 
-  // Placeholder activity data sorted by current player count descending
-  // so the busiest courts appear first in the horizontal scroll
-  const fakeActivityGyms = [
-    { id: 'fa1', name: 'Pan American Rec Center', currentPresenceCount: 10, plannedToday: 5 },
-    { id: 'fa2', name: 'Life Time Austin North', currentPresenceCount: 9, plannedToday: 7 },
-    { id: 'fa3', name: "Gold's Gym Hester's Crossing", currentPresenceCount: 12, plannedToday: 3 },
-    { id: 'fa4', name: 'Clay Madsen Rec Center', currentPresenceCount: 5, plannedToday: 4 },
-  ].sort((a, b) => b.currentPresenceCount - a.currentPresenceCount);
 
   // Combine presence and gyms loading states for a single loading flag
   const loading = presenceLoading || gymsLoading;
@@ -257,7 +249,7 @@ export default function CheckInScreen({ navigation }) {
               style={styles.nearbyScroll}
               contentContainerStyle={styles.nearbyScrollContent}
             >
-              {fakeActivityGyms.map((gym) => (
+              {gyms.sort((a, b) => (b.currentPresenceCount || 0) - (a.currentPresenceCount || 0)).map((gym) => (
                 <View key={gym.id} style={styles.nearbyChip}>
                   <View style={styles.nearbyDot} />
                   <View>

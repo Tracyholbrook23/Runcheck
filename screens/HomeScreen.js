@@ -43,7 +43,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { usePresence } from '../hooks';
+import { usePresence, useGyms } from '../hooks';
 import { Logo } from '../components';
 
 /**
@@ -68,6 +68,8 @@ const HomeScreen = ({ navigation }) => {
     checkingOut,
     getTimeRemaining,
   } = usePresence();
+
+  const { gyms } = useGyms();
 
   /**
    * handleCheckOut — Prompts the user for confirmation then calls `checkOut()`.
@@ -109,16 +111,6 @@ const HomeScreen = ({ navigation }) => {
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
-
-  // --- Placeholder data ---
-  // These will be replaced with real Firestore data in a future iteration.
-  // Kept as static arrays rather than state to avoid unnecessary re-renders.
-  const fakeHotCourts = [
-    { id: 'fake1', name: 'Pan American Recreation Center', players: 10, type: 'Indoor', plannedToday: 5,  plannedTomorrow: 8,  imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s' },
-    { id: 'fake2', name: 'Life Time Austin North',         players: 9,  type: 'Indoor', plannedToday: 7,  plannedTomorrow: 12, imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390' },
-    { id: 'fake3', name: "Gold's Gym Hester's Crossing",   players: 12, type: 'Indoor', plannedToday: 3,  plannedTomorrow: 6,  imageUrl: 'https://res.cloudinary.com/ggus-dev/image/private/s--HzKSnHnn--/c_auto%2Cg_center%2Cw_1200%2Ch_800/v1/25fcf1e9/austin-hesters-crossing-basketball.webp?_a=BAAAV6DQ' },
-    { id: 'fake4', name: 'Clay Madsen Recreation Center',  players: 5,  type: 'Indoor', plannedToday: 4,  plannedTomorrow: 9,  imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg' },
-  ];
 
   const fakeActivity = [
     { id: 'a1', name: 'Big Ray',    action: 'checked in at',      gym: 'Pan American Recreation Center', time: '3m ago',  avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg'   },
@@ -249,21 +241,21 @@ const HomeScreen = ({ navigation }) => {
             style={styles.courtScroll}
             contentContainerStyle={styles.courtScrollContent}
           >
-            {fakeHotCourts.map((court) => (
+            {gyms.slice(0, 4).map((gym) => (
               <TouchableOpacity
-                key={court.id}
+                key={gym.id}
                 activeOpacity={0.8}
                 onPress={() =>
                   // Navigate into the Runs tab's nested RunDetails screen, passing gym data
                   navigation.getParent()?.navigate('Runs', {
                     screen: 'RunDetails',
                     params: {
-                      gymId: court.id,
-                      gymName: court.name,
-                      players: court.players,
-                      imageUrl: court.imageUrl,
-                      plannedToday: court.plannedToday,
-                      plannedTomorrow: court.plannedTomorrow,
+                      gymId: gym.id,
+                      gymName: gym.name,
+                      players: gym.currentPresenceCount || 0,
+                      imageUrl: gym.imageUrl,
+                      plannedToday: gym.plannedToday || 0,
+                      plannedTomorrow: gym.plannedTomorrow || 0,
                     },
                   })
                 }
@@ -271,13 +263,13 @@ const HomeScreen = ({ navigation }) => {
                 <BlurView intensity={60} tint="dark" style={styles.courtCard}>
                   <View style={styles.courtCardTop}>
                     <View style={styles.courtLiveDot} />
-                    <Text style={styles.courtPlayerCount}>{court.players} playing</Text>
+                    <Text style={styles.courtPlayerCount}>{gym.currentPresenceCount || 0} playing</Text>
                   </View>
-                  <Text style={styles.courtName}>{court.name}</Text>
+                  <Text style={styles.courtName}>{gym.name}</Text>
                   <View style={styles.courtMeta}>
-                    <Text style={styles.courtType}>{court.type}</Text>
+                    <Text style={styles.courtType}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
                     <Text style={styles.courtDot}> · </Text>
-                    <Text style={styles.courtDistance}>+{court.plannedToday} today</Text>
+                    <Text style={styles.courtDistance}>+{gym.plannedToday || 0} today</Text>
                   </View>
                 </BlurView>
               </TouchableOpacity>

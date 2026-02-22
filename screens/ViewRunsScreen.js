@@ -80,50 +80,6 @@ export default function ViewRunsScreen({ navigation }) {
     return { label: 'Busy', color: colors.activityBusy };
   };
 
-  // Placeholder gym data — will be replaced by live Firestore records once
-  // the real-time integration with the Runs tab is complete.
-  const fakeGyms = [
-  {
-    id: 'fake1',
-    name: 'Pan American Recreation Center',
-    type: 'indoor',
-    address: '2100 E 3rd St, Austin, TX 78702',
-    currentPresenceCount: 10,
-    plannedToday: 5,
-    plannedTomorrow: 8,
-    imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s',
-  },
-  {
-    id: 'fake2',
-    name: "Life Time Austin North",
-    type: 'indoor',
-    address: '13725 Ranch Rd 620 N, Austin, TX 78717',
-    currentPresenceCount: 9,
-    plannedToday: 7,
-    plannedTomorrow: 12,
-    imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390',
-  },
-  {
-    id: 'fake3',
-    name: "Gold's Gym Hester's Crossing",
-    type: 'indoor',
-    address: '2400 S I-35 Frontage Rd, Round Rock, TX 78681',
-    currentPresenceCount: 12,
-    plannedToday: 3,
-    plannedTomorrow: 6,
-    imageUrl: 'https://res.cloudinary.com/ggus-dev/image/private/s--HzKSnHnn--/c_auto%2Cg_center%2Cw_1200%2Ch_800/v1/25fcf1e9/austin-hesters-crossing-basketball.webp?_a=BAAAV6DQ',
-  },
-  {
-    id: 'fake4',
-    name: 'Clay Madsen Recreation Center',
-    type: 'indoor',
-    address: '1600 Gattis School Rd, Round Rock, TX 78664',
-    currentPresenceCount: 5,
-    plannedToday: 4,
-    plannedTomorrow: 9,
-    imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg',
-  },
-];
 
   if (loading) {
     return (
@@ -157,7 +113,7 @@ export default function ViewRunsScreen({ navigation }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {fakeGyms.length === 0 ? (
+          {gyms.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={styles.emptyText}>No gyms available</Text>
               <Text style={styles.emptySubtext}>
@@ -165,7 +121,7 @@ export default function ViewRunsScreen({ navigation }) {
               </Text>
             </View>
           ) : (
-            fakeGyms.map((gym) => {
+            gyms.map((gym) => {
               const count = gym.currentPresenceCount || 0;
               const activity = getActivityLevel(count);
 

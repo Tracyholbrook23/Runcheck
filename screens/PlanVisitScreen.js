@@ -106,37 +106,6 @@ const getTimeSlotsForDay = (dayObj) => {
   return slots;
 };
 
-// Placeholder gym data — mirrors the list used in ViewRunsScreen and CheckInScreen
-const fakeGyms = [
-  {
-    id: 'fake1',
-    name: 'Pan American Recreation Center',
-    type: 'indoor',
-    address: '2100 E 3rd St, Austin, TX 78702',
-    currentPresenceCount: 10,
-  },
-  {
-    id: 'fake2',
-    name: 'Life Time Austin North',
-    type: 'indoor',
-    address: '13725 Ranch Rd 620 N, Austin, TX 78717',
-    currentPresenceCount: 9,
-  },
-  {
-    id: 'fake3',
-    name: "Gold's Gym Hester's Crossing",
-    type: 'indoor',
-    address: '2400 S I-35 Frontage Rd, Round Rock, TX 78681',
-    currentPresenceCount: 12,
-  },
-  {
-    id: 'fake4',
-    name: 'Clay Madsen Recreation Center',
-    type: 'indoor',
-    address: '1600 Gattis School Rd, Round Rock, TX 78664',
-    currentPresenceCount: 5,
-  },
-];
 
 /**
  * PlanVisitScreen — Three-step gym scheduling wizard.
@@ -306,7 +275,7 @@ export default function PlanVisitScreen({ navigation }) {
             </View>
           </View>
 
-          {fakeGyms.map((gym) => (
+          {gyms.map((gym) => (
             <TouchableOpacity
               key={gym.id}
               style={[

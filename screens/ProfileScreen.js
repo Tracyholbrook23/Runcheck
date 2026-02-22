@@ -44,7 +44,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { useAuth, useReliability, useSchedules, usePresence } from '../hooks';
+import { useAuth, useReliability, useSchedules, usePresence, useGyms } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
@@ -67,6 +67,7 @@ export default function ProfileScreen({ navigation }) {
   const { score, tier, stats, loading: reliabilityLoading } = useReliability();
   const { count: upcomingCount } = useSchedules();
   const { isCheckedIn, presence } = usePresence();
+  const { gyms } = useGyms();
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [photoUri, setPhotoUri] = useState(null);
@@ -162,13 +163,6 @@ export default function ProfileScreen({ navigation }) {
   const displayNoShows      = displayScore >= 95 ? 0  : 2;
   const displayCancelled    = displayScore >= 95 ? 0  : 2;
   const displayAttendance   = displayScore >= 95 ? '100%' : '83%';
-
-  // Placeholder court and crew data — to be replaced with Firestore queries
-  const fakeMyCourts = [
-    { id: 'fake1', name: 'Pan American Recreation Center', count: 10, type: 'Indoor' },
-    { id: 'fake3', name: "Gold's Gym Hester's Crossing",   count: 12, type: 'Indoor' },
-    { id: 'fake4', name: 'Clay Madsen Recreation Center',  count: 5,  type: 'Indoor' },
-  ];
 
   const fakeFriends = [
     { id: 'f1', name: 'Big Ray',   avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   active: true },
@@ -295,26 +289,26 @@ export default function ProfileScreen({ navigation }) {
         {/* ── My Courts ─────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>My Courts</Text>
-          {fakeMyCourts.map((court, index) => (
+          {gyms.slice(0, 3).map((gym, index) => (
             <View
-              key={court.id}
+              key={gym.id}
               style={[
                 styles.courtRow,
                 // Bottom border between items, but not after the last one
-                index < fakeMyCourts.length - 1 && styles.courtRowBorder,
+                index < gyms.slice(0, 3).length - 1 && styles.courtRowBorder,
               ]}
             >
               <View style={styles.courtIcon}>
                 <Ionicons name="basketball-outline" size={18} color={colors.primary} />
               </View>
               <View style={styles.courtInfo}>
-                <Text style={styles.courtName} numberOfLines={1}>{court.name}</Text>
-                <Text style={styles.courtMeta}>{court.type}</Text>
+                <Text style={styles.courtName} numberOfLines={1}>{gym.name}</Text>
+                <Text style={styles.courtMeta}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
               </View>
               {/* Live player count badge with a green dot indicator */}
               <View style={styles.courtBadge}>
                 <View style={styles.courtDot} />
-                <Text style={styles.courtCount}>{court.count}</Text>
+                <Text style={styles.courtCount}>{gym.currentPresenceCount || 0}</Text>
               </View>
             </View>
           ))}
