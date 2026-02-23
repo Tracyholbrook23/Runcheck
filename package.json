@@ -23,6 +23,7 @@
     "expo-dev-client": "~6.0.20",
     "expo-image-picker": "~17.0.10",
     "expo-location": "~19.0.8",
+    "expo-notifications": "~0.32.16",
     "expo-status-bar": "~2.2.3",
     "firebase": "^12.1.0",
     "geofire-common": "^6.0.0",
