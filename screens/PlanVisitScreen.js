@@ -44,7 +44,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
-import { addDoc, collection, serverTimestamp, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { addDoc, updateDoc, collection, serverTimestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 /**
  * getAvailableDays — Builds a 7-day date array starting from today.
@@ -169,19 +169,34 @@ export default function PlanVisitScreen({ navigation }) {
   const handleCreateSchedule = async () => {
     if (!selectedGym || !selectedSlot) return;
     try {
-      await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
+      // createSchedule returns { id, ...scheduleData } — capture it so we can
+      // store the activity doc ID back on the schedule for precise cleanup later.
+      const newSchedule = await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
 
-      // Write activity feed event — fire and forget so it never blocks the UI
+      // Await the addDoc so we get the DocumentReference and can read its ID.
       const uid = auth.currentUser?.uid;
-      addDoc(collection(db, 'activity'), {
-        userId: uid,
-        userName: profile?.name || 'Anonymous',
-        userAvatar: profile?.photoURL || null,
-        action: 'planned a visit to',
-        gymId: selectedGym.id,
-        gymName: selectedGym.name,
-        createdAt: serverTimestamp(),
-      }).catch((err) => console.error('Activity write error (plan):', err));
+      try {
+        const activityRef = await addDoc(collection(db, 'activity'), {
+          userId: uid,
+          userName: profile?.name || 'Anonymous',
+          userAvatar: profile?.photoURL || null,
+          action: 'planned a visit to',
+          gymId: selectedGym.id,
+          gymName: selectedGym.name,
+          createdAt: serverTimestamp(),
+        });
+
+        // Backlink: store the activity doc ID on the schedule document so that
+        // handleCancelSchedule can target the exact activity record to delete.
+        if (newSchedule?.id) {
+          updateDoc(doc(db, 'schedules', newSchedule.id), {
+            activityId: activityRef.id,
+          }).catch((err) => console.error('activityId backlink error:', err));
+        }
+      } catch (err) {
+        // Activity write failure is non-fatal — the schedule itself succeeded.
+        console.error('Activity write error (plan):', err);
+      }
 
       const dayDesc = selectedDay?.label === 'Today' ? 'today' : `on ${selectedDay?.label}, ${selectedDay?.dateStr}`;
 
@@ -220,21 +235,30 @@ export default function PlanVisitScreen({ navigation }) {
             try {
               await cancelSchedule(schedule.id);
 
-              // Remove the corresponding activity feed event — fire and forget
+              // Remove the corresponding activity feed event — fire and forget.
+              // Fast path: if the schedule doc has an activityId we delete that
+              // exact document. Fallback: query-based delete limited to 1 result
+              // so only the most recent matching event is removed.
               const uid = auth.currentUser?.uid;
               if (uid) {
-                getDocs(
-                  query(
-                    collection(db, 'activity'),
-                    where('userId',  '==', uid),
-                    where('gymId',   '==', schedule.gymId),
-                    where('action',  '==', 'planned a visit to')
+                if (schedule.activityId) {
+                  deleteDoc(doc(db, 'activity', schedule.activityId))
+                    .catch((err) => console.error('Activity cleanup error (cancel plan):', err));
+                } else {
+                  getDocs(
+                    query(
+                      collection(db, 'activity'),
+                      where('userId', '==', uid),
+                      where('gymId',  '==', schedule.gymId),
+                      where('action', '==', 'planned a visit to'),
+                      limit(1)
+                    )
                   )
-                )
-                  .then((snap) =>
-                    Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id))))
-                  )
-                  .catch((err) => console.error('Activity cleanup error (cancel plan):', err));
+                    .then((snap) =>
+                      Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id))))
+                    )
+                    .catch((err) => console.error('Activity cleanup error (cancel plan):', err));
+                }
               }
             } catch (error) {
               Alert.alert('Error', error.message);
