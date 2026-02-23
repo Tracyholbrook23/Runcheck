@@ -62,14 +62,17 @@ export const getUserReliability = async (odId) => {
 
   const userData = userDoc.data();
 
-  // Return existing reliability or default
-  return userData.reliability || {
-    score: INITIAL_SCORE,
-    totalScheduled: 0,
-    totalAttended: 0,
-    totalNoShow: 0,
-    totalCancelled: 0,
-    lastUpdated: null,
+  // Normalize: if the field is missing entirely use {}, then apply ?? 0 to
+  // every counter so a partially-populated reliability object (e.g. from an
+  // older user document) never surfaces `undefined` to callers.
+  const r = userData.reliability || {};
+  return {
+    score:          r.score          ?? INITIAL_SCORE,
+    totalScheduled: r.totalScheduled ?? 0,
+    totalAttended:  r.totalAttended  ?? 0,
+    totalNoShow:    r.totalNoShow    ?? 0,
+    totalCancelled: r.totalCancelled ?? 0,
+    lastUpdated:    r.lastUpdated    ?? null,
   };
 };
 
@@ -112,12 +115,12 @@ export const updateReliabilityOnAttend = async (odId) => {
   const newScore = Math.min(MAX_SCORE, reliability.score + ATTENDANCE_BONUS);
 
   const updatedReliability = {
-    score: newScore,
-    totalScheduled: reliability.totalScheduled,
-    totalAttended: reliability.totalAttended + 1,
-    totalNoShow: reliability.totalNoShow,
-    totalCancelled: reliability.totalCancelled,
-    lastUpdated: serverTimestamp(),
+    score:          newScore,
+    totalScheduled: reliability.totalScheduled ?? 0,
+    totalAttended:  (reliability.totalAttended  ?? 0) + 1,
+    totalNoShow:    reliability.totalNoShow     ?? 0,
+    totalCancelled: reliability.totalCancelled  ?? 0,
+    lastUpdated:    serverTimestamp(),
   };
 
   await updateDoc(userRef, { reliability: updatedReliability });
@@ -143,12 +146,12 @@ export const updateReliabilityOnNoShow = async (odId) => {
   const newScore = Math.max(MIN_SCORE, reliability.score - NO_SHOW_PENALTY);
 
   const updatedReliability = {
-    score: newScore,
-    totalScheduled: reliability.totalScheduled,
-    totalAttended: reliability.totalAttended,
-    totalNoShow: reliability.totalNoShow + 1,
-    totalCancelled: reliability.totalCancelled,
-    lastUpdated: serverTimestamp(),
+    score:          newScore,
+    totalScheduled: reliability.totalScheduled ?? 0,
+    totalAttended:  reliability.totalAttended  ?? 0,
+    totalNoShow:    (reliability.totalNoShow   ?? 0) + 1,
+    totalCancelled: reliability.totalCancelled ?? 0,
+    lastUpdated:    serverTimestamp(),
   };
 
   await updateDoc(userRef, { reliability: updatedReliability });
@@ -176,12 +179,12 @@ export const updateReliabilityOnCancel = async (odId, isLateCancellation) => {
   const newScore = Math.max(MIN_SCORE, reliability.score - penalty);
 
   const updatedReliability = {
-    score: newScore,
-    totalScheduled: reliability.totalScheduled,
-    totalAttended: reliability.totalAttended,
-    totalNoShow: reliability.totalNoShow,
-    totalCancelled: reliability.totalCancelled + 1,
-    lastUpdated: serverTimestamp(),
+    score:          newScore,
+    totalScheduled: reliability.totalScheduled ?? 0,
+    totalAttended:  reliability.totalAttended  ?? 0,
+    totalNoShow:    reliability.totalNoShow    ?? 0,
+    totalCancelled: (reliability.totalCancelled ?? 0) + 1,
+    lastUpdated:    serverTimestamp(),
   };
 
   await updateDoc(userRef, { reliability: updatedReliability });
@@ -204,8 +207,8 @@ export const incrementScheduledCount = async (odId) => {
   }
 
   await updateDoc(userRef, {
-    'reliability.totalScheduled': reliability.totalScheduled + 1,
-    'reliability.lastUpdated': serverTimestamp(),
+    'reliability.totalScheduled': (reliability.totalScheduled ?? 0) + 1,
+    'reliability.lastUpdated':    serverTimestamp(),
   });
 };
 
