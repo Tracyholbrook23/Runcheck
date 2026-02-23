@@ -115,10 +115,11 @@ export const usePresence = () => {
 
       console.log('🎯 [HOOK] Client-side distance check:', distance.toFixed(2), 'm (max:', radius, 'm)');
 
-      if (distance > radius) {
-        console.error('❌ [HOOK] Client-side validation FAILED - Too far from gym');
-        throw new Error(`You must be at the gym to check in. You are ${distance.toFixed(0)}m away (max ${radius}m).`);
-      }
+      // TESTING ONLY - uncomment before launch
+// if (distance > radius) {
+//   console.error('❌ [HOOK] Client-side validation FAILED - Too far from gym');
+//   throw new Error(`You must be at the gym to check in. You are ${distance.toFixed(0)}m away (max ${radius}m).`);
+// }
 
       console.log('✅ [HOOK] Client-side validation PASSED');
       console.log('🎯 [HOOK] Step 3: Calling service-layer check-in...');

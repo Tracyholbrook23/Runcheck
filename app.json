@@ -16,7 +16,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.runcheck.app"
+      "bundleIdentifier": "com.runcheck.app",
+      "runtimeVersion": "1.0.0"
     },
     "android": {
       "package": "com.runcheck.app",
@@ -29,8 +30,15 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "runtimeVersion": {
+        "policy": "appVersion"
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -42,6 +50,14 @@
           "locationAlwaysAndWhenInUsePermission": "Allow RunCheck to use your location to check in at nearby gyms."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d"
+      }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d"
+    }
   }
 }
