@@ -4,15 +4,25 @@
  * Displays two stacked sections:
  *
  *  1. Leaderboard — Top 20 users ordered by totalPoints (Firestore query).
- *     Each row shows: rank number (trophy for top 3), initials avatar or
- *     photo, display name, rank badge, and point total.
+ *     Each row shows: rank number (trophy icon for top 3), initials avatar or
+ *     photo, display name, rank badge pill, and point total.
  *     The signed-in user's row is highlighted so they can spot themselves.
  *
- *  2. How to Earn Points — A card showing the user's current rank,
- *     a progress bar to the next tier, and the full action → points list.
+ *  2. How to Earn Points — A card showing each action with an Ionicons icon
+ *     inside a colored circle, the action label, and a styled points badge.
+ *
+ *  3. Rank Tiers — A card listing each tier with its colored dot indicator,
+ *     name, and point range.
  *
  * The Firestore query uses onSnapshot for real-time updates so the board
  * stays live without a manual refresh.
+ *
+ * Visual notes:
+ *   • RankBadgePill uses solid colored backgrounds (no emoji), with tier-
+ *     specific effects: shine stripe on Bronze/Silver, opacity-twinkle
+ *     sparkle character on Gold, scale-pulse glow on Platinum.
+ *   • Trophy positions use Ionicons `trophy` colored gold/silver/bronze
+ *     instead of emoji so they render consistently across platforms.
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -39,15 +49,22 @@ import {
   RANKS,
 } from '../utils/badges';
 
-// ─── Trophy labels for top 3 ──────────────────────────────────────────────
-const TROPHY_ICONS = { 1: '🏆', 2: '🥈', 3: '🥉' };
+// ─── Trophy colors for top-3 positions ───────────────────────────────────────
+const TROPHY_COLORS = { 1: '#F59E0B', 2: '#B0B0B0', 3: '#CD7F32' };
 
+// ─── RankBadgePill ────────────────────────────────────────────────────────────
 /**
- * RankBadgePill — Compact inline badge showing tier icon + name.
- * Platinum gets a subtle animated glow.
+ * RankBadgePill — Compact solid-color pill showing the rank name.
+ *
+ * Tier-specific effects:
+ *   Bronze   — Solid #CD7F32 pill, white text, subtle top-highlight shine stripe.
+ *   Silver   — Solid #B0B0B0 pill, dark text, more prominent shine stripe.
+ *   Gold     — Solid #F59E0B pill, white text, animated ✦ sparkle (opacity pulse).
+ *   Platinum — Solid #A78BFA pill, white text, scale-pulse glow shadow animation.
  */
 function RankBadgePill({ rank, small = false }) {
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseAnim   = useRef(new Animated.Value(1)).current;
+  const sparkleAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
     if (rank.name === 'Platinum') {
@@ -60,30 +77,69 @@ function RankBadgePill({ rank, small = false }) {
       loop.start();
       return () => loop.stop();
     }
+
+    if (rank.name === 'Gold') {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(sparkleAnim, { toValue: 1.0, duration: 650, useNativeDriver: true }),
+          Animated.timing(sparkleAnim, { toValue: 0.2, duration: 650, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    }
+
+    // Reset both anims when rank changes away from animated tiers
     pulseAnim.setValue(1);
+    sparkleAnim.setValue(0.3);
   }, [rank.name]);
+
+  // Silver and Platinum have light backgrounds — use dark text for contrast
+  const textColor = rank.name === 'Silver' ? '#2A2A2A' : '#FFFFFF';
+
+  const ph = small ? 7  : 10;
+  const pv = small ? 3  : 5;
+  const fs = small ? FONT_SIZES.xs : FONT_SIZES.small;
 
   return (
     <Animated.View
       style={[
         badgeStyles.pill,
         {
-          backgroundColor: rank.color + '20',
-          borderColor: rank.color + '60',
-          shadowColor: rank.glowColor,
-          shadowRadius: rank.name === 'Platinum' ? 10 : 4,
-          shadowOpacity: rank.name === 'Platinum' ? 0.8 : 0.3,
-          shadowOffset: { width: 0, height: 0 },
-          paddingHorizontal: small ? 6 : 9,
-          paddingVertical: small ? 2 : 4,
+          backgroundColor: rank.color,
+          paddingHorizontal: ph,
+          paddingVertical: pv,
           transform: [{ scale: pulseAnim }],
+        },
+        rank.name === 'Platinum' && {
+          shadowColor:  rank.glowColor,
+          shadowRadius: 12,
+          shadowOpacity: 0.9,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 6,
         },
       ]}
     >
-      <Text style={{ fontSize: small ? 10 : 12 }}>{rank.icon}</Text>
-      <Text style={[badgeStyles.pillText, { color: rank.color, fontSize: small ? FONT_SIZES.xs : FONT_SIZES.small }]}>
+      {/* Highlight stripe — Bronze gets 15% white, Silver gets 28% white */}
+      {(rank.name === 'Bronze' || rank.name === 'Silver') && (
+        <View
+          style={[
+            badgeStyles.shineStripe,
+            { opacity: rank.name === 'Silver' ? 0.28 : 0.15 },
+          ]}
+        />
+      )}
+
+      <Text style={[badgeStyles.pillText, { color: textColor, fontSize: fs }]}>
         {rank.name}
       </Text>
+
+      {/* Animated sparkle character for Gold */}
+      {rank.name === 'Gold' && (
+        <Animated.Text style={[badgeStyles.sparkle, { fontSize: small ? 7 : 9, opacity: sparkleAnim }]}>
+          ✦
+        </Animated.Text>
+      )}
     </Animated.View>
   );
 }
@@ -93,24 +149,34 @@ const badgeStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: RADIUS.full,
-    borderWidth: 1,
+    overflow: 'hidden',
     gap: 3,
-    elevation: 3,
   },
   pillText: {
     fontWeight: FONT_WEIGHTS.bold,
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
+  },
+  // Absolutely-positioned top-half highlight that fakes a two-tone gradient
+  shineStripe: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '52%',
+    backgroundColor: '#FFFFFF',
+  },
+  sparkle: {
+    color: '#FFFFFF',
+    fontWeight: FONT_WEIGHTS.bold,
   },
 });
 
-/**
- * LeaderboardScreen — Main component.
- */
+// ─── LeaderboardScreen ────────────────────────────────────────────────────────
 export default function LeaderboardScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  const [users, setUsers]   = useState([]);
+  const [users,   setUsers]   = useState([]);
   const [loading, setLoading] = useState(true);
   const currentUid = auth.currentUser?.uid;
 
@@ -121,31 +187,33 @@ export default function LeaderboardScreen({ navigation }) {
       orderBy('totalPoints', 'desc'),
       limit(20)
     );
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setUsers(list);
-      setLoading(false);
-    }, (err) => {
-      console.error('Leaderboard snapshot error:', err);
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('Leaderboard snapshot error:', err);
+        setLoading(false);
+      }
+    );
     return unsub;
   }, []);
 
-  // Find the current user's entry in the leaderboard list
+  // Current user's stats from the live list
   const currentUserEntry = users.find((u) => u.id === currentUid);
   const currentPoints    = currentUserEntry?.totalPoints || 0;
   const currentRank      = getUserRank(currentPoints);
   const progress         = getProgressToNextRank(currentPoints);
-  const nextRank         = RANKS[RANKS.indexOf(currentRank) + 1];
+  const nextRankEntry    = RANKS[RANKS.indexOf(currentRank) + 1];
   const ptsToNext        = currentRank.nextRankAt ? currentRank.nextRankAt - currentPoints : 0;
-
-  // Find the current user's position in the sorted list (1-indexed)
-  const myPosition = users.findIndex((u) => u.id === currentUid) + 1;
+  const myPosition       = users.findIndex((u) => u.id === currentUid) + 1;
 
   return (
     <SafeAreaView style={styles.safe}>
-      {/* ── Custom header ─────────────────────────────────────────────── */}
+
+      {/* ── Custom header ────────────────────────────────────────────── */}
       <View style={styles.navHeader}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
@@ -156,7 +224,7 @@ export default function LeaderboardScreen({ navigation }) {
 
       <ScrollView contentContainerStyle={styles.scroll}>
 
-        {/* ── My Rank summary card ──────────────────────────────────────── */}
+        {/* ── My Rank summary card ─────────────────────────────────── */}
         <View style={[styles.myRankCard, { borderColor: currentRank.color + '55' }]}>
           <View style={styles.myRankRow}>
             <View>
@@ -174,6 +242,7 @@ export default function LeaderboardScreen({ navigation }) {
               </View>
             )}
           </View>
+
           {/* Progress bar */}
           <View style={styles.progressTrack}>
             <View
@@ -185,12 +254,12 @@ export default function LeaderboardScreen({ navigation }) {
           </View>
           <Text style={styles.progressLabel}>
             {currentRank.nextRankAt
-              ? `${ptsToNext} pts to ${nextRank?.name ?? ''}`
-              : '💎 You\'ve reached the top rank!'}
+              ? `${ptsToNext} pts to ${nextRankEntry?.name ?? ''}`
+              : 'You\'ve reached the top rank!'}
           </Text>
         </View>
 
-        {/* ── Leaderboard list ─────────────────────────────────────────── */}
+        {/* ── Leaderboard list ─────────────────────────────────────── */}
         <Text style={styles.sectionTitle}>Top Players</Text>
 
         {loading ? (
@@ -223,10 +292,14 @@ export default function LeaderboardScreen({ navigation }) {
                     index < users.length - 1 && styles.rowBorder,
                   ]}
                 >
-                  {/* Rank number / trophy */}
+                  {/* Rank position — Ionicons trophy (colored) for top 3, number otherwise */}
                   <View style={styles.positionWrap}>
                     {position <= 3 ? (
-                      <Text style={styles.trophy}>{TROPHY_ICONS[position]}</Text>
+                      <Ionicons
+                        name="trophy"
+                        size={18}
+                        color={TROPHY_COLORS[position]}
+                      />
                     ) : (
                       <Text style={[styles.posNum, isMe && { color: colors.primary }]}>
                         {position}
@@ -238,14 +311,22 @@ export default function LeaderboardScreen({ navigation }) {
                   {user.photoURL ? (
                     <Image source={{ uri: user.photoURL }} style={styles.avatar} />
                   ) : (
-                    <View style={[styles.initialsCircle, { backgroundColor: rank.color + '30', borderColor: rank.color + '55' }]}>
+                    <View
+                      style={[
+                        styles.initialsCircle,
+                        { backgroundColor: rank.color + '30', borderColor: rank.color + '55' },
+                      ]}
+                    >
                       <Text style={[styles.initials, { color: rank.color }]}>{initials}</Text>
                     </View>
                   )}
 
                   {/* Name + rank badge */}
                   <View style={styles.nameCol}>
-                    <Text style={[styles.userName, isMe && { color: colors.primary }]} numberOfLines={1}>
+                    <Text
+                      style={[styles.userName, isMe && { color: colors.primary }]}
+                      numberOfLines={1}
+                    >
                       {user.name || 'Anonymous'}{isMe ? ' (You)' : ''}
                     </Text>
                     <RankBadgePill rank={rank} small />
@@ -261,32 +342,44 @@ export default function LeaderboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ── How to Earn Points ───────────────────────────────────────── */}
+        {/* ── How to Earn Points ───────────────────────────────────── */}
         <Text style={styles.sectionTitle}>How to Earn Points</Text>
         <View style={styles.listCard}>
-          {ACTION_LABELS.map((item, index) => (
-            <View
-              key={item.action}
-              style={[
-                styles.actionRow,
-                index < ACTION_LABELS.length - 1 && styles.rowBorder,
-              ]}
-            >
-              <Text style={styles.actionIcon}>{item.icon}</Text>
-              <View style={styles.actionInfo}>
-                <Text style={styles.actionLabel}>{item.label}</Text>
-                {item.note && (
-                  <Text style={styles.actionNote}>{item.note}</Text>
-                )}
+          {ACTION_LABELS.map((item, index) => {
+            const iconColor = item.iconColor ?? colors.primary;
+            return (
+              <View
+                key={item.action}
+                style={[
+                  styles.actionRow,
+                  index < ACTION_LABELS.length - 1 && styles.rowBorder,
+                ]}
+              >
+                {/* Icon inside a tinted circle */}
+                <View style={[styles.actionIconCircle, { backgroundColor: iconColor + '20' }]}>
+                  <Ionicons name={item.ionicon} size={17} color={iconColor} />
+                </View>
+
+                {/* Label + optional note */}
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionLabel}>{item.label}</Text>
+                  {item.note && (
+                    <Text style={styles.actionNote}>{item.note}</Text>
+                  )}
+                </View>
+
+                {/* Points badge */}
+                <View style={[styles.ptsBadge, { backgroundColor: iconColor + '18' }]}>
+                  <Text style={[styles.ptsBadgeText, { color: iconColor }]}>
+                    +{item.points} pts
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.actionPts, { color: colors.primary }]}>
-                +{item.points} pts
-              </Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
-        {/* ── Tier ladder ──────────────────────────────────────────────── */}
+        {/* ── Rank Tiers ───────────────────────────────────────────── */}
         <Text style={styles.sectionTitle}>Rank Tiers</Text>
         <View style={styles.listCard}>
           {RANKS.map((rank, index) => (
@@ -297,7 +390,8 @@ export default function LeaderboardScreen({ navigation }) {
                 index < RANKS.length - 1 && styles.rowBorder,
               ]}
             >
-              <Text style={styles.tierIcon}>{rank.icon}</Text>
+              {/* Colored filled circle instead of emoji */}
+              <View style={[styles.tierDot, { backgroundColor: rank.color }]} />
               <Text style={[styles.tierName, { color: rank.color }]}>{rank.name}</Text>
               <Text style={styles.tierRange}>
                 {rank.nextRankAt
@@ -314,6 +408,7 @@ export default function LeaderboardScreen({ navigation }) {
   );
 }
 
+// ─── Styles ───────────────────────────────────────────────────────────────────
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
@@ -344,7 +439,8 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   scroll: {
     padding: SPACING.md,
   },
-  // My rank summary card
+
+  // ── My rank card ──────────────────────────────────────────────────────────
   myRankCard: {
     backgroundColor: colors.surface,
     borderRadius: RADIUS.lg,
@@ -365,7 +461,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: 4,
+    marginBottom: 5,
   },
   myPointsCol: {
     alignItems: 'center',
@@ -403,7 +499,8 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  // Section titles
+
+  // ── Shared section titles & card container ────────────────────────────────
   sectionTitle: {
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.bold,
@@ -413,7 +510,6 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginBottom: SPACING.sm,
     marginTop: SPACING.xs,
   },
-  // Shared card container
   listCard: {
     backgroundColor: colors.surface,
     borderRadius: RADIUS.lg,
@@ -422,7 +518,12 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
     ...(isDark ? SHADOWS.md : {}),
   },
-  // Leaderboard rows
+  rowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+
+  // ── Leaderboard rows ──────────────────────────────────────────────────────
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -433,16 +534,9 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   rowHighlight: {
     backgroundColor: colors.primary + '12',
   },
-  rowBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
   positionWrap: {
     width: 28,
     alignItems: 'center',
-  },
-  trophy: {
-    fontSize: 18,
   },
   posNum: {
     fontSize: FONT_SIZES.body,
@@ -481,18 +575,22 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     minWidth: 44,
     textAlign: 'right',
   },
-  // Action rows
+
+  // ── How to Earn Points rows ───────────────────────────────────────────────
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 3,
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
   },
-  actionIcon: {
-    fontSize: 18,
-    width: 28,
-    textAlign: 'center',
+  actionIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   actionInfo: {
     flex: 1,
@@ -500,18 +598,25 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   actionLabel: {
     fontSize: FONT_SIZES.body,
     color: colors.textPrimary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   actionNote: {
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
     marginTop: 1,
   },
-  actionPts: {
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.bold,
+  ptsBadge: {
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
   },
-  // Tier ladder rows
+  ptsBadgeText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 0.2,
+  },
+
+  // ── Tier ladder rows ──────────────────────────────────────────────────────
   tierRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -519,10 +624,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     gap: SPACING.md,
   },
-  tierIcon: {
-    fontSize: 20,
-    width: 28,
-    textAlign: 'center',
+  tierDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    flexShrink: 0,
   },
   tierName: {
     fontSize: FONT_SIZES.body,
@@ -533,7 +639,8 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
   },
-  // Misc
+
+  // ── Misc ──────────────────────────────────────────────────────────────────
   loadingWrap: {
     paddingVertical: SPACING.xl,
     alignItems: 'center',

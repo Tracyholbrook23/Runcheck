@@ -19,8 +19,64 @@
  */
 
 import { db } from '../config/firebase';
-import { doc, updateDoc, increment, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, increment, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { POINT_VALUES, getUserRank } from '../utils/badges';
+
+/**
+ * handleFollowPoints — Awards or deducts follow points in a cheat-proof way.
+ *
+ * Points for following a gym are tracked per gymId inside
+ * `users/{uid}.pointsAwarded.followedGyms`.  This means:
+ *
+ *   • Following a gym you've never followed before → award 2 pts, record gymId
+ *   • Following a gym you already followed (and later unfollowed) → award 2 pts again
+ *     because the gymId was removed from the array on unfollow (see below)
+ *   • Following a gym that is *currently* in the awarded set → skip (exploit guard)
+ *   • Unfollowing → deduct 2 pts and remove gymId from the awarded set
+ *
+ * This ties the points to the current follow state rather than the action
+ * count, preventing infinite follow/unfollow farming.
+ *
+ * @param {string}  uid        — Firebase Auth user ID.
+ * @param {string}  gymId      — Firestore ID of the gym being followed/unfollowed.
+ * @param {boolean} isFollowing — true = user is NOW following, false = unfollowing.
+ * @returns {Promise<void>}
+ */
+export const handleFollowPoints = async (uid, gymId, isFollowing) => {
+  if (!uid || !gymId) return;
+
+  const userRef = doc(db, 'users', uid);
+  const points  = POINT_VALUES.followGym; // 2
+
+  try {
+    const snap       = await getDoc(userRef);
+    const data       = snap.data() || {};
+    const awardedSet = data.pointsAwarded?.followedGyms ?? [];
+
+    if (isFollowing) {
+      // Guard: if this gymId is already in the awarded set the user is
+      // re-following without having unfollowed first — don't double-count.
+      if (awardedSet.includes(gymId)) return;
+
+      await updateDoc(userRef, {
+        totalPoints:                    increment(points),
+        'pointsAwarded.followedGyms':   arrayUnion(gymId),
+      });
+    } else {
+      // Only deduct if points were actually awarded for this gym.
+      // If the user unfollows a gym they followed before the system existed,
+      // awardedSet won't contain the gymId so we skip silently.
+      if (!awardedSet.includes(gymId)) return;
+
+      await updateDoc(userRef, {
+        totalPoints:                    increment(-points),
+        'pointsAwarded.followedGyms':   arrayRemove(gymId),
+      });
+    }
+  } catch (err) {
+    console.error('handleFollowPoints error:', err);
+  }
+};
 
 /**
  * awardPoints — Increments the user's `totalPoints` in Firestore and returns
