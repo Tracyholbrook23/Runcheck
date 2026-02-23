@@ -27,6 +27,7 @@ import { useTheme } from '../contexts';
 import { Logo } from '../components';
 import { auth } from '../config/firebase';
 import { awardPoints } from '../services/pointsService';
+import { findMatchingSchedule } from '../services/scheduleService';
 
 import {
   View,
@@ -100,6 +101,12 @@ export default function CheckInScreen({ navigation }) {
    *
    * Looks up the selected gym's display name from `gymItems` before calling
    * `checkIn(gymId)` so the success alert can show the gym name.
+   *
+   * Point logic:
+   *   - If the user had a scheduled visit for this gym within the ±60-minute
+   *     grace window, they earn 15 pts (checkinWithPlan) as a follow-through
+   *     bonus. Otherwise the standard 10 pts (checkin) are awarded.
+   *
    * On success, shows a confirmation alert with a shortcut to the Runs tab.
    * On failure, maps the error to a user-friendly message.
    */
@@ -112,24 +119,35 @@ export default function CheckInScreen({ navigation }) {
     try {
       const gymItem = gymItems.find((item) => item.value === selectedGym);
       const gymName = gymItem?.gymName || selectedGym;
+      const uid = auth.currentUser?.uid;
 
       await checkIn(selectedGym);
 
-      // Award points for check-in and detect rank-up
-      const uid = auth.currentUser?.uid;
-      const { rankChanged, newRank } = await awardPoints(uid, 'checkin');
+      // Check if this check-in fulfils a prior plan (±60 min grace window)
+      const matchedSchedule = uid
+        ? await findMatchingSchedule(uid, selectedGym).catch(() => null)
+        : null;
+
+      // Award 15 pts for attending a planned visit, 10 pts for a standard check-in
+      const action = matchedSchedule ? 'checkinWithPlan' : 'checkin';
+      const ptsLabel = matchedSchedule ? '+15 pts' : '+10 pts';
+      const bonusNote = matchedSchedule
+        ? 'Nice follow-through! You earned a +5 bonus.'
+        : 'Keep showing up to earn more points.';
+
+      const { rankChanged, newRank } = await awardPoints(uid, action);
 
       if (rankChanged && newRank) {
-        // Show rank-up celebration first, then the standard check-in confirm
+        // Show rank-up celebration first, then the check-in confirm
         Alert.alert(
-          `🎉 You ranked up!`,
-          `You're now ${newRank.icon} ${newRank.name}! Keep checking in to climb higher.`,
+          'You ranked up!',
+          `You're now ${newRank.name}! ${bonusNote}`,
           [
             {
-              text: 'Let\'s Go!',
+              text: "Let's Go!",
               onPress: () =>
                 Alert.alert(
-                  'Checked In!',
+                  `Checked In! ${ptsLabel}`,
                   `You're now checked in at ${gymName}. Your check-in will expire in 3 hours.`,
                   [{ text: 'View Gyms', onPress: () => navigation.getParent()?.navigate('Runs') }]
                 ),
@@ -138,8 +156,8 @@ export default function CheckInScreen({ navigation }) {
         );
       } else {
         Alert.alert(
-          'Checked In! +10 pts',
-          `You're now checked in at ${gymName}. Your check-in will expire in 3 hours.`,
+          `Checked In! ${ptsLabel}`,
+          `You're now checked in at ${gymName}. ${bonusNote}`,
           [
             {
               text: 'View Gyms',

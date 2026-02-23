@@ -11,6 +11,11 @@
  *   🥈 Silver   — 100–249
  *   ✨ Gold     — 250–499
  *   💎 Platinum — 500+  (max rank, pulsing glow in UI)
+ *
+ * Point system notes:
+ *   - Planning a visit earns 0 pts. Points are only awarded on attendance.
+ *   - Checking in when you had a scheduled plan → 15 pts (10 + 5 bonus).
+ *   - Checking in without a prior plan → 10 pts.
  */
 
 /**
@@ -67,11 +72,11 @@ export const RANKS = [
  * card), so changing a value here automatically updates both.
  */
 export const POINT_VALUES = {
-  checkin:         10,
-  planVisit:        5,
-  review:          15,
-  followGym:        2,
-  completeProfile: 10,
+  checkin:          10, // Standard check-in (no prior plan)
+  checkinWithPlan:  15, // Check-in that fulfils a scheduled plan (+5 bonus)
+  review:           15,
+  followGym:         2,
+  completeProfile:  10,
 };
 
 /**
@@ -93,13 +98,13 @@ export const ACTION_LABELS = [
     note: null,
   },
   {
-    action: 'planVisit',
-    label: 'Plan a visit',
+    action: 'checkinWithPlan',
+    label: 'Attend a planned visit',
     icon: '📅',
-    ionicon: 'calendar',
+    ionicon: 'calendar-check',
     iconColor: null,          // use colors.primary from theme
-    points: POINT_VALUES.planVisit,
-    note: null,
+    points: POINT_VALUES.checkinWithPlan,
+    note: '+5 follow-through bonus',
   },
   {
     action: 'review',

@@ -39,8 +39,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms } from '../hooks';
-import { auth } from '../config/firebase';
-import { awardPoints } from '../services/pointsService';
 
 /**
  * getAvailableDays — Builds a 7-day date array starting from today.
@@ -155,6 +153,9 @@ export default function PlanVisitScreen({ navigation }) {
    * Calls `createSchedule` with the selected gym's ID, name, and the chosen
    * time slot's Date object. On success, shows a confirmation alert and
    * resets all selection state before returning to Step 1.
+   *
+   * Note: planning a visit earns 0 points. Points are awarded at check-in
+   * time — 15 pts if the check-in fulfils this plan, 10 pts otherwise.
    */
   const handleCreateSchedule = async () => {
     if (!selectedGym || !selectedSlot) return;
@@ -162,13 +163,9 @@ export default function PlanVisitScreen({ navigation }) {
       await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
       const dayDesc = selectedDay?.label === 'Today' ? 'today' : `on ${selectedDay?.label}, ${selectedDay?.dateStr}`;
 
-      // Award points for planning a visit
-      const uid = auth.currentUser?.uid;
-      awardPoints(uid, 'planVisit');
-
       Alert.alert(
-        'Visit Scheduled! +5 pts',
-        `You're planning to visit ${selectedGym.name} ${dayDesc} at ${selectedSlot.label}`,
+        'Visit Scheduled!',
+        `You're planning to visit ${selectedGym.name} ${dayDesc} at ${selectedSlot.label}. Check in when you arrive to earn +15 pts!`,
         [{ text: 'OK', onPress: () => setStep(1) }]
       );
       // Reset all selections so the wizard is clean for the next use
