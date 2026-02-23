@@ -1,0 +1,118 @@
+/**
+ * badges.js — Gamification Rank & Badge Utilities
+ *
+ * Single source of truth for every tier definition, point value, and
+ * progress calculation in the RunCheck badge system.  Import these helpers
+ * into any screen or service that needs rank data — never hard-code tier
+ * thresholds elsewhere.
+ *
+ * Tier ladder (total points):
+ *   🥉 Bronze   —    0–99
+ *   🥈 Silver   — 100–249
+ *   ✨ Gold     — 250–499
+ *   💎 Platinum — 500+  (max rank, pulsing glow in UI)
+ */
+
+/**
+ * RANKS — ordered array of tier definitions from lowest to highest.
+ *
+ * Fields:
+ *   name        — Display name shown in badges and alerts
+ *   minPoints   — Minimum total points needed to reach this tier
+ *   color       — Primary brand color for the badge background / text
+ *   glowColor   — Semi-transparent version used for shadow / glow effects
+ *   icon        — Emoji medal shown next to the rank name
+ *   nextRankAt  — Point threshold for the next tier, or null if max rank
+ */
+export const RANKS = [
+  {
+    name: 'Bronze',
+    minPoints: 0,
+    color: '#CD7F32',
+    glowColor: 'rgba(205,127,50,0.35)',
+    icon: '🥉',
+    nextRankAt: 100,
+  },
+  {
+    name: 'Silver',
+    minPoints: 100,
+    color: '#B0B0B0',
+    glowColor: 'rgba(176,176,176,0.35)',
+    icon: '🥈',
+    nextRankAt: 250,
+  },
+  {
+    name: 'Gold',
+    minPoints: 250,
+    color: '#F59E0B',
+    glowColor: 'rgba(245,158,11,0.4)',
+    icon: '✨',
+    nextRankAt: 500,
+  },
+  {
+    name: 'Platinum',
+    minPoints: 500,
+    color: '#A78BFA',
+    glowColor: 'rgba(167,139,250,0.55)',
+    icon: '💎',
+    nextRankAt: null,
+  },
+];
+
+/**
+ * POINT_VALUES — maps action type strings to their point reward.
+ *
+ * These values are the authoritative source used by both `pointsService`
+ * (for Firestore writes) and `LeaderboardScreen` (for the "How to Earn"
+ * card), so changing a value here automatically updates both.
+ */
+export const POINT_VALUES = {
+  checkin:         10,
+  planVisit:        5,
+  review:          15,
+  followGym:        2,
+  completeProfile: 10,
+};
+
+/**
+ * ACTION_LABELS — human-readable metadata for each earnable action.
+ * Used to render the "How to Earn Points" list in LeaderboardScreen.
+ */
+export const ACTION_LABELS = [
+  { action: 'checkin',         label: 'Check in at a gym',     icon: '✅', points: POINT_VALUES.checkin,         note: null },
+  { action: 'planVisit',       label: 'Plan a visit',          icon: '📅', points: POINT_VALUES.planVisit,       note: null },
+  { action: 'review',          label: 'Leave a review',        icon: '⭐', points: POINT_VALUES.review,          note: null },
+  { action: 'followGym',       label: 'Follow a gym',          icon: '❤️', points: POINT_VALUES.followGym,       note: null },
+  { action: 'completeProfile', label: 'Complete your profile', icon: '👤', points: POINT_VALUES.completeProfile, note: 'one time' },
+];
+
+/**
+ * getUserRank — Returns the RANKS entry matching a given point total.
+ *
+ * Iterates from the top tier downward so the first match is always the
+ * highest tier the user has reached.
+ *
+ * @param {number} totalPoints — The user's cumulative point total.
+ * @returns {object} The matching RANKS entry object.
+ */
+export const getUserRank = (totalPoints = 0) => {
+  for (let i = RANKS.length - 1; i >= 0; i--) {
+    if (totalPoints >= RANKS[i].minPoints) return RANKS[i];
+  }
+  return RANKS[0]; // Bronze fallback (covers 0 points)
+};
+
+/**
+ * getProgressToNextRank — Returns a 0–1 float representing how far through
+ * the current tier the user is.  Platinum always returns 1 (max rank).
+ *
+ * @param {number} totalPoints — The user's cumulative point total.
+ * @returns {number} Progress ratio between 0 (start of tier) and 1 (next tier).
+ */
+export const getProgressToNextRank = (totalPoints = 0) => {
+  const rank = getUserRank(totalPoints);
+  if (rank.nextRankAt === null) return 1;
+  const rangeSize = rank.nextRankAt - rank.minPoints;
+  const earned = totalPoints - rank.minPoints;
+  return Math.min(Math.max(earned / rangeSize, 0), 1);
+};

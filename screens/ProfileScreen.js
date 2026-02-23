@@ -28,7 +28,7 @@
  *   - Court and crew sections use placeholder data pending social features.
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
@@ -52,6 +53,8 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 import { registerPushToken } from '../utils/notifications';
+import { getUserRank, getProgressToNextRank, RANKS } from '../utils/badges';
+import { awardPoints } from '../services/pointsService';
 
 /**
  * ProfileScreen — Authenticated user profile dashboard.
@@ -70,7 +73,7 @@ export default function ProfileScreen({ navigation }) {
   const { count: upcomingCount } = useSchedules();
   const { isCheckedIn, presence } = usePresence();
   const { gyms } = useGyms();
-  const { followedGyms } = useProfile();
+  const { followedGyms, profile: liveProfile } = useProfile();
   const [profile, setProfile] = useState(null);
 
   // Derive the list of followed gym objects from the full gyms array.
@@ -82,6 +85,29 @@ export default function ProfileScreen({ navigation }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [photoUri, setPhotoUri] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // ── Rank / badge data — derived from live Firestore totalPoints ──────────
+  const totalPoints = liveProfile?.totalPoints || 0;
+  const userRank = getUserRank(totalPoints);
+  const rankProgress = getProgressToNextRank(totalPoints);
+  const pointsToNext = userRank.nextRankAt ? userRank.nextRankAt - totalPoints : 0;
+
+  // Platinum pulsing glow — scale between 1.0 and 1.05 on loop
+  const platinumPulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (userRank.name === 'Platinum') {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(platinumPulse, { toValue: 1.05, duration: 1500, useNativeDriver: true }),
+          Animated.timing(platinumPulse, { toValue: 1.0,  duration: 1500, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      platinumPulse.setValue(1);
+    }
+  }, [userRank.name]);
 
   /**
    * handlePickImage — Opens the device photo library, uploads the selected
@@ -143,6 +169,11 @@ export default function ProfileScreen({ navigation }) {
 
       // Update the local avatar immediately without waiting for a Firestore read
       setPhotoUri(downloadURL);
+
+      // Award profile-completion bonus once if the user also has a skill level set
+      if (liveProfile?.skillLevel) {
+        awardPoints(uid, 'completeProfile');
+      }
     } catch (err) {
       console.error('handlePickImage upload error:', err);
       Alert.alert('Upload Failed', 'Could not save your photo. Please try again.');
@@ -275,6 +306,54 @@ export default function ProfileScreen({ navigation }) {
               </Text>
             </View>
           )}
+
+          {/* ── Rank Badge ──────────────────────────────────────────────── */}
+          <Animated.View
+            style={[
+              styles.rankBadge,
+              {
+                backgroundColor: userRank.color + '22',
+                borderColor: userRank.color + '66',
+                shadowColor: userRank.glowColor,
+                // Platinum gets an extra-strong glow shadow
+                shadowRadius: userRank.name === 'Platinum' ? 18 : 8,
+                shadowOpacity: userRank.name === 'Platinum' ? 0.9 : 0.5,
+              },
+              { transform: [{ scale: platinumPulse }] },
+            ]}
+          >
+            <Text style={styles.rankIcon}>{userRank.icon}</Text>
+            <Text style={[styles.rankName, { color: userRank.color }]}>{userRank.name}</Text>
+            <Text style={[styles.rankPoints, { color: userRank.color + 'CC' }]}>{totalPoints} pts</Text>
+          </Animated.View>
+
+          {/* Progress bar toward next rank */}
+          <View style={styles.rankProgressWrap}>
+            <View style={styles.rankProgressTrack}>
+              <View
+                style={[
+                  styles.rankProgressFill,
+                  { width: `${Math.round(rankProgress * 100)}%`, backgroundColor: userRank.color },
+                ]}
+              />
+            </View>
+            {userRank.nextRankAt ? (
+              <Text style={styles.rankProgressLabel}>
+                {pointsToNext} pts to {RANKS[RANKS.indexOf(userRank) + 1]?.name ?? ''}
+              </Text>
+            ) : (
+              <Text style={styles.rankProgressLabel}>Max rank achieved 💎</Text>
+            )}
+          </View>
+
+          {/* Leaderboard shortcut */}
+          <TouchableOpacity
+            style={styles.leaderboardLink}
+            onPress={() => navigation.navigate('Leaderboard')}
+          >
+            <Ionicons name="trophy-outline" size={13} color={colors.primary} />
+            <Text style={styles.leaderboardLinkText}>View Leaderboard</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Reliability Score ──────────────────────────────────────────── */}
@@ -865,5 +944,63 @@ editBadge: {
       backgroundColor: 'rgba(0,0,0,0.45)',
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    // ── Rank badge ──────────────────────────────────────────────────────────
+    rankBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs + 2,
+      borderRadius: RADIUS.full,
+      borderWidth: 1.5,
+      marginTop: SPACING.sm,
+      gap: SPACING.xs,
+      // iOS shadow
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 6, // Android glow approximation
+    },
+    rankIcon: {
+      fontSize: 16,
+    },
+    rankName: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.bold,
+      letterSpacing: 0.4,
+    },
+    rankPoints: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.medium,
+    },
+    rankProgressWrap: {
+      width: '70%',
+      alignItems: 'center',
+      marginTop: SPACING.sm,
+    },
+    rankProgressTrack: {
+      width: '100%',
+      height: 5,
+      backgroundColor: colors.border,
+      borderRadius: RADIUS.full,
+      overflow: 'hidden',
+    },
+    rankProgressFill: {
+      height: '100%',
+      borderRadius: RADIUS.full,
+    },
+    rankProgressLabel: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.textMuted,
+      marginTop: 4,
+    },
+    leaderboardLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: SPACING.sm,
+    },
+    leaderboardLinkText: {
+      fontSize: FONT_SIZES.small,
+      color: colors.primary,
+      fontWeight: FONT_WEIGHTS.semibold,
     },
   });

@@ -177,12 +177,20 @@ const HomeScreen = ({ navigation }) => {
             <Logo size="small" />
             <Text style={styles.headerTitle}>RunCheck</Text>
           </View>
-          <TouchableOpacity
-            style={styles.headerIcon}
-            onPress={() => goToTab('Profile')}
-          >
-            <Ionicons name="person-circle-outline" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={styles.headerIcons}>
+            <TouchableOpacity
+              style={styles.headerIcon}
+              onPress={() => navigation.navigate('Leaderboard')}
+            >
+              <Ionicons name="trophy-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIcon}
+              onPress={() => goToTab('Profile')}
+            >
+              <Ionicons name="person-circle-outline" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
@@ -399,9 +407,13 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: -0.3,
   },
+  headerIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   headerIcon: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },

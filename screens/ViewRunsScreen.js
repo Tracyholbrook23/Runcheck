@@ -36,6 +36,7 @@ import { Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { auth, db } from '../config/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { awardPoints } from '../services/pointsService';
 
 /**
  * ViewRunsScreen — Gym discovery list screen.
@@ -66,6 +67,8 @@ export default function ViewRunsScreen({ navigation }) {
       await updateDoc(doc(db, 'users', uid), {
         followedGyms: isFollowed ? arrayRemove(gymId) : arrayUnion(gymId),
       });
+      // Award 2 points only when following (not unfollowing)
+      if (!isFollowed) awardPoints(uid, 'followGym');
     } catch (err) {
       console.error('toggleFollow error:', err);
     }

@@ -41,6 +41,7 @@ import { ThemeProvider, useTheme } from './contexts';
 import SplashScreen from './screens/SplashScreen';
 import GymReviewsScreen from './screens/GymReviewsScreen';
 import CityGateScreen from './screens/CityGateScreen';
+import LeaderboardScreen from './screens/LeaderboardScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -58,6 +59,7 @@ function HomeStack() {
   return (
     <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="HomeMain" component={HomeScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -134,6 +136,7 @@ function ProfileStack() {
   return (
     <Stack.Navigator>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

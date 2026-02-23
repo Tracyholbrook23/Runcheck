@@ -39,6 +39,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms } from '../hooks';
+import { auth } from '../config/firebase';
+import { awardPoints } from '../services/pointsService';
 
 /**
  * getAvailableDays — Builds a 7-day date array starting from today.
@@ -159,8 +161,13 @@ export default function PlanVisitScreen({ navigation }) {
     try {
       await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
       const dayDesc = selectedDay?.label === 'Today' ? 'today' : `on ${selectedDay?.label}, ${selectedDay?.dateStr}`;
+
+      // Award points for planning a visit
+      const uid = auth.currentUser?.uid;
+      awardPoints(uid, 'planVisit');
+
       Alert.alert(
-        'Visit Scheduled!',
+        'Visit Scheduled! +5 pts',
         `You're planning to visit ${selectedGym.name} ${dayDesc} at ${selectedSlot.label}`,
         [{ text: 'OK', onPress: () => setStep(1) }]
       );

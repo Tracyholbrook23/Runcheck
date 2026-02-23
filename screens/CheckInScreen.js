@@ -25,6 +25,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
+import { auth } from '../config/firebase';
+import { awardPoints } from '../services/pointsService';
 
 import {
   View,
@@ -113,16 +115,39 @@ export default function CheckInScreen({ navigation }) {
 
       await checkIn(selectedGym);
 
-      Alert.alert(
-        'Checked In!',
-        `You're now checked in at ${gymName}. Your check-in will expire in 3 hours.`,
-        [
-          {
-            text: 'View Gyms',
-            onPress: () => navigation.getParent()?.navigate('Runs'),
-          },
-        ]
-      );
+      // Award points for check-in and detect rank-up
+      const uid = auth.currentUser?.uid;
+      const { rankChanged, newRank } = await awardPoints(uid, 'checkin');
+
+      if (rankChanged && newRank) {
+        // Show rank-up celebration first, then the standard check-in confirm
+        Alert.alert(
+          `🎉 You ranked up!`,
+          `You're now ${newRank.icon} ${newRank.name}! Keep checking in to climb higher.`,
+          [
+            {
+              text: 'Let\'s Go!',
+              onPress: () =>
+                Alert.alert(
+                  'Checked In!',
+                  `You're now checked in at ${gymName}. Your check-in will expire in 3 hours.`,
+                  [{ text: 'View Gyms', onPress: () => navigation.getParent()?.navigate('Runs') }]
+                ),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Checked In! +10 pts',
+          `You're now checked in at ${gymName}. Your check-in will expire in 3 hours.`,
+          [
+            {
+              text: 'View Gyms',
+              onPress: () => navigation.getParent()?.navigate('Runs'),
+            },
+          ]
+        );
+      }
     } catch (error) {
       console.error('Check-in error:', error);
       if (error.message.includes('permission denied')) {

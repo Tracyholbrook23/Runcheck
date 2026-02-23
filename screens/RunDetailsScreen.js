@@ -49,6 +49,7 @@ import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { awardPoints } from '../services/pointsService';
 
 /**
  * isToday — Checks whether a given Date falls on the current calendar day.
@@ -119,6 +120,8 @@ export default function RunDetailsScreen({ route, navigation }) {
       await updateDoc(doc(db, 'users', uid), {
         followedGyms: isFollowed ? arrayRemove(gymId) : arrayUnion(gymId),
       });
+      // Award 2 points only when following (not unfollowing)
+      if (!isFollowed) awardPoints(uid, 'followGym');
     } catch (err) {
       console.error('toggleFollow error:', err);
     } finally {
