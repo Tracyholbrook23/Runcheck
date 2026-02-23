@@ -44,7 +44,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
-import { addDoc, updateDoc, collection, serverTimestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { addDoc, updateDoc, collection, serverTimestamp, Timestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 /**
  * getAvailableDays — Builds a 7-day date array starting from today.
@@ -183,7 +183,7 @@ export default function PlanVisitScreen({ navigation }) {
           action: 'planned a visit to',
           gymId: selectedGym.id,
           gymName: selectedGym.name,
-          createdAt: serverTimestamp(),
+          createdAt: Timestamp.now(),
         });
 
         // Backlink: store the activity doc ID on the schedule document so that

@@ -276,7 +276,11 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     });
   });
 
-  // Write activity feed event — fire and forget
+  // Write activity feed event — fire and forget.
+  // Use Timestamp.now() (client-side) instead of serverTimestamp() so the
+  // document immediately satisfies the HomeScreen's createdAt >= twoHoursAgo
+  // query. serverTimestamp() leaves a pending-write placeholder that Firestore
+  // excludes from inequality queries until the server round-trip completes.
   addDoc(collection(db, 'activity'), {
     userId: odId,
     userName,
@@ -284,7 +288,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     action: 'checked in at',
     gymId,
     gymName: gymData.name,
-    createdAt: serverTimestamp(),
+    createdAt: Timestamp.now(),
   }).catch((err) => console.error('Activity write error (check-in):', err));
 
   // Mark schedule as attended (outside transaction - non-critical)
