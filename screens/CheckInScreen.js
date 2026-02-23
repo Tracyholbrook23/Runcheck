@@ -36,6 +36,8 @@ import {
   SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
   Platform,
   ActivityIndicator,
   TouchableOpacity,
@@ -241,7 +243,8 @@ export default function CheckInScreen({ navigation }) {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.innerContainer}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.innerContainer}>
           <Text style={styles.title}>Check Into a Gym</Text>
           <Text style={styles.subtitle}>
             Let others know you're here to play
@@ -306,7 +309,8 @@ export default function CheckInScreen({ navigation }) {
               ))}
             </ScrollView>
           </View>
-        </View>
+          </View>
+        </TouchableWithoutFeedback>
 
         {/* Sticky footer with primary Check In and secondary Back to Home buttons */}
         <View style={styles.footer}>

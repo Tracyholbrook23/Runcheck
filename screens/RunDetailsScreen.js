@@ -36,10 +36,14 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Animated,
   Image,
   Modal,
   TextInput,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -597,8 +601,19 @@ export default function RunDetailsScreen({ route, navigation }) {
         animationType="fade"
         onRequestClose={() => setReviewModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+        {/*
+         * Outer TWBF dismisses the keyboard when the user taps the dark
+         * overlay. KAV shifts the card up so the TextInput stays visible
+         * above the keyboard on iOS. The inner TWBF stops taps on the card
+         * from bubbling up to the outer TWBF.
+         */}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalOverlay}
+          >
+            <TouchableWithoutFeedback accessible={false}>
+              <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Rate This Gym</Text>
 
             {/* Tappable star rating */}
@@ -650,8 +665,10 @@ export default function RunDetailsScreen({ route, navigation }) {
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
       </Modal>
     </SafeAreaView>
   );

@@ -26,6 +26,10 @@ import {
   StyleSheet,
   ScrollView,
   ImageBackground,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
@@ -106,85 +110,92 @@ export default function SignupScreen({ navigation }) {
     >
       {/* Semi-transparent overlay for text legibility over the court image */}
       <View style={styles.overlay} />
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <Button
-          title="← Back to Login"
-          variant="ghost"
-          size="sm"
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        />
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={styles.container}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Button
+              title="← Back to Login"
+              variant="ghost"
+              size="sm"
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            />
 
-        <View style={styles.brandSection}>
-          <Logo size="medium" style={{ marginBottom: SPACING.sm }} />
-          <Text style={styles.title}>Create Your Account</Text>
-          <Text style={styles.tagline}>Join the RunCheck community</Text>
-        </View>
+            <View style={styles.brandSection}>
+              <Logo size="medium" style={{ marginBottom: SPACING.sm }} />
+              <Text style={styles.title}>Create Your Account</Text>
+              <Text style={styles.tagline}>Join the RunCheck community</Text>
+            </View>
 
-        <View style={styles.formCard}>
-          <Input label="Full Name" placeholder="Your name" value={name} onChangeText={setName} />
-          <Input label="Age" placeholder="Your age" keyboardType="numeric" value={age} onChangeText={setAge} />
+            <View style={styles.formCard}>
+              <Input label="Full Name" placeholder="Your name" value={name} onChangeText={setName} />
+              <Input label="Age" placeholder="Your age" keyboardType="numeric" value={age} onChangeText={setAge} />
 
-          {/* Skill Level Picker — pill buttons styled by the selected skill's theme color */}
-          <Text style={styles.fieldLabel}>Skill Level</Text>
-          <View style={styles.skillRow}>
-            {SKILL_OPTIONS.map((level) => {
-              const selected = skillLevel === level;
-              // Look up this skill's brand colors from the theme constants
-              const skillColors = SKILL_LEVEL_COLORS[level];
-              return (
-                <TouchableOpacity
-                  key={level}
-                  style={[
-                    styles.skillPill,
-                    // Apply skill-specific bg + border only when this pill is selected
-                    selected && { backgroundColor: skillColors.bg, borderColor: skillColors.text },
-                  ]}
-                  onPress={() => setSkillLevel(level)}
-                >
-                  <Text
-                    style={[
-                      styles.skillPillText,
-                      selected && { color: skillColors.text },
-                    ]}
-                  >
-                    {level}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+              {/* Skill Level Picker — pill buttons styled by the selected skill's theme color */}
+              <Text style={styles.fieldLabel}>Skill Level</Text>
+              <View style={styles.skillRow}>
+                {SKILL_OPTIONS.map((level) => {
+                  const selected = skillLevel === level;
+                  // Look up this skill's brand colors from the theme constants
+                  const skillColors = SKILL_LEVEL_COLORS[level];
+                  return (
+                    <TouchableOpacity
+                      key={level}
+                      style={[
+                        styles.skillPill,
+                        // Apply skill-specific bg + border only when this pill is selected
+                        selected && { backgroundColor: skillColors.bg, borderColor: skillColors.text },
+                      ]}
+                      onPress={() => setSkillLevel(level)}
+                    >
+                      <Text
+                        style={[
+                          styles.skillPillText,
+                          selected && { color: skillColors.text },
+                        ]}
+                      >
+                        {level}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-          <Input
-            label="Email"
-            placeholder="your@email.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <Input
-            label="Password"
-            placeholder="Create a password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+              <Input
+                label="Email"
+                placeholder="your@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+              />
+              <Input
+                label="Password"
+                placeholder="Create a password"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
 
-          <Button
-            title="Create Account"
-            variant="primary"
-            size="lg"
-            onPress={handleSignup}
-            loading={loading}
-            testID="signup-button"
-            style={{ marginTop: SPACING.sm }}
-          />
-        </View>
-      </ScrollView>
+              <Button
+                title="Create Account"
+                variant="primary"
+                size="lg"
+                onPress={handleSignup}
+                loading={loading}
+                testID="signup-button"
+                style={{ marginTop: SPACING.sm }}
+              />
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </ImageBackground>
   );
 }

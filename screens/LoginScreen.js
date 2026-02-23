@@ -23,6 +23,10 @@ import {
   StyleSheet,
   ScrollView,
   ImageBackground,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
@@ -95,54 +99,61 @@ export default function LoginScreen({ navigation }) {
     >
       {/* Semi-transparent overlay darkens the background for text legibility */}
       <View style={styles.overlay} />
-      <ScrollView
-        contentContainerStyle={styles.container}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <View style={styles.brandSection}>
-          <Logo size="large" style={{ marginBottom: SPACING.md }} />
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.tagline}>Your City. Your Court. Your People.</Text>
-        </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={styles.container}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.brandSection}>
+              <Logo size="large" style={{ marginBottom: SPACING.md }} />
+              <Text style={styles.title}>Welcome Back</Text>
+              <Text style={styles.tagline}>Your City. Your Court. Your People.</Text>
+            </View>
 
-        <View style={styles.formCard}>
-          <Input
-            label="Email"
-            placeholder="your@email.com"
-            keyboardType="email-address"
-            autoCapitalize="none"
-            value={email}
-            onChangeText={setEmail}
-            testID="email-input"
-          />
-          <Input
-            label="Password"
-            placeholder="Enter your password"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            testID="password-input"
-          />
+            <View style={styles.formCard}>
+              <Input
+                label="Email"
+                placeholder="your@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={email}
+                onChangeText={setEmail}
+                testID="email-input"
+              />
+              <Input
+                label="Password"
+                placeholder="Enter your password"
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+                testID="password-input"
+              />
 
-          <Button
-            title="Log In"
-            variant="primary"
-            size="lg"
-            onPress={handleLogin}
-            loading={loading}
-            testID="login-button"
-            style={{ marginTop: SPACING.sm }}
-          />
+              <Button
+                title="Log In"
+                variant="primary"
+                size="lg"
+                onPress={handleLogin}
+                loading={loading}
+                testID="login-button"
+                style={{ marginTop: SPACING.sm }}
+              />
 
-          <Button
-            title="Create Account"
-            variant="outline"
-            size="lg"
-            onPress={() => navigation.navigate('Signup')}
-            style={{ marginTop: SPACING.sm }}
-          />
-        </View>
-      </ScrollView>
+              <Button
+                title="Create Account"
+                variant="outline"
+                size="lg"
+                onPress={() => navigation.navigate('Signup')}
+                style={{ marginTop: SPACING.sm }}
+              />
+            </View>
+          </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </ImageBackground>
   );
 }

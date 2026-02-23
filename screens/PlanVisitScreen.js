@@ -32,6 +32,10 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
+  TouchableWithoutFeedback,
+  KeyboardAvoidingView,
+  Keyboard,
+  Platform,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -220,49 +224,53 @@ export default function PlanVisitScreen({ navigation }) {
   if (step === 1) {
     return (
       <SafeAreaView style={styles.safe}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.titleRow}>
-            <View>
-              <Text style={styles.title}>Plan a Visit</Text>
-              <Text style={styles.subtitle}>Schedule when you plan to play</Text>
-            </View>
-          </View>
-
-          {schedules.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Upcoming Visits</Text>
-              {schedules.map((schedule) => (
-                <View key={schedule.id} style={styles.intentCard}>
-                  <View style={styles.intentIconWrap}>
-                    <Ionicons name="calendar" size={20} color={colors.primary} />
-                  </View>
-                  <View style={styles.intentInfo}>
-                    <Text style={styles.intentGym}>{schedule.gymName}</Text>
-                    {/* formatScheduleTime converts the Firestore Timestamp to a readable label */}
-                    <Text style={styles.intentTime}>{formatScheduleTime(schedule)}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.cancelButton}
-                    onPress={() => handleCancelSchedule(schedule)}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <ScrollView contentContainerStyle={styles.scroll}>
+              <View style={styles.titleRow}>
+                <View>
+                  <Text style={styles.title}>Plan a Visit</Text>
+                  <Text style={styles.subtitle}>Schedule when you plan to play</Text>
                 </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="calendar-outline" size={40} color={colors.textMuted} />
-              <Text style={styles.emptyText}>No visits scheduled</Text>
-              <Text style={styles.emptySubtext}>Plan ahead so others know you're coming</Text>
-            </View>
-          )}
+              </View>
 
-          <TouchableOpacity style={styles.primaryButton} onPress={() => setStep(2)}>
-            <Ionicons name="add" size={20} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.primaryButtonText}>Schedule a Visit</Text>
-          </TouchableOpacity>
-        </ScrollView>
+              {schedules.length > 0 ? (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Upcoming Visits</Text>
+                  {schedules.map((schedule) => (
+                    <View key={schedule.id} style={styles.intentCard}>
+                      <View style={styles.intentIconWrap}>
+                        <Ionicons name="calendar" size={20} color={colors.primary} />
+                      </View>
+                      <View style={styles.intentInfo}>
+                        <Text style={styles.intentGym}>{schedule.gymName}</Text>
+                        {/* formatScheduleTime converts the Firestore Timestamp to a readable label */}
+                        <Text style={styles.intentTime}>{formatScheduleTime(schedule)}</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.cancelButton}
+                        onPress={() => handleCancelSchedule(schedule)}
+                      >
+                        <Text style={styles.cancelButtonText}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="calendar-outline" size={40} color={colors.textMuted} />
+                  <Text style={styles.emptyText}>No visits scheduled</Text>
+                  <Text style={styles.emptySubtext}>Plan ahead so others know you're coming</Text>
+                </View>
+              )}
+
+              <TouchableOpacity style={styles.primaryButton} onPress={() => setStep(2)}>
+                <Ionicons name="add" size={20} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.primaryButtonText}>Schedule a Visit</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -271,62 +279,66 @@ export default function PlanVisitScreen({ navigation }) {
   if (step === 2) {
     return (
       <SafeAreaView style={styles.safe}>
-        <ScrollView contentContainerStyle={styles.scroll}>
-          <View style={styles.titleRow}>
-            <View>
-              <Text style={styles.title}>Select a Gym</Text>
-              <Text style={styles.subtitle}>Where do you plan to play?</Text>
-            </View>
-          </View>
-
-          {gyms.map((gym) => (
-            <TouchableOpacity
-              key={gym.id}
-              style={[
-                styles.gymCard,
-                // Highlight the selected gym with a primary-color border
-                selectedGym?.id === gym.id && styles.gymCardSelected,
-              ]}
-              onPress={() => setSelectedGym(gym)}
-            >
-              <View style={styles.gymCardLeft}>
-                {/* Checkmark when selected, outline circle otherwise */}
-                <Ionicons
-                  name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={22}
-                  color={selectedGym?.id === gym.id ? colors.primary : colors.textMuted}
-                />
-              </View>
-              <View style={styles.gymCardInfo}>
-                <Text style={styles.gymCardName}>{gym.name}</Text>
-                <Text style={styles.gymCardAddress}>{gym.address}</Text>
-                <Text style={styles.gymCardType}>
-                  {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
-                  <Text style={styles.gymCardAccent}>OPEN RUN</Text>
-                </Text>
-              </View>
-              {/* Live presence badge — shows if anyone is currently there */}
-              {gym.currentPresenceCount > 0 && (
-                <View style={styles.presenceBadge}>
-                  <Text style={styles.presenceBadgeText}>{gym.currentPresenceCount} here</Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <ScrollView contentContainerStyle={styles.scroll}>
+              <View style={styles.titleRow}>
+                <View>
+                  <Text style={styles.title}>Select a Gym</Text>
+                  <Text style={styles.subtitle}>Where do you plan to play?</Text>
                 </View>
-              )}
-            </TouchableOpacity>
-          ))}
+              </View>
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep(1)}>
-              <Text style={styles.secondaryButtonText}>Back</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.primaryButton, !selectedGym && styles.buttonDisabled]}
-              onPress={() => selectedGym && setStep(3)}
-              disabled={!selectedGym}
-            >
-              <Text style={styles.primaryButtonText}>Next</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
+              {gyms.map((gym) => (
+                <TouchableOpacity
+                  key={gym.id}
+                  style={[
+                    styles.gymCard,
+                    // Highlight the selected gym with a primary-color border
+                    selectedGym?.id === gym.id && styles.gymCardSelected,
+                  ]}
+                  onPress={() => setSelectedGym(gym)}
+                >
+                  <View style={styles.gymCardLeft}>
+                    {/* Checkmark when selected, outline circle otherwise */}
+                    <Ionicons
+                      name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={22}
+                      color={selectedGym?.id === gym.id ? colors.primary : colors.textMuted}
+                    />
+                  </View>
+                  <View style={styles.gymCardInfo}>
+                    <Text style={styles.gymCardName}>{gym.name}</Text>
+                    <Text style={styles.gymCardAddress}>{gym.address}</Text>
+                    <Text style={styles.gymCardType}>
+                      {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
+                      <Text style={styles.gymCardAccent}>OPEN RUN</Text>
+                    </Text>
+                  </View>
+                  {/* Live presence badge — shows if anyone is currently there */}
+                  {gym.currentPresenceCount > 0 && (
+                    <View style={styles.presenceBadge}>
+                      <Text style={styles.presenceBadgeText}>{gym.currentPresenceCount} here</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              ))}
+
+              <View style={styles.buttonRow}>
+                <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep(1)}>
+                  <Text style={styles.secondaryButtonText}>Back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryButton, !selectedGym && styles.buttonDisabled]}
+                  onPress={() => selectedGym && setStep(3)}
+                  disabled={!selectedGym}
+                >
+                  <Text style={styles.primaryButtonText}>Next</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -334,6 +346,8 @@ export default function PlanVisitScreen({ navigation }) {
   // ─── Step 3: Select Time ────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.titleRow}>
           <View>
@@ -414,6 +428,8 @@ export default function PlanVisitScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
