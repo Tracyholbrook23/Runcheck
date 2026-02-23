@@ -38,6 +38,9 @@ import {
   TouchableOpacity,
   Animated,
   Image,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -48,8 +51,11 @@ const courtImage = require('../assets/basketball-court.png');
 import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
-import { handleFollowPoints } from '../services/pointsService';
+import {
+  doc, updateDoc, arrayUnion, arrayRemove,
+  collection, addDoc, onSnapshot, serverTimestamp, query, orderBy,
+} from 'firebase/firestore';
+import { handleFollowPoints, awardPoints } from '../services/pointsService';
 
 /**
  * isToday — Checks whether a given Date falls on the current calendar day.
@@ -83,6 +89,26 @@ const isTomorrow = (date) => {
 };
 
 /**
+ * timeAgo — Returns a human-readable relative time string for a Firestore
+ * Timestamp or Date (e.g. "just now", "5m ago", "2h ago", "3d ago").
+ *
+ * @param {import('firebase/firestore').Timestamp|Date|null} timestamp
+ * @returns {string}
+ */
+const timeAgo = (timestamp) => {
+  if (!timestamp) return '';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+};
+
+/**
  * RunDetailsScreen — Full gym detail screen.
  *
  * @param {object} props
@@ -100,10 +126,31 @@ export default function RunDetailsScreen({ route, navigation }) {
   const { presences, loading: presencesLoading } = useGymPresences(gymId);
   const { schedules, loading: schedulesLoading } = useGymSchedules(gymId);
 
-  // Live user profile — provides followedGyms so the button reflects current state
-  const { followedGyms } = useProfile();
+  // Live user profile — provides followedGyms and profile data
+  const { followedGyms, profile } = useProfile();
   const isFollowed = followedGyms.includes(gymId);
   const [followLoading, setFollowLoading] = useState(false);
+
+  // Reviews state
+  const [reviews, setReviews] = useState([]);
+  const [reviewModalVisible, setReviewModalVisible] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [reviewText, setReviewText] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+
+  // Subscribe to this gym's reviews subcollection, newest first
+  useEffect(() => {
+    const q = query(
+      collection(db, 'gyms', gymId, 'reviews'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    }, (err) => {
+      console.error('reviews snapshot error:', err);
+    });
+    return unsub;
+  }, [gymId]);
 
   /**
    * toggleFollow — Adds or removes this gym from the user's `followedGyms` array
@@ -126,6 +173,40 @@ export default function RunDetailsScreen({ route, navigation }) {
       console.error('toggleFollow error:', err);
     } finally {
       setFollowLoading(false);
+    }
+  };
+
+  /**
+   * handleSubmitReview — Writes a review to `gyms/{gymId}/reviews`, awards 15
+   * points, and dismisses the modal.
+   */
+  const handleSubmitReview = async () => {
+    if (selectedRating === 0) {
+      Alert.alert('Rating Required', 'Please tap a star to rate this gym.');
+      return;
+    }
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setSubmittingReview(true);
+    try {
+      await addDoc(collection(db, 'gyms', gymId, 'reviews'), {
+        userId:     uid,
+        userName:   profile?.name || 'Anonymous',
+        userAvatar: profile?.photoURL || null,
+        rating:     selectedRating,
+        text:       reviewText.trim(),
+        createdAt:  serverTimestamp(),
+      });
+      awardPoints(uid, 'review');
+      setReviewModalVisible(false);
+      setSelectedRating(0);
+      setReviewText('');
+      Alert.alert('Review submitted! +15 pts 🎉');
+    } catch (err) {
+      console.error('submitReview error:', err);
+      Alert.alert('Error', 'Could not submit your review. Please try again.');
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -432,16 +513,62 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Reviews — empty state until real reviews are available */}
+        {/* Reviews — live from Firestore with Leave a Review CTA */}
         <View style={styles.section}>
           <View style={styles.reviewsHeaderRow}>
             <Text style={styles.sectionTitle}>Player Reviews</Text>
           </View>
-          <View style={styles.reviewsEmpty}>
-            <Ionicons name="star-outline" size={28} color={colors.textMuted} />
-            <Text style={styles.reviewsEmptyText}>No reviews yet</Text>
-            <Text style={styles.reviewsEmptySubtext}>Be the first to leave a review</Text>
-          </View>
+
+          {/* Leave a Review button */}
+          <TouchableOpacity
+            style={styles.leaveReviewButton}
+            onPress={() => setReviewModalVisible(true)}
+          >
+            <Ionicons name="star" size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.leaveReviewButtonText}>Leave a Review</Text>
+          </TouchableOpacity>
+
+          {/* Reviews list or empty state */}
+          {reviews.length === 0 ? (
+            <View style={styles.reviewsEmpty}>
+              <Ionicons name="star-outline" size={28} color={colors.textMuted} />
+              <Text style={styles.reviewsEmptyText}>No reviews yet</Text>
+              <Text style={styles.reviewsEmptySubtext}>Be the first to leave one!</Text>
+            </View>
+          ) : (
+            reviews.map((review) => (
+              <View key={review.id} style={styles.reviewCard}>
+                <View style={styles.reviewHeader}>
+                  {review.userAvatar ? (
+                    <Image source={{ uri: review.userAvatar }} style={styles.reviewAvatar} />
+                  ) : (
+                    <View style={styles.reviewAvatarPlaceholder}>
+                      <Text style={styles.reviewAvatarInitial}>
+                        {(review.userName || 'A')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.reviewMeta}>
+                    <Text style={styles.reviewerName}>{review.userName || 'Anonymous'}</Text>
+                    <View style={styles.reviewStarsRow}>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <Ionicons
+                          key={star}
+                          name={star <= review.rating ? 'star' : 'star-outline'}
+                          size={13}
+                          color="#F59E0B"
+                        />
+                      ))}
+                    </View>
+                  </View>
+                  <Text style={styles.reviewDate}>{timeAgo(review.createdAt)}</Text>
+                </View>
+                {!!review.text && (
+                  <Text style={styles.reviewComment}>{review.text}</Text>
+                )}
+              </View>
+            ))
+          )}
         </View>
 
         {/* Primary CTA — Check In Here */}
@@ -462,6 +589,70 @@ export default function RunDetailsScreen({ route, navigation }) {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      {/* Leave a Review modal */}
+      <Modal
+        visible={reviewModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReviewModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Rate This Gym</Text>
+
+            {/* Tappable star rating */}
+            <View style={styles.starRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity key={star} onPress={() => setSelectedRating(star)}>
+                  <Ionicons
+                    name={star <= selectedRating ? 'star' : 'star-outline'}
+                    size={38}
+                    color="#F59E0B"
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Optional comment */}
+            <TextInput
+              style={styles.reviewInput}
+              placeholder="Share your experience (optional)"
+              placeholderTextColor={colors.textMuted}
+              multiline
+              maxLength={400}
+              value={reviewText}
+              onChangeText={setReviewText}
+            />
+
+            {/* Submit */}
+            <TouchableOpacity
+              style={[styles.submitButton, submittingReview && { opacity: 0.7 }]}
+              onPress={handleSubmitReview}
+              disabled={submittingReview}
+            >
+              {submittingReview ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitButtonText}>Submit Review</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Cancel */}
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => {
+                setReviewModalVisible(false);
+                setSelectedRating(0);
+                setReviewText('');
+              }}
+              disabled={submittingReview}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -722,6 +913,98 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
+  },
+
+  // Leave a Review button
+  leaveReviewButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  leaveReviewButtonText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // Review avatar placeholder (when no photo URL)
+  reviewAvatarPlaceholder: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primary + '28',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reviewAvatarInitial: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+  },
+
+  // Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.lg,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  starRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  reviewInput: {
+    backgroundColor: colors.background,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: SPACING.sm,
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    minHeight: 90,
+    textAlignVertical: 'top',
+    marginBottom: SPACING.md,
+  },
+  submitButton: {
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  cancelButton: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  cancelButtonText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
   },
 
   // Reviews section

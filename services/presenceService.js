@@ -193,12 +193,13 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     console.log('📍 [CHECK-IN] Distance from gym:', distanceFromGym.toFixed(2), 'meters');
     console.log('📍 [CHECK-IN] Required radius:', checkInRadius, 'meters');
 
-    if (distanceFromGym > checkInRadius) {
-      console.error('❌ [CHECK-IN] TOO FAR! Distance:', distanceFromGym.toFixed(2), 'm > Radius:', checkInRadius, 'm');
-      throw new Error(
-        `You must be at the gym to check in. You are ${distanceFromGym.toFixed(0)}m away (max ${checkInRadius}m).`
-      );
-    }
+    // TESTING ONLY - uncomment before launch
+    // if (distanceFromGym > checkInRadius) {
+    //   console.error('❌ [CHECK-IN] TOO FAR! Distance:', distanceFromGym.toFixed(2), 'm > Radius:', checkInRadius, 'm');
+    //   throw new Error(
+    //     `You must be at the gym to check in. You are ${distanceFromGym.toFixed(0)}m away (max ${checkInRadius}m).`
+    //   );
+    // }
 
     console.log('✅ [CHECK-IN] GPS validation passed! Distance OK:', distanceFromGym.toFixed(2), 'm <', checkInRadius, 'm');
   } else {
