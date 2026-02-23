@@ -45,9 +45,10 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile } from '../hooks';
-import { auth, db } from '../config/firebase';
+import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 import { registerPushToken } from '../utils/notifications';
@@ -80,14 +81,24 @@ export default function ProfileScreen({ navigation }) {
     .slice(0, 3);
   const [profileLoading, setProfileLoading] = useState(true);
   const [photoUri, setPhotoUri] = useState(null);
+  const [uploading, setUploading] = useState(false);
 
   /**
-   * handlePickImage — Opens the device photo library and updates the avatar.
+   * handlePickImage — Opens the device photo library, uploads the selected
+   * image to Firebase Storage, and persists the download URL to Firestore.
    *
-   * Requests `MediaLibrary` permission via Expo ImagePicker. If granted,
-   * launches the cropper with a 1:1 aspect ratio. The selected image URI
-   * is stored in local state — in production this would also upload to
-   * Firebase Storage and update the user's Firestore profile.
+   * Flow:
+   *   1. Request MediaLibrary permission via Expo ImagePicker.
+   *   2. Launch the image picker with a square crop.
+   *   3. Convert the local URI to a Blob via fetch().blob().
+   *   4. Upload the Blob to Storage at `profilePhotos/{uid}.jpg` using
+   *      uploadBytesResumable (which supports progress tracking if needed).
+   *   5. Retrieve the permanent download URL via getDownloadURL.
+   *   6. Write `photoURL` to the user's Firestore document.
+   *   7. Update local state with the download URL so the avatar refreshes.
+   *
+   * An `uploading` flag drives an ActivityIndicator overlay on the avatar
+   * so the user gets visual feedback during the upload.
    */
   const handlePickImage = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -95,14 +106,48 @@ export default function ProfileScreen({ navigation }) {
       Alert.alert('Permission needed', 'Please allow access to your photo library.');
       return;
     }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      aspect: [1, 1],    // Force square crop for the circular avatar
+      aspect: [1, 1],   // Force square crop for the circular avatar
       quality: 0.8,
     });
-    if (!result.canceled) {
-      setPhotoUri(result.assets[0].uri);
+
+    if (result.canceled) return;
+
+    const localUri = result.assets[0].uri;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    setUploading(true);
+    try {
+      // Convert local URI → Blob (required by the Firebase Storage web SDK)
+      const response = await fetch(localUri);
+      const blob = await response.blob();
+
+      // Upload to Storage — one file per user, overwrites on each update
+      const storageRef = ref(storage, `profilePhotos/${uid}.jpg`);
+      const uploadTask = uploadBytesResumable(storageRef, blob);
+
+      // Wait for the upload to complete
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed', null, reject, resolve);
+      });
+
+      // Retrieve the permanent, publicly-readable download URL
+      const downloadURL = await getDownloadURL(storageRef);
+
+      // Persist the URL so it survives app restarts and device changes
+      await updateDoc(doc(db, 'users', uid), { photoURL: downloadURL });
+
+      // Update the local avatar immediately without waiting for a Firestore read
+      setPhotoUri(downloadURL);
+    } catch (err) {
+      console.error('handlePickImage upload error:', err);
+      Alert.alert('Upload Failed', 'Could not save your photo. Please try again.');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -118,7 +163,12 @@ export default function ProfileScreen({ navigation }) {
     const fetchProfile = async () => {
       try {
         const snap = await getDoc(doc(db, 'users', user.uid));
-        if (snap.exists()) setProfile(snap.data());
+        if (snap.exists()) {
+          const data = snap.data();
+          setProfile(data);
+          // Restore the saved profile photo so it appears on every login
+          if (data.photoURL) setPhotoUri(data.photoURL);
+        }
       } catch (err) {
         console.error('Failed to load profile:', err);
       } finally {
@@ -196,7 +246,7 @@ export default function ProfileScreen({ navigation }) {
         {/* ── Avatar & User Info ─────────────────────────────────────────── */}
         <View style={styles.header}>
           {/* Tappable avatar: shows picked photo or fallback placeholder */}
-          <TouchableOpacity onPress={handlePickImage}>
+          <TouchableOpacity onPress={handlePickImage} disabled={uploading}>
             {photoUri ? (
               <Image source={{ uri: photoUri }} style={styles.avatarImage} />
             ) : (
@@ -204,10 +254,18 @@ export default function ProfileScreen({ navigation }) {
                 <Ionicons name="person" size={40} color={colors.textMuted} />
               </View>
             )}
+            {/* Upload spinner — overlays the avatar while the photo is uploading */}
+            {uploading && (
+              <View style={styles.uploadingOverlay}>
+                <ActivityIndicator size="small" color="#fff" />
+              </View>
+            )}
             {/* Camera badge overlay on the bottom-right of the avatar */}
-            <View style={styles.editBadge}>
-              <Ionicons name="camera" size={14} color="#fff" />
-            </View>
+            {!uploading && (
+              <View style={styles.editBadge}>
+                <Ionicons name="camera" size={14} color="#fff" />
+              </View>
+            )}
           </TouchableOpacity>
           <Text style={styles.name}>{profile?.name || user?.displayName || 'Player'}</Text>
           {profileSkillColors && (
@@ -797,4 +855,15 @@ editBadge: {
   justifyContent: 'center',
   alignItems: 'center',
 },
+    uploadingOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
   });

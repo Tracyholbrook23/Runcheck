@@ -6,6 +6,7 @@
  *   • auth      — Firebase Auth (with AsyncStorage persistence for RN)
  *   • db        — Firestore database
  *   • functions — Cloud Functions (us-central1)
+ *   • storage   — Firebase Storage (for profile photos & media)
  *
  * ─── Emulator Mode ────────────────────────────────────────────────────────────
  * When EXPO_PUBLIC_USE_EMULATORS=true in .env, ALL three services are wired to
@@ -40,6 +41,7 @@ import {
 } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import {
   getFunctions,
   connectFunctionsEmulator,
@@ -79,6 +81,9 @@ const db = getFirestore(app);
 
 // ─── Cloud Functions (us-central1 matches the backend deployment region) ──────
 const functions = getFunctions(app, 'us-central1');
+
+// ─── Firebase Storage ─────────────────────────────────────────────────────────
+const storage = getStorage(app);
 
 // ─── Emulator connections ─────────────────────────────────────────────────────
 // The flag below ensures we only call connectXEmulator once per JS runtime even
@@ -172,4 +177,4 @@ export async function callHttpFunction(functionName, queryParams = {}) {
   return res.json();
 }
 
-export { auth, db, functions };
+export { auth, db, functions, storage };
