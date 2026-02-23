@@ -343,23 +343,30 @@ const HomeScreen = ({ navigation }) => {
               </BlurView>
             ) : (
               activityFeed.map((item) => (
-                <BlurView key={item.id} intensity={40} tint="dark" style={styles.activityRow}>
-                  {item.userAvatar ? (
-                    <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
-                  ) : (
-                    <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
-                      <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+                <TouchableOpacity
+                  key={item.id}
+                  activeOpacity={0.75}
+                  onPress={() => navigation.navigate('UserProfile', { userId: item.userId })}
+                >
+                  <BlurView intensity={40} tint="dark" style={styles.activityRow}>
+                    {item.userAvatar ? (
+                      <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
+                    ) : (
+                      <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
+                        <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+                      </View>
+                    )}
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityText} numberOfLines={1}>
+                        <Text style={styles.activityName}>{item.userName}</Text>
+                        <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
+                        <Text style={styles.activityGym}>{item.gymName}</Text>
+                      </Text>
+                      <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
                     </View>
-                  )}
-                  <View style={styles.activityInfo}>
-                    <Text style={styles.activityText} numberOfLines={1}>
-                      <Text style={styles.activityName}>{item.userName}</Text>
-                      <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
-                      <Text style={styles.activityGym}>{item.gymName}</Text>
-                    </Text>
-                    <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
-                  </View>
-                </BlurView>
+                    <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+                  </BlurView>
+                </TouchableOpacity>
               ))
             )}
           </View>
