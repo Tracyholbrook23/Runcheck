@@ -60,10 +60,13 @@ export default function UserProfileScreen({ route, navigation }) {
   // Fetched profile state
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
 
   // Friend state — derived from the fetched profile
   const [isFriend, setIsFriend] = useState(false);
   const [addingFriend, setAddingFriend] = useState(false);
+
+  console.log('🧑 [UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
 
   const { gyms } = useGyms();
 
@@ -72,18 +75,23 @@ export default function UserProfileScreen({ route, navigation }) {
     let cancelled = false;
 
     const fetchProfile = async () => {
+      console.log('🧑 [UserProfileScreen] fetching users/', userId);
       try {
         const snap = await getDoc(doc(db, 'users', userId));
         if (cancelled) return;
+        console.log('🧑 [UserProfileScreen] doc exists:', snap.exists(), '| fields:', snap.exists() ? Object.keys(snap.data()) : 'n/a');
         if (snap.exists()) {
           const data = snap.data();
           setProfile(data);
           // The current user is a friend if their UID appears in the
           // target user's friends array.
           setIsFriend((data.friends || []).includes(currentUid));
+        } else {
+          console.warn('🧑 [UserProfileScreen] No document at users/', userId);
         }
       } catch (err) {
-        console.error('UserProfileScreen fetch error:', err);
+        console.error('❌ [UserProfileScreen] Firestore fetch error:', err.code, err.message);
+        if (!cancelled) setFetchError(err.message || 'Permission denied');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -157,7 +165,7 @@ export default function UserProfileScreen({ route, navigation }) {
     );
   }
 
-  // ── Not found state ──────────────────────────────────────────────────────
+  // ── Not found / error state ──────────────────────────────────────────────
   if (!profile) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -168,7 +176,10 @@ export default function UserProfileScreen({ route, navigation }) {
         </View>
         <View style={styles.centered}>
           <Ionicons name="person-circle-outline" size={48} color={colors.textMuted} />
-          <Text style={styles.notFoundText}>Profile not found</Text>
+          <Text style={styles.notFoundText}>
+            {fetchError ? `Error: ${fetchError}` : 'Profile not found'}
+          </Text>
+          <Text style={styles.notFoundSub}>userId: {userId}</Text>
         </View>
       </SafeAreaView>
     );
@@ -329,6 +340,12 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   notFoundText: {
     fontSize: FONT_SIZES.body,
     color: colors.textMuted,
+  },
+  notFoundSub: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: SPACING.xs,
+    opacity: 0.6,
   },
   scrollContent: {
     alignItems: 'center',

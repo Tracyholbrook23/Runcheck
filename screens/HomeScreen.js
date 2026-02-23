@@ -347,11 +347,17 @@ const HomeScreen = ({ navigation }) => {
                   key={item.id}
                   activeOpacity={0.75}
                   onPress={() => {
-                    console.log('🏀 [Activity] Tapping user:', item.userId);
-                    if (item.userId) {
+                    console.log('🏀 [Activity] Row tapped — full item:', JSON.stringify(item));
+                    if (!item.userId) {
+                      console.warn('⚠️ [Activity] item.userId is missing, cannot navigate');
+                      return;
+                    }
+                    try {
+                      console.log('🏀 [Activity] Calling navigation.push UserProfile with userId:', item.userId);
                       navigation.push('UserProfile', { userId: item.userId });
-                    } else {
-                      console.warn('⚠️ [Activity] No userId on item:', item);
+                      console.log('🏀 [Activity] navigation.push called successfully');
+                    } catch (err) {
+                      console.error('❌ [Activity] navigation.push threw:', err);
                     }
                   }}
                 >
