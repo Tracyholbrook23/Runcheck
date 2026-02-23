@@ -46,7 +46,7 @@ import { useTheme } from '../contexts';
 import { usePresence, useGyms } from '../hooks';
 import { Logo } from '../components';
 import { db } from '../config/firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, onSnapshot } from 'firebase/firestore';
 
 /**
  * HomeScreen — Main dashboard component.
@@ -75,10 +75,13 @@ const HomeScreen = ({ navigation }) => {
 
   const [activityFeed, setActivityFeed] = useState([]);
 
-  // Subscribe to the 10 most recent activity documents in real time
+  // Subscribe to activity documents from the last 2 hours in real time.
+  // The cutoff is computed once on mount; Firestore evaluates it server-side.
   useEffect(() => {
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     const q = query(
       collection(db, 'activity'),
+      where('createdAt', '>=', twoHoursAgo),
       orderBy('createdAt', 'desc'),
       limit(10)
     );

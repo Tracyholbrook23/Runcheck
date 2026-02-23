@@ -44,7 +44,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { addDoc, collection, serverTimestamp, query, where, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
 /**
  * getAvailableDays — Builds a 7-day date array starting from today.
@@ -219,6 +219,23 @@ export default function PlanVisitScreen({ navigation }) {
           onPress: async () => {
             try {
               await cancelSchedule(schedule.id);
+
+              // Remove the corresponding activity feed event — fire and forget
+              const uid = auth.currentUser?.uid;
+              if (uid) {
+                getDocs(
+                  query(
+                    collection(db, 'activity'),
+                    where('userId',  '==', uid),
+                    where('gymId',   '==', schedule.gymId),
+                    where('action',  '==', 'planned a visit to')
+                  )
+                )
+                  .then((snap) =>
+                    Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id))))
+                  )
+                  .catch((err) => console.error('Activity cleanup error (cancel plan):', err));
+              }
             } catch (error) {
               Alert.alert('Error', error.message);
             }
