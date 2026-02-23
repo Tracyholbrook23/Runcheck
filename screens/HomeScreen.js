@@ -346,7 +346,14 @@ const HomeScreen = ({ navigation }) => {
                 <TouchableOpacity
                   key={item.id}
                   activeOpacity={0.75}
-                  onPress={() => navigation.navigate('UserProfile', { userId: item.userId })}
+                  onPress={() => {
+                    console.log('🏀 [Activity] Tapping user:', item.userId);
+                    if (item.userId) {
+                      navigation.navigate('UserProfile', { userId: item.userId });
+                    } else {
+                      console.warn('⚠️ [Activity] No userId on item:', item);
+                    }
+                  }}
                 >
                   <BlurView intensity={40} tint="dark" style={styles.activityRow}>
                     {item.userAvatar ? (
