@@ -74,7 +74,7 @@ export const seedGyms = async () => {
       type: GYM_TYPE.INDOOR,
       accessType: 'paid',
       notes: '55,000 sq ft facility with two full-size gymnasiums, basketball courts, pool, racquetball courts',
-      imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/348s.jpg',
+      imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/o.jpg',
       location: {
         latitude: 30.4972,
         longitude: -97.6609,
