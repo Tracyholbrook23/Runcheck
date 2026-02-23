@@ -349,7 +349,7 @@ const HomeScreen = ({ navigation }) => {
                   onPress={() => {
                     console.log('🏀 [Activity] Tapping user:', item.userId);
                     if (item.userId) {
-                      navigation.navigate('UserProfile', { userId: item.userId });
+                      navigation.push('UserProfile', { userId: item.userId });
                     } else {
                       console.warn('⚠️ [Activity] No userId on item:', item);
                     }
