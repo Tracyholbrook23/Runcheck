@@ -58,6 +58,7 @@ import { auth, db } from '../config/firebase';
 import {
   doc, updateDoc, arrayUnion, arrayRemove,
   collection, addDoc, onSnapshot, serverTimestamp, query, orderBy,
+  getDocs, deleteDoc, where, limit,
 } from 'firebase/firestore';
 import { handleFollowPoints, awardPoints } from '../services/pointsService';
 
@@ -135,12 +136,36 @@ export default function RunDetailsScreen({ route, navigation }) {
   const isFollowed = followedGyms.includes(gymId);
   const [followLoading, setFollowLoading] = useState(false);
 
+  // Current user UID — stable for the lifetime of the screen
+  const uid = auth.currentUser?.uid;
+
   // Reviews state
   const [reviews, setReviews] = useState([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
   const [selectedRating, setSelectedRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
+
+  // Derived — true if the current user already has a review for this gym.
+  // Recomputed whenever the live reviews snapshot updates.
+  const hasReviewed = !!uid && reviews.some((r) => r.userId === uid);
+
+  // Check-in gate — true once we confirm the user has ever checked in here.
+  // A one-time query is sufficient; presence records are never deleted.
+  const [hasCheckedIn, setHasCheckedIn] = useState(false);
+
+  useEffect(() => {
+    if (!uid) return;
+    const q = query(
+      collection(db, 'presence'),
+      where('userId', '==', uid),
+      where('gymId', '==', gymId),
+      limit(1)
+    );
+    getDocs(q)
+      .then((snap) => setHasCheckedIn(!snap.empty))
+      .catch((err) => console.error('checkIn history query error:', err));
+  }, [uid, gymId]);
 
   // Subscribe to this gym's reviews subcollection, newest first
   useEffect(() => {
@@ -181,16 +206,57 @@ export default function RunDetailsScreen({ route, navigation }) {
   };
 
   /**
+   * handleDeleteReview — Prompts for confirmation then deletes the user's own
+   * review document from `gyms/{gymId}/reviews/{reviewId}`.
+   *
+   * The live onSnapshot subscription automatically removes the card from the
+   * list once the delete completes, so no local state update is needed.
+   *
+   * @param {string} reviewId — Firestore document ID of the review to delete.
+   */
+  const handleDeleteReview = (reviewId) => {
+    Alert.alert(
+      'Delete Your Review',
+      'Are you sure you want to delete your review?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'gyms', gymId, 'reviews', reviewId));
+            } catch (err) {
+              console.error('deleteReview error:', err);
+              Alert.alert('Error', 'Could not delete your review. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  /**
    * handleSubmitReview — Writes a review to `gyms/{gymId}/reviews`, awards 15
    * points, and dismisses the modal.
+   *
+   * Guards:
+   *   - Requires a star rating.
+   *   - Blocks submission if the user has already reviewed this gym (prevents
+   *     duplicates even if the UI guard was somehow bypassed).
    */
   const handleSubmitReview = async () => {
     if (selectedRating === 0) {
       Alert.alert('Rating Required', 'Please tap a star to rate this gym.');
       return;
     }
-    const uid = auth.currentUser?.uid;
     if (!uid) return;
+    // Server-side duplicate guard (mirrors the UI check)
+    if (hasReviewed) {
+      Alert.alert('Already Reviewed', "You've already reviewed this gym.");
+      setReviewModalVisible(false);
+      return;
+    }
     setSubmittingReview(true);
     try {
       await addDoc(collection(db, 'gyms', gymId, 'reviews'), {
@@ -523,14 +589,31 @@ export default function RunDetailsScreen({ route, navigation }) {
             <Text style={styles.sectionTitle}>Player Reviews</Text>
           </View>
 
-          {/* Leave a Review button */}
-          <TouchableOpacity
-            style={styles.leaveReviewButton}
-            onPress={() => setReviewModalVisible(true)}
-          >
-            <Ionicons name="star" size={16} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.leaveReviewButtonText}>Leave a Review</Text>
-          </TouchableOpacity>
+          {/*
+           * Leave a Review CTA — gated behind two conditions:
+           *   1. User must have a check-in record at this gym (hasCheckedIn)
+           *   2. User must not have already reviewed this gym (hasReviewed)
+           * If neither condition blocks, show the primary button.
+           */}
+          {!hasCheckedIn ? (
+            <View style={styles.reviewGateNote}>
+              <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} style={{ marginRight: 5 }} />
+              <Text style={styles.reviewGateText}>Attend a run here to leave a review</Text>
+            </View>
+          ) : hasReviewed ? (
+            <View style={styles.reviewGateNote}>
+              <Ionicons name="checkmark-circle-outline" size={14} color={colors.success} style={{ marginRight: 5 }} />
+              <Text style={[styles.reviewGateText, { color: colors.success }]}>You've reviewed this gym</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={styles.leaveReviewButton}
+              onPress={() => setReviewModalVisible(true)}
+            >
+              <Ionicons name="star" size={16} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.leaveReviewButtonText}>Leave a Review</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Reviews list or empty state */}
           {reviews.length === 0 ? (
@@ -565,8 +648,25 @@ export default function RunDetailsScreen({ route, navigation }) {
                       ))}
                     </View>
                   </View>
-                  <Text style={styles.reviewDate}>{timeAgo(review.createdAt)}</Text>
+                  {/* Timestamp on the right — replaced by trash icon for own reviews */}
+                  {review.userId === uid ? (
+                    <TouchableOpacity
+                      style={styles.deleteReviewButton}
+                      onPress={() => handleDeleteReview(review.id)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={17} color={colors.danger} />
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.reviewDate}>{timeAgo(review.createdAt)}</Text>
+                  )}
                 </View>
+                {/* For own review, show time below the content row */}
+                {review.userId === uid && (
+                  <Text style={[styles.reviewDate, { marginTop: 2, textAlign: 'right' }]}>
+                    {timeAgo(review.createdAt)}
+                  </Text>
+                )}
                 {!!review.text && (
                   <Text style={styles.reviewComment}>{review.text}</Text>
                 )}
@@ -930,6 +1030,24 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     textTransform: 'uppercase',
     letterSpacing: 0.3,
+  },
+
+  // Gate note shown when user hasn't attended or has already reviewed
+  reviewGateNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  reviewGateText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+
+  // Trash icon button on a user's own review card
+  deleteReviewButton: {
+    padding: SPACING.xs,
   },
 
   // Leave a Review button
