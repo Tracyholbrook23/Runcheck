@@ -42,7 +42,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { useSchedules, useGyms } from '../hooks';
+import { useSchedules, useGyms, useProfile } from '../hooks';
+import { auth, db } from '../config/firebase';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 
 /**
  * getAvailableDays — Builds a 7-day date array starting from today.
@@ -127,6 +129,9 @@ export default function PlanVisitScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  // User profile provides name + avatar for activity feed writes
+  const { profile } = useProfile();
+
   // Hide the default navigation header — this screen uses its own title layout
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -165,6 +170,19 @@ export default function PlanVisitScreen({ navigation }) {
     if (!selectedGym || !selectedSlot) return;
     try {
       await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
+
+      // Write activity feed event — fire and forget so it never blocks the UI
+      const uid = auth.currentUser?.uid;
+      addDoc(collection(db, 'activity'), {
+        userId: uid,
+        userName: profile?.name || 'Anonymous',
+        userAvatar: profile?.photoURL || null,
+        action: 'planned a visit to',
+        gymId: selectedGym.id,
+        gymName: selectedGym.name,
+        createdAt: serverTimestamp(),
+      }).catch((err) => console.error('Activity write error (plan):', err));
+
       const dayDesc = selectedDay?.label === 'Today' ? 'today' : `on ${selectedDay?.label}, ${selectedDay?.dateStr}`;
 
       Alert.alert(

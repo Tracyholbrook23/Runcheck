@@ -25,7 +25,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
+import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { awardPoints } from '../services/pointsService';
 import { findMatchingSchedule } from '../services/scheduleService';
 
@@ -44,7 +45,7 @@ import {
   Alert,
 } from 'react-native';
 import DropDownPicker from 'react-native-dropdown-picker';
-import { usePresence, useGyms } from '../hooks';
+import { usePresence, useGyms, useProfile } from '../hooks';
 
 /**
  * CheckInScreen — GPS-gated gym check-in screen.
@@ -61,6 +62,9 @@ export default function CheckInScreen({ navigation }) {
   const [gymItems, setGymItems] = useState([]);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  // User profile provides name + avatar for activity feed writes
+  const { profile } = useProfile();
 
   const {
     presence,
@@ -124,6 +128,17 @@ export default function CheckInScreen({ navigation }) {
       const uid = auth.currentUser?.uid;
 
       await checkIn(selectedGym);
+
+      // Write activity feed event — fire and forget so it never blocks the UI
+      addDoc(collection(db, 'activity'), {
+        userId: uid,
+        userName: profile?.name || 'Anonymous',
+        userAvatar: profile?.photoURL || null,
+        action: 'checked in at',
+        gymId: selectedGym,
+        gymName,
+        createdAt: serverTimestamp(),
+      }).catch((err) => console.error('Activity write error (check-in):', err));
 
       // Check if this check-in fulfils a prior plan (±60 min grace window)
       const matchedSchedule = uid

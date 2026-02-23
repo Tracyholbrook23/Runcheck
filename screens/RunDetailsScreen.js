@@ -56,7 +56,7 @@ import { useTheme } from '../contexts';
 import { useGym, useGymPresences, useGymSchedules, useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
 import {
-  doc, updateDoc, arrayUnion, arrayRemove,
+  doc, getDoc, updateDoc, arrayUnion, arrayRemove,
   collection, addDoc, onSnapshot, serverTimestamp, query, orderBy,
   getDocs, deleteDoc, where, limit,
 } from 'firebase/firestore';
@@ -154,6 +154,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   // A one-time query is sufficient; presence records are never deleted.
   const [hasCheckedIn, setHasCheckedIn] = useState(false);
 
+  // Who's Going — enriched user lists for today's and tomorrow's schedules.
+  // Populated asynchronously so photo URLs load without blocking the screen.
+  const [todayGoingUsers, setTodayGoingUsers] = useState([]);
+  const [tomorrowGoingUsers, setTomorrowGoingUsers] = useState([]);
+
   useEffect(() => {
     if (!uid) return;
     const q = query(
@@ -166,6 +171,51 @@ export default function RunDetailsScreen({ route, navigation }) {
       .then((snap) => setHasCheckedIn(!snap.empty))
       .catch((err) => console.error('checkIn history query error:', err));
   }, [uid, gymId]);
+
+  /**
+   * hydrateGoingUsers — Takes a raw schedule array and enriches each entry with
+   * the user's `name` and `photoURL` from their Firestore profile document.
+   * Falls back to the denormalized `userName` already on the schedule doc and
+   * `null` for the avatar when the profile fetch fails.
+   *
+   * @param {object[]} scheduleList - Array from useGymSchedules
+   * @param {Function} setFn - State setter to call with the enriched array
+   */
+  const hydrateGoingUsers = async (scheduleList, setFn) => {
+    try {
+      const users = await Promise.all(
+        scheduleList.map(async (s) => {
+          // scheduleService writes the userId under `odId`
+          const userId = s.odId || s.userId;
+          try {
+            const snap = await getDoc(doc(db, 'users', userId));
+            const data = snap.data();
+            return {
+              userId,
+              userName: data?.name || s.userName || 'User',
+              userAvatar: data?.photoURL || null,
+            };
+          } catch {
+            return { userId, userName: s.userName || 'User', userAvatar: null };
+          }
+        })
+      );
+      setFn(users);
+    } catch (err) {
+      console.error('hydrateGoingUsers error:', err);
+    }
+  };
+
+  // Re-hydrate the "Who's Going" lists whenever the live schedule arrays change
+  useEffect(() => {
+    if (todaySchedules.length === 0) { setTodayGoingUsers([]); return; }
+    hydrateGoingUsers(todaySchedules, setTodayGoingUsers);
+  }, [todaySchedules]);
+
+  useEffect(() => {
+    if (tomorrowSchedules.length === 0) { setTomorrowGoingUsers([]); return; }
+    hydrateGoingUsers(tomorrowSchedules, setTomorrowGoingUsers);
+  }, [tomorrowSchedules]);
 
   // Subscribe to this gym's reviews subcollection, newest first
   useEffect(() => {
@@ -278,6 +328,50 @@ export default function RunDetailsScreen({ route, navigation }) {
     } finally {
       setSubmittingReview(false);
     }
+  };
+
+  /**
+   * renderAvatarRow — Renders a compact row of up to 5 overlapping avatar circles
+   * for a given user list. Shows the user's photo if available; falls back to
+   * a coloured circle with their first initial. If the list exceeds 5, a "+N"
+   * overflow chip is appended. When the list is empty, an italic empty-state
+   * message is shown instead.
+   *
+   * @param {{ userId: string, userName: string, userAvatar: string|null }[]} users
+   * @param {string} emptyMessage - Text shown when `users` is empty
+   * @returns {JSX.Element}
+   */
+  const renderAvatarRow = (users, emptyMessage) => {
+    if (users.length === 0) {
+      return <Text style={styles.whoGoingEmpty}>{emptyMessage}</Text>;
+    }
+    const visible = users.slice(0, 5);
+    const extra = users.length - 5;
+    return (
+      <View style={styles.avatarRow}>
+        {visible.map((user, idx) => (
+          <View
+            key={user.userId}
+            style={[styles.avatarCircleWrap, idx > 0 && styles.avatarCircleOffset]}
+          >
+            {user.userAvatar ? (
+              <Image source={{ uri: user.userAvatar }} style={styles.avatarCircleImg} />
+            ) : (
+              <View style={styles.avatarCircleFallback}>
+                <Text style={styles.avatarCircleInitial}>
+                  {(user.userName || '?')[0].toUpperCase()}
+                </Text>
+              </View>
+            )}
+          </View>
+        ))}
+        {extra > 0 && (
+          <View style={[styles.avatarCircleWrap, styles.avatarCircleOffset, styles.avatarCircleMore]}>
+            <Text style={styles.avatarCircleMoreText}>+{extra}</Text>
+          </View>
+        )}
+      </View>
+    );
   };
 
   const loading = gymLoading || presencesLoading || schedulesLoading;
@@ -492,6 +586,19 @@ export default function RunDetailsScreen({ route, navigation }) {
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{tomorrowCount}</Text>
             <Text style={styles.statLabel}>Planning{'\n'}Tomorrow</Text>
+          </View>
+        </View>
+
+        {/* Who's Going — compact avatar rows for today and tomorrow's scheduled visits */}
+        <View style={styles.whoGoingSection}>
+          <Text style={styles.sectionTitle}>Who's Going</Text>
+          <View style={styles.whoGoingRow}>
+            <Text style={styles.whoGoingDayLabel}>Today</Text>
+            {renderAvatarRow(todayGoingUsers, 'No one scheduled today')}
+          </View>
+          <View style={[styles.whoGoingRow, { marginTop: SPACING.sm }]}>
+            <Text style={styles.whoGoingDayLabel}>Tomorrow</Text>
+            {renderAvatarRow(tomorrowGoingUsers, 'No one scheduled tomorrow')}
           </View>
         </View>
 
@@ -1251,5 +1358,74 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ─── Who's Going section ──────────────────────────────────────────────────
+  whoGoingSection: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  whoGoingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  whoGoingDayLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textSecondary,
+    width: 76,
+  },
+  whoGoingEmpty: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+  // Outer wrapper — adds the white border that separates overlapping avatars
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  avatarCircleWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: colors.background,
+    overflow: 'hidden',
+  },
+  // Negative margin creates the overlapping stack effect
+  avatarCircleOffset: {
+    marginLeft: -10,
+  },
+  avatarCircleImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  // Coloured fallback circle when no photoURL is available
+  avatarCircleFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary + '30',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  avatarCircleInitial: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+  },
+  // "+N more" overflow chip
+  avatarCircleMore: {
+    backgroundColor: colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderColor: colors.border,
+  },
+  avatarCircleMoreText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
   },
 });
