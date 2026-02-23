@@ -45,6 +45,7 @@ import { db, auth } from '../config/firebase';
 import {
   collection,
   doc,
+  addDoc,
   getDoc,
   getDocs,
   setDoc,
@@ -274,6 +275,17 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
       },
     });
   });
+
+  // Write activity feed event — fire and forget
+  addDoc(collection(db, 'activity'), {
+    userId: odId,
+    userName,
+    userAvatar: userData.photoURL || null,
+    action: 'checked in at',
+    gymId,
+    gymName: gymData.name,
+    createdAt: serverTimestamp(),
+  }).catch((err) => console.error('Activity write error (check-in):', err));
 
   // Mark schedule as attended (outside transaction - non-critical)
   if (matchingSchedule) {
