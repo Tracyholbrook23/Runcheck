@@ -50,7 +50,7 @@ import {
 } from '../utils/badges';
 
 // ─── Trophy colors for top-3 positions ───────────────────────────────────────
-const TROPHY_COLORS = { 1: '#F59E0B', 2: '#B0B0B0', 3: '#CD7F32' };
+const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
 
 // ─── RankBadgePill ────────────────────────────────────────────────────────────
 /**
@@ -58,9 +58,9 @@ const TROPHY_COLORS = { 1: '#F59E0B', 2: '#B0B0B0', 3: '#CD7F32' };
  *
  * Tier-specific effects:
  *   Bronze   — Solid #CD7F32 pill, white text, subtle top-highlight shine stripe.
- *   Silver   — Solid #B0B0B0 pill, dark text, more prominent shine stripe.
- *   Gold     — Solid #F59E0B pill, white text, animated ✦ sparkle (opacity pulse).
- *   Platinum — Solid #A78BFA pill, white text, scale-pulse glow shadow animation.
+ *   Silver   — Solid #A8A9AD pill, dark text, more prominent shine stripe.
+ *   Gold     — Solid #FFD700 pill, dark text, animated ✦ sparkle (opacity pulse).
+ *   Platinum — Solid #E8F4FD pill, dark text, scale-pulse glow shadow animation.
  */
 function RankBadgePill({ rank, small = false }) {
   const pulseAnim   = useRef(new Animated.Value(1)).current;
@@ -94,8 +94,10 @@ function RankBadgePill({ rank, small = false }) {
     sparkleAnim.setValue(0.3);
   }, [rank.name]);
 
-  // Silver and Platinum have light backgrounds — use dark text for contrast
-  const textColor = rank.name === 'Silver' ? '#2A2A2A' : '#FFFFFF';
+  // Silver, Gold, and Platinum have light backgrounds — use dark text for contrast
+  const textColor = (rank.name === 'Silver' || rank.name === 'Gold' || rank.name === 'Platinum')
+    ? '#2A2A2A'
+    : '#FFFFFF';
 
   const ph = small ? 7  : 10;
   const pv = small ? 3  : 5;

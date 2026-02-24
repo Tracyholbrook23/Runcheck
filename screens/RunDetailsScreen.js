@@ -533,6 +533,15 @@ export default function RunDetailsScreen({ route, navigation }) {
               </Text>
             </View>
           )}
+
+          {/* Primary CTA — Check In Here (pinned near top so users find it immediately) */}
+          <TouchableOpacity
+            style={[styles.checkInButton, { marginTop: SPACING.md, marginBottom: 0 }]}
+            onPress={() => navigation.getParent()?.navigate('CheckIn')}
+          >
+            <Text style={styles.checkInButtonText}>Check In Here</Text>
+          </TouchableOpacity>
+
           <Text style={styles.gymAddress}>{gym?.address}</Text>
           {gym?.location && (
             <TouchableOpacity
@@ -781,14 +790,6 @@ export default function RunDetailsScreen({ route, navigation }) {
             ))
           )}
         </View>
-
-        {/* Primary CTA — Check In Here */}
-        <TouchableOpacity
-          style={styles.checkInButton}
-          onPress={() => navigation.getParent()?.navigate('CheckIn')}
-        >
-          <Text style={styles.checkInButtonText}>Check In Here</Text>
-        </TouchableOpacity>
 
         {/* Secondary CTA — Plan a Visit */}
         <TouchableOpacity
