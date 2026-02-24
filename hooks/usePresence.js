@@ -48,6 +48,8 @@ export const usePresence = () => {
   const [checkingOut, setCheckingOut] = useState(false);
   const [error, setError] = useState(null);
 
+  // TODO: Auto-checkout via Cloud Function when presence expires after autoExpireMinutes (default 3hrs) — should NOT deduct points as user successfully attended
+
   // Subscribe to the user's active presence document in Firestore.
   // When the document changes (e.g., auto-expiry deletes it), React state updates automatically.
   useEffect(() => {
@@ -115,6 +117,7 @@ export const usePresence = () => {
 
       console.log('🎯 [HOOK] Client-side distance check:', distance.toFixed(2), 'm (max:', radius, 'm)');
 
+      // TODO: Re-enable GPS validation before launch — currently disabled for testing
       // TESTING ONLY - uncomment before launch
 // if (distance > radius) {
 //   console.error('❌ [HOOK] Client-side validation FAILED - Too far from gym');
@@ -141,8 +144,12 @@ export const usePresence = () => {
   /**
    * checkOut — Removes the user's active presence document from Firestore.
    *
-   * Delegates entirely to `presenceService.checkOut`. Manages loading and
-   * error state locally so the calling screen can react to the outcome.
+   * Always calls presenceService.checkOut(isManual=true) because any checkout
+   * triggered through the UI is by definition user-initiated. Auto-expiry is
+   * handled server-side (Cloud Function — see TODO above) and will call
+   * checkOut(isManual=false) directly, bypassing this hook.
+   *
+   * Manual checkout deducts 10 pts and removes the activity feed entry.
    *
    * @throws {Error} If the Firestore write fails.
    */
@@ -151,7 +158,8 @@ export const usePresence = () => {
     setError(null);
 
     try {
-      const result = await checkOutService();
+      // isManual=true: deduct points + delete activity entry
+      const result = await checkOutService(true);
       return result;
     } catch (err) {
       setError(err.message);

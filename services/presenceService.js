@@ -50,9 +50,11 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   serverTimestamp,
   Timestamp,
@@ -302,12 +304,26 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
 /**
  * Check out from current gym
  *
- * Uses transaction to atomically update presence and decrement gym count.
+ * Uses a transaction to atomically update presence status, decrement the gym
+ * count, and clear the user's activePresence.
  *
+ * isManual controls whether this is a voluntary early checkout (true) or an
+ * auto-expiry triggered by the server/Cloud Function (false):
+ *
+ *   isManual = true  → User tapped "Check Out" before the session expired.
+ *                       Deduct 10 pts (prevents check-in/out point farming)
+ *                       and delete the "checked in at" activity feed entry.
+ *
+ *   isManual = false → Auto-expiry path (Cloud Function / client-side cleanup).
+ *                       Do NOT deduct points — the user successfully attended
+ *                       their session and has already earned those points.
+ *                       Do NOT remove the activity entry.
+ *
+ * @param {boolean} isManual — true for user-initiated checkout (default), false for auto-expiry
  * @returns {Promise<Object>} Checked out presence data
- * @throws {Error} If no active presence
+ * @throws {Error} If no active presence or user is not authenticated
  */
-export const checkOut = async () => {
+export const checkOut = async (isManual = true) => {
   const user = auth.currentUser;
   if (!user) {
     throw new Error('Must be logged in to check out');
@@ -322,10 +338,10 @@ export const checkOut = async () => {
   const gymRef = doc(db, 'gyms', activePresence.gymId);
   const userRef = doc(db, 'users', user.uid);
 
-  // Use transaction to atomically:
-  // 1. Update presence status
+  // Atomically:
+  // 1. Mark presence as checked-out
   // 2. Decrement gym's currentPresenceCount
-  // 3. Clear user's activePresence
+  // 3. Clear user's activePresence (and optionally deduct points)
   await runTransaction(db, async (transaction) => {
     transaction.update(presenceRef, {
       status: PRESENCE_STATUS.CHECKED_OUT,
@@ -337,10 +353,41 @@ export const checkOut = async () => {
       updatedAt: serverTimestamp(),
     });
 
-    transaction.update(userRef, {
-      activePresence: null,
-    });
+    if (isManual) {
+      // Manual early checkout: clear presence AND deduct the check-in points
+      // so the user can't farm points by rapidly checking in and out.
+      transaction.update(userRef, {
+        activePresence: null,
+        totalPoints: increment(-10),
+      });
+    } else {
+      // Auto-expiry: only clear the presence field — points stay intact.
+      transaction.update(userRef, {
+        activePresence: null,
+      });
+    }
   });
+
+  // Manual checkout only: delete the "checked in at" activity feed entry.
+  // This keeps the activity feed honest — a check-in that was reversed
+  // shouldn't appear as if the user attended the session.
+  if (isManual) {
+    try {
+      const activitySnap = await getDocs(
+        query(
+          collection(db, 'activity'),
+          where('userId', '==', user.uid),
+          where('gymId', '==', activePresence.gymId),
+          where('action', '==', 'checked in at'),
+          limit(1)
+        )
+      );
+      activitySnap.forEach((actDoc) => deleteDoc(actDoc.ref));
+    } catch (err) {
+      // Non-critical — log and continue. The points deduction already happened.
+      console.error('Activity cleanup error (manual check-out):', err);
+    }
+  }
 
   return { ...activePresence, status: PRESENCE_STATUS.CHECKED_OUT };
 };
@@ -377,6 +424,8 @@ const markPresenceExpired = async (presenceId, gymId) => {
     console.error('Error marking presence expired:', error);
   }
 };
+
+// TODO: Auto-checkout via Cloud Function when presence expires after autoExpireMinutes (default 3hrs) — should NOT deduct points as user successfully attended
 
 /**
  * Expire all stale presences

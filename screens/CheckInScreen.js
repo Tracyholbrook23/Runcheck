@@ -71,7 +71,9 @@ export default function CheckInScreen({ navigation }) {
     loading: presenceLoading,
     isCheckedIn,
     checkIn,
+    checkOut,
     checkingIn,
+    checkingOut,
     getTimeRemaining,
   } = usePresence();
 
@@ -193,32 +195,70 @@ export default function CheckInScreen({ navigation }) {
   };
 
 
+  /**
+   * handleCheckOut — Calls checkOut() from usePresence, which delegates to
+   * presenceService.checkOut(isManual=true).
+   *
+   * Manual check-out deducts 10 pts and removes the "checked in at" activity
+   * entry so users cannot farm points by checking in and out repeatedly.
+   */
+  const handleCheckOut = async () => {
+    try {
+      await checkOut();
+      Alert.alert(
+        'Checked Out',
+        'You have been checked out. −10 pts have been deducted.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Check-out error:', error);
+      Alert.alert('Check-out Failed', error.message || 'Please try again.');
+    }
+  };
+
   // Combine presence and gyms loading states for a single loading flag
   const loading = presenceLoading || gymsLoading;
   const isProcessing = checkingIn;
 
-  // State 2: Already checked in — show active session info instead of the form
+  // State 2: Already checked in — show active session card with Check Out button
   if (isCheckedIn && presence) {
     const timeRemaining = getTimeRemaining();
 
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.activeContainer}>
-          <Text style={styles.activeTitle}>You're Already Checked In</Text>
+          <Text style={styles.activeTitle}>You're Checked In</Text>
+
+          {/* Active session card — gym name + countdown */}
           <View style={styles.activeCard}>
             <Text style={styles.activeGym}>{presence.gymName}</Text>
             <Text style={styles.activeTime}>
               {timeRemaining ? `Expires in ${timeRemaining}` : 'Expiring soon...'}
             </Text>
           </View>
-          <Text style={styles.activeHint}>
-            Check out from the Home screen to check in elsewhere.
-          </Text>
+
+          {/* Primary CTA — red Check Out button */}
           <TouchableOpacity
-            style={styles.backButton}
+            style={[styles.checkOutButton, checkingOut && styles.buttonDisabled]}
+            onPress={handleCheckOut}
+            disabled={checkingOut}
+          >
+            {checkingOut ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.checkOutButtonText}>Check Out</Text>
+            )}
+          </TouchableOpacity>
+
+          <Text style={styles.activeHint}>
+            Checking out early deducts 10 pts. Auto-expiry after 3 hrs keeps your points.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
             onPress={() => navigation.getParent()?.navigate('Home')}
           >
-            <Text style={styles.backButtonText}>Back to Home</Text>
+            <Text style={styles.secondaryButtonText}>Back to Home</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -532,6 +572,20 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   activeTime: {
     fontSize: FONT_SIZES.body,
     color: colors.presenceText,
+  },
+  checkOutButton: {
+    backgroundColor: '#EF4444',
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg * 2,
+    alignItems: 'center',
+    marginBottom: SPACING.md,
+    width: '100%',
+  },
+  checkOutButtonText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   activeHint: {
     fontSize: FONT_SIZES.small,
