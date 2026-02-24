@@ -122,10 +122,15 @@ export default function UserProfileScreen({ route, navigation }) {
       .filter(Boolean);
   }, [profile?.followedGyms, gyms]);
 
+  // Guard against stale skill values from the old 4-tier system (Pro, Beginner,
+  // Intermediate, Advanced). Only the three current values are valid.
+  const VALID_SKILL_LEVELS = ['Casual', 'Competitive', 'Either'];
+  const displaySkillLevel = VALID_SKILL_LEVELS.includes(profile?.skillLevel)
+    ? profile.skillLevel
+    : 'Casual';
+
   // Skill-level badge colours (matches the pattern used in ProfileScreen)
-  const skillBadgeColors = profile?.skillLevel && skillColors?.[profile.skillLevel]
-    ? skillColors[profile.skillLevel]
-    : null;
+  const skillBadgeColors = skillColors?.[displaySkillLevel] ?? null;
 
   // ── Add Friend handler ───────────────────────────────────────────────────
   const handleAddFriend = async () => {
@@ -225,21 +230,19 @@ export default function UserProfileScreen({ route, navigation }) {
           </View>
 
           {/* Skill level badge */}
-          {profile.skillLevel && (
-            <View style={[
-              styles.skillBadge,
-              skillBadgeColors
-                ? { backgroundColor: skillBadgeColors.bg }
-                : { backgroundColor: colors.surfaceLight },
+          <View style={[
+            styles.skillBadge,
+            skillBadgeColors
+              ? { backgroundColor: skillBadgeColors.bg }
+              : { backgroundColor: colors.surfaceLight },
+          ]}>
+            <Text style={[
+              styles.skillLabel,
+              skillBadgeColors ? { color: skillBadgeColors.text } : { color: colors.textSecondary },
             ]}>
-              <Text style={[
-                styles.skillLabel,
-                skillBadgeColors ? { color: skillBadgeColors.text } : { color: colors.textSecondary },
-              ]}>
-                {profile.skillLevel}
-              </Text>
-            </View>
-          )}
+              {displaySkillLevel}
+            </Text>
+          </View>
         </View>
 
         {/* ── Stats row ── */}

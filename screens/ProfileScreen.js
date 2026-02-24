@@ -241,10 +241,15 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
-  // Look up skill badge colors for the user's level — null if level isn't set
-  const profileSkillColors = profile?.skillLevel
-    ? skillColors[profile.skillLevel]
-    : null;
+  // Guard against stale skill values from the old 4-tier system (Pro, Beginner,
+  // Intermediate, Advanced). Only the three current values are valid.
+  const VALID_SKILL_LEVELS = ['Casual', 'Competitive', 'Either'];
+  const displaySkillLevel = VALID_SKILL_LEVELS.includes(profile?.skillLevel)
+    ? profile.skillLevel
+    : 'Casual';
+
+  // Look up skill badge colors for the validated level
+  const profileSkillColors = skillColors[displaySkillLevel] ?? null;
 
   // Real reliability data from the hook — zero-state for brand new users
   const displayScore = score || 0;
@@ -302,7 +307,7 @@ export default function ProfileScreen({ navigation }) {
           {profileSkillColors && (
             <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
               <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
-                {profile.skillLevel}
+                {displaySkillLevel}
               </Text>
             </View>
           )}
