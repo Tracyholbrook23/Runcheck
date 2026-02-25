@@ -45,8 +45,8 @@ import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants
 import { useTheme } from '../contexts';
 import { usePresence, useGyms } from '../hooks';
 import { Logo } from '../components';
-import { db } from '../config/firebase';
-import { collection, query, orderBy, limit, where, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '../config/firebase';
+import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
 
 /**
  * HomeScreen — Main dashboard component.
@@ -74,6 +74,19 @@ const HomeScreen = ({ navigation }) => {
   const { gyms } = useGyms();
 
   const [activityFeed, setActivityFeed] = useState([]);
+  const [friendIds, setFriendIds] = useState([]);
+
+  // Subscribe to the current user's friends list in real time.
+  useEffect(() => {
+    const currentUid = auth.currentUser?.uid;
+    if (!currentUid) return;
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', currentUid),
+      (snap) => { setFriendIds(snap.exists() ? (snap.data().friends ?? []) : []); },
+      () => { setFriendIds([]); }
+    );
+    return () => unsubscribe();
+  }, []);
 
   // Subscribe to activity documents from the last 2 hours in real time.
   // The cutoff is computed once on mount; Firestore evaluates it server-side.
@@ -163,6 +176,106 @@ const HomeScreen = ({ navigation }) => {
 
   // Sum of currentPresenceCount across all gyms for the live badge
   const totalActive = gyms.reduce((sum, g) => sum + (g.currentPresenceCount || 0), 0);
+
+  // Partition the feed into friends vs. community
+  const friendsActivity = activityFeed.filter((item) => friendIds.includes(item.userId));
+  const communityActivity = activityFeed.filter((item) => !friendIds.includes(item.userId));
+
+  // Shared row renderer — used by Recent Activity section (taps go to UserProfile)
+  const renderActivityRow = (item) => (
+    <TouchableOpacity
+      key={item.id}
+      activeOpacity={0.75}
+      onPress={() => {
+        console.log('🏀 [Activity] Row tapped — full item:', JSON.stringify(item));
+        if (!item.userId) {
+          console.warn('⚠️ [Activity] item.userId is missing, cannot navigate');
+          return;
+        }
+        try {
+          console.log('🏀 [Activity] Calling navigation.push UserProfile with userId:', item.userId);
+          navigation.push('UserProfile', { userId: item.userId });
+          console.log('🏀 [Activity] navigation.push called successfully');
+        } catch (err) {
+          console.error('❌ [Activity] navigation.push threw:', err);
+        }
+      }}
+    >
+      <BlurView intensity={40} tint="dark" style={styles.activityRow}>
+        {item.userAvatar ? (
+          <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
+        ) : (
+          <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
+            <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+          </View>
+        )}
+        <View style={styles.activityInfo}>
+          <Text style={styles.activityText} numberOfLines={1}>
+            <Text style={styles.activityName}>{item.userName}</Text>
+            <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
+            <Text style={styles.activityGym}>{item.gymName}</Text>
+          </Text>
+          <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+      </BlurView>
+    </TouchableOpacity>
+  );
+
+  // Friends Activity row renderer — row taps go to RunDetails; avatar tap goes to UserProfile
+  const renderFriendActivityRow = (item) => {
+    const timeLabel = getRelativeTime(item.createdAt);
+    const isJustNow = timeLabel === 'just now';
+
+    const navigateToGym = () => {
+      if (item.gymId) {
+        navigation.getParent()?.navigate('Runs', {
+          screen: 'RunDetails',
+          params: { gymId: item.gymId, gymName: item.gymName },
+        });
+      } else if (item.userId) {
+        console.warn('⚠️ [FriendsActivity] gymId missing, falling back to UserProfile');
+        navigation.push('UserProfile', { userId: item.userId });
+      } else {
+        console.warn('⚠️ [FriendsActivity] gymId and userId both missing, cannot navigate');
+      }
+    };
+
+    const navigateToUser = () => {
+      if (!item.userId) {
+        console.warn('⚠️ [FriendsActivity] userId missing on avatar tap');
+        return;
+      }
+      navigation.push('UserProfile', { userId: item.userId });
+    };
+
+    return (
+      <TouchableOpacity key={item.id} activeOpacity={0.75} onPress={navigateToGym}>
+        <BlurView intensity={40} tint="dark" style={styles.activityRow}>
+          <TouchableOpacity onPress={navigateToUser} activeOpacity={0.75}>
+            {item.userAvatar ? (
+              <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
+            ) : (
+              <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
+                <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+              </View>
+            )}
+          </TouchableOpacity>
+          <View style={styles.activityInfo}>
+            <Text style={styles.activityText} numberOfLines={1}>
+              <Text style={styles.activityName}>{item.userName}</Text>
+              <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
+              <Text style={styles.activityGym}>{item.gymName}</Text>
+            </Text>
+            <Text style={[styles.activityTime, isJustNow && styles.activityTimeJustNow]}>
+              {timeLabel}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+        </BlurView>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <ImageBackground
@@ -332,55 +445,27 @@ const HomeScreen = ({ navigation }) => {
             ))}
           </ScrollView>
 
-          {/* Recent Activity feed */}
+          {/* Friends Activity feed — only shown when friends have recent activity */}
+          {friendsActivity.length > 0 && (
+            <>
+              <Text style={styles.sectionTitleStandalone}>Friends Activity ({friendsActivity.length})</Text>
+              <View style={styles.activityFeed}>
+                {friendsActivity.map(renderFriendActivityRow)}
+              </View>
+            </>
+          )}
+
+          {/* Recent Activity feed — community items (non-friends), or full feed if no friends activity */}
           <Text style={styles.sectionTitleStandalone}>Recent Activity</Text>
           <View style={styles.activityFeed}>
-            {activityFeed.length === 0 ? (
+            {(friendsActivity.length > 0 ? communityActivity : activityFeed).length === 0 ? (
               <BlurView intensity={40} tint="dark" style={styles.activityRow}>
                 <View style={styles.activityInfo}>
                   <Text style={styles.activityTime}>No recent activity yet</Text>
                 </View>
               </BlurView>
             ) : (
-              activityFeed.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.75}
-                  onPress={() => {
-                    console.log('🏀 [Activity] Row tapped — full item:', JSON.stringify(item));
-                    if (!item.userId) {
-                      console.warn('⚠️ [Activity] item.userId is missing, cannot navigate');
-                      return;
-                    }
-                    try {
-                      console.log('🏀 [Activity] Calling navigation.push UserProfile with userId:', item.userId);
-                      navigation.push('UserProfile', { userId: item.userId });
-                      console.log('🏀 [Activity] navigation.push called successfully');
-                    } catch (err) {
-                      console.error('❌ [Activity] navigation.push threw:', err);
-                    }
-                  }}
-                >
-                  <BlurView intensity={40} tint="dark" style={styles.activityRow}>
-                    {item.userAvatar ? (
-                      <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
-                    ) : (
-                      <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
-                        <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
-                      </View>
-                    )}
-                    <View style={styles.activityInfo}>
-                      <Text style={styles.activityText} numberOfLines={1}>
-                        <Text style={styles.activityName}>{item.userName}</Text>
-                        <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
-                        <Text style={styles.activityGym}>{item.gymName}</Text>
-                      </Text>
-                      <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
-                  </BlurView>
-                </TouchableOpacity>
-              ))
+              (friendsActivity.length > 0 ? communityActivity : activityFeed).map(renderActivityRow)
             )}
           </View>
 
@@ -719,6 +804,10 @@ actionCard: {
     fontSize: FONT_SIZES.xs,
     color: 'rgba(255,255,255,0.4)',
     marginTop: 2,
+  },
+  activityTimeJustNow: {
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });
 

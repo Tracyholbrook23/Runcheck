@@ -398,6 +398,10 @@ export default function ProfileScreen({ navigation }) {
   // Look up skill badge colors for the validated level
   const profileSkillColors = skillColors[displaySkillLevel] ?? null;
 
+  // Human-readable label — avoids showing "Either" raw
+  const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Open to any run' };
+  const displayPlayStyle = playStyleLabelMap[displaySkillLevel] ?? displaySkillLevel;
+
   // Real reliability data from the hook — zero-state for brand new users
   const displayScore = score || 0;
   const displayTier = tier || { label: 'New', color: colors.textMuted };
@@ -460,7 +464,7 @@ export default function ProfileScreen({ navigation }) {
           {profileSkillColors && (
             <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
               <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
-                {displaySkillLevel}
+                {displayPlayStyle}
               </Text>
             </View>
           )}

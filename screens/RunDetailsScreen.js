@@ -418,39 +418,6 @@ export default function RunDetailsScreen({ route, navigation }) {
   const todayCount = todaySchedules.length || paramPlannedToday || 0;
   const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
 
-  // Placeholder player data — displayed when Firestore data is empty
-  const fakePlayers = [
-    { id: 'fp1', name: 'Big Ray',      skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/86.jpg',   minutesAgo: 8  },
-    { id: 'fp2', name: 'Marcus W.',    skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/32.jpg',   minutesAgo: 15 },
-    { id: 'fp3', name: 'Lil TJ',       skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/4.jpg',    minutesAgo: 22 },
-    { id: 'fp4', name: 'Aaliyah S.',   skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/28.jpg', minutesAgo: 31 },
-    { id: 'fp5', name: 'Coach D',      skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/77.jpg',   minutesAgo: 40 },
-    { id: 'fp6', name: 'Jordan T.',    skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/44.jpg',   minutesAgo: 52 },
-    { id: 'fp7', name: 'Lil Kev',      skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/7.jpg',    minutesAgo: 58 },
-    { id: 'fp8', name: 'Keisha L.',    skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/45.jpg', minutesAgo: 67 },
-    { id: 'fp9', name: 'O.G. Andre',   skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/91.jpg',   minutesAgo: 75 },
-    { id: 'fp10', name: 'DeShawn R.',  skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/men/67.jpg',   minutesAgo: 82 },
-  ];
-
-  const fakeScheduledToday = [
-    { id: 'st1', name: 'Young Buck',   skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/10.jpg',   time: '6:00 PM' },
-    { id: 'st2', name: 'Brianna C.',   skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/women/14.jpg', time: '6:30 PM' },
-    { id: 'st3', name: 'Mr. Williams', skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/80.jpg',   time: '7:00 PM' },
-    { id: 'st4', name: 'Devon W.',     skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/men/36.jpg',   time: '7:00 PM' },
-    { id: 'st5', name: 'Simone R.',    skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/women/33.jpg', time: '7:30 PM' },
-  ];
-
-  const fakeScheduledTomorrow = [
-    { id: 'sm1', name: 'Isaiah T.',    skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/17.jpg',   time: '5:30 PM' },
-    { id: 'sm2', name: 'Kayla N.',     skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/52.jpg', time: '6:00 PM' },
-    { id: 'sm3', name: 'Lil Chris',    skillLevel: 'Casual',      avatarUrl: 'https://randomuser.me/api/portraits/men/8.jpg',    time: '6:00 PM' },
-    { id: 'sm4', name: 'Trina D.',     skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/women/61.jpg', time: '6:30 PM' },
-    { id: 'sm5', name: 'Pop',          skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/88.jpg',   time: '6:30 PM' },
-    { id: 'sm6', name: 'Nadia P.',     skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/women/19.jpg', time: '7:00 PM' },
-    { id: 'sm7', name: 'Elijah F.',    skillLevel: 'Either',      avatarUrl: 'https://randomuser.me/api/portraits/men/29.jpg',   time: '7:00 PM' },
-    { id: 'sm8', name: 'Rasheed V.',   skillLevel: 'Competitive', avatarUrl: 'https://randomuser.me/api/portraits/men/48.jpg',   time: '7:30 PM' },
-  ];
-
   // Start or stop the pulse animation based on whether anyone is currently checked in.
   // Uses Animated.loop + Animated.sequence for a smooth, continuous opacity breath effect.
   useEffect(() => {

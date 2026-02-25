@@ -33,6 +33,7 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -155,6 +156,34 @@ export default function UserProfileScreen({ route, navigation }) {
   // Skill-level badge colours (matches the pattern used in ProfileScreen)
   const skillBadgeColors = skillColors?.[displaySkillLevel] ?? null;
 
+  // Human-readable label for the skill/play-style badge — avoids showing "Either" raw
+  const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Open to any run' };
+  const displayPlayStyle = playStyleLabelMap[displaySkillLevel] ?? displaySkillLevel;
+
+  // ── Remove Friend handler ────────────────────────────────────────────────
+  const handleRemoveFriend = () => {
+    Alert.alert(
+      'Remove friend?',
+      'They will be removed from your friends list.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const removeFriendFn = httpsCallable(getFunctions(), 'removeFriend');
+              await removeFriendFn({ friendUserId: userId });
+              setIsFriend(false);
+            } catch (err) {
+              console.log('Remove friend error:', err);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   // ── Add Friend handler — calls the addFriend Cloud Function ─────────────
   // The function handles both sending a new request and accepting an inbound
   // one. The returned status drives local state so the button updates instantly.
@@ -268,7 +297,7 @@ export default function UserProfileScreen({ route, navigation }) {
               styles.skillLabel,
               skillBadgeColors ? { color: skillBadgeColors.text } : { color: colors.textSecondary },
             ]}>
-              {displaySkillLevel}
+              {displayPlayStyle}
             </Text>
           </View>
         </View>
@@ -286,36 +315,61 @@ export default function UserProfileScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* ── Add Friend / Request Sent / Friends ✓ button ── */}
+        {/* ── Add Friend / Request Sent / Friends ✓ + Remove Friend buttons ── */}
         {!isOwnProfile && (
-          <TouchableOpacity
-            style={[
-              styles.friendButton,
-              isFriend && styles.friendButtonActive,
-              requestSent && !isFriend && styles.friendButtonPending,
-            ]}
-            onPress={handleAddFriend}
-            disabled={isFriend || requestSent || addingFriend}
-          >
-            {addingFriend ? (
-              <ActivityIndicator size="small" color={isFriend ? colors.success : '#fff'} />
-            ) : isFriend ? (
-              <>
+          isFriend ? (
+            <View style={{ width: '100%', marginBottom: SPACING.lg }}>
+              {/* Status-only Friends ✓ button */}
+              <TouchableOpacity
+                style={[styles.friendButton, styles.friendButtonActive]}
+                disabled={true}
+              >
                 <Ionicons name="checkmark-circle" size={18} color={colors.success} style={{ marginRight: 6 }} />
                 <Text style={[styles.friendButtonText, styles.friendButtonTextActive]}>Friends</Text>
-              </>
-            ) : requestSent ? (
-              <>
-                <Ionicons name="time-outline" size={18} color={colors.textSecondary} style={{ marginRight: 6 }} />
-                <Text style={[styles.friendButtonText, styles.friendButtonTextPending]}>Request Sent</Text>
-              </>
-            ) : (
-              <>
-                <Ionicons name="person-add-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.friendButtonText}>Add Friend</Text>
-              </>
-            )}
-          </TouchableOpacity>
+              </TouchableOpacity>
+              {/* Remove Friend button */}
+              <TouchableOpacity
+                style={[
+                  styles.friendButton,
+                  {
+                    marginTop: SPACING.sm,
+                    marginBottom: 0,
+                    backgroundColor: 'transparent',
+                    borderWidth: 1,
+                    borderColor: colors.error ?? '#d9534f',
+                  },
+                ]}
+                onPress={handleRemoveFriend}
+                disabled={addingFriend}
+              >
+                <Ionicons name="person-remove-outline" size={18} color={colors.error ?? '#d9534f'} style={{ marginRight: 6 }} />
+                <Text style={[styles.friendButtonText, { color: colors.error ?? '#d9534f' }]}>Remove Friend</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[
+                styles.friendButton,
+                requestSent && styles.friendButtonPending,
+              ]}
+              onPress={handleAddFriend}
+              disabled={requestSent || addingFriend}
+            >
+              {addingFriend ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : requestSent ? (
+                <>
+                  <Ionicons name="time-outline" size={18} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                  <Text style={[styles.friendButtonText, styles.friendButtonTextPending]}>Request Sent</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="person-add-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.friendButtonText}>Add Friend</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )
         )}
 
         {/* ── Followed Gyms ── */}
@@ -325,10 +379,23 @@ export default function UserProfileScreen({ route, navigation }) {
             <Text style={styles.emptyText}>No gyms followed yet</Text>
           ) : (
             followedGymNames.map(({ id, name }) => (
-              <View key={id} style={styles.gymRow}>
+              <Pressable
+                key={id}
+                onPress={() => {
+                  navigation.getParent()?.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: { gymId: id, gymName: name },
+                  });
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                disabled={!id}
+                style={({ pressed }) => [styles.gymRow, pressed ? { opacity: 0.7 } : null, !id ? { opacity: 0.5 } : null]}
+                accessibilityRole="button"
+                testID={`followedGym_${id}`}
+              >
                 <Ionicons name="basketball-outline" size={18} color={colors.primary} style={{ marginRight: SPACING.sm }} />
                 <Text style={styles.gymName}>{name}</Text>
-              </View>
+              </Pressable>
             ))
           )}
         </View>
