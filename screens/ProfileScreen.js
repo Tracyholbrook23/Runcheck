@@ -14,18 +14,22 @@
  *   3. Session Stats Grid — Scheduled / Attended / No-Shows / Cancelled counts
  *      with an Attendance Rate percentage.
  *   4. My Courts — The user's most-visited gyms with live player counts.
- *   5. My Crew — Horizontal scroll of friends with online-status indicators.
- *   6. Current Status — Real-time check-in status from `usePresence`, plus
+ *   5. Friend Requests — Incoming pending requests with Accept / Decline.
+ *   6. My Crew — Horizontal scroll of friends, tappable to view their profile.
+ *   7. Current Status — Real-time check-in status from `usePresence`, plus
  *      upcoming session count from `useSchedules`.
- *   7. Settings — Dark mode toggle wired to `toggleTheme` from ThemeContext.
- *   8. Sign Out — Calls `firebase/auth.signOut` and resets the navigation
+ *   8. Settings — Dark mode toggle wired to `toggleTheme` from ThemeContext.
+ *   9. Sign Out — Calls `firebase/auth.signOut` and resets the navigation
  *      stack to the Login screen so the user can't navigate back.
  *
  * Data:
  *   - Firestore user profile (name, skillLevel) fetched once on mount via
  *     `getDoc` — not a real-time subscription since profile data rarely changes.
  *   - Reliability, schedules, and presence data come from their respective hooks.
- *   - Court and crew sections use placeholder data pending social features.
+ *   - Friends list comes from `liveProfile?.friends` (array of uid strings);
+ *     friend profiles are fetched via Promise.all(getDoc).
+ *   - Incoming friend requests queried from the `friendRequests` collection
+ *     where toUid == currentUid and status == "pending".
  */
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
@@ -48,7 +52,20 @@ import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  setDoc,
+  arrayUnion,
+  serverTimestamp,
+  onSnapshot,
+} from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
@@ -85,6 +102,18 @@ export default function ProfileScreen({ navigation }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [photoUri, setPhotoUri] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  // ── Friends / Crew ────────────────────────────────────────────────────────
+  // Resolved profile objects for each uid in liveProfile.friends
+  const [friendsProfiles, setFriendsProfiles] = useState([]);
+
+  // ── Incoming Friend Requests ──────────────────────────────────────────────
+  // Shape: [{ id, fromUid, toUid, senderName, senderPhotoURL }]
+  const [pendingRequests, setPendingRequests] = useState([]);
+
+  // ID of the request row currently being accepted/declined — disables that
+  // row's buttons while the Firestore writes are in-flight.
+  const [processingRequestId, setProcessingRequestId] = useState(null);
 
   // ── Rank / badge data — derived from live Firestore totalPoints ──────────
   const totalPoints = liveProfile?.totalPoints || 0;
@@ -212,6 +241,124 @@ export default function ProfileScreen({ navigation }) {
     registerPushToken();
   }, [user?.uid]);
 
+  // Fetch full profile objects for every uid in liveProfile.friends.
+  // Re-runs whenever the friends array reference changes (i.e. when a new
+  // friend is accepted and liveProfile updates from the real-time hook).
+  useEffect(() => {
+    if (!liveProfile?.friends?.length) {
+      setFriendsProfiles([]);
+      return;
+    }
+    const fetchFriends = async () => {
+      try {
+        const snaps = await Promise.all(
+          liveProfile.friends.map((uid) => getDoc(doc(db, 'users', uid)))
+        );
+        const profiles = snaps
+          .filter((s) => s.exists())
+          .map((s) => ({ uid: s.id, ...s.data() }));
+        setFriendsProfiles(profiles);
+      } catch (err) {
+        console.error('Failed to fetch friends profiles:', err);
+      }
+    };
+    fetchFriends();
+  }, [liveProfile?.friends]);
+
+  // Real-time listener on the current user's document.
+  // Whenever receivedRequests changes in Firestore, fetch those profiles
+  // and rebuild the pendingRequests state — no polling needed.
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubscribe = onSnapshot(
+      doc(db, 'users', user.uid),
+      async (snap) => {
+        if (!snap.exists()) {
+          setPendingRequests([]);
+          return;
+        }
+
+        const receivedRequests = snap.data()?.receivedRequests ?? [];
+
+        // Nothing pending — clear and bail early to avoid unnecessary reads.
+        if (receivedRequests.length === 0) {
+          setPendingRequests([]);
+          return;
+        }
+
+        // Individual getDoc calls via Promise.all — sidesteps the Firestore
+        // "in" query 10-item limit entirely, and is just as fast in practice
+        // since all reads are dispatched in parallel.
+        try {
+          const profileSnaps = await Promise.all(
+            receivedRequests.map((uid) => getDoc(doc(db, 'users', uid)))
+          );
+
+          const requests = profileSnaps
+            .filter((s) => s.exists())
+            .map((s) => ({
+              id: s.id,                          // requester uid — used as row key and processingRequestId
+              fromUid: s.id,
+              toUid: user.uid,
+              senderName: s.data().name || 'Player',
+              senderPhotoURL: s.data().photoURL || null,
+            }));
+
+          setPendingRequests(requests);
+        } catch (err) {
+          console.error('Failed to fetch pending request profiles:', err);
+        }
+      },
+      (err) => {
+        console.error('onSnapshot error (pending requests):', err);
+      }
+    );
+
+    // Unsubscribe when the component unmounts or uid changes — prevents
+    // state updates on an unmounted component.
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  /**
+   * handleAcceptRequest — Accepts an incoming request via Cloud Function,
+   * which atomically adds each user to the other's friends array and clears
+   * the request from both sentRequests / receivedRequests.
+   */
+  const handleAcceptRequest = async (request) => {
+    setProcessingRequestId(request.fromUid);
+    try {
+      const addFriendFn = httpsCallable(getFunctions(), 'addFriend');
+      await addFriendFn({ friendUserId: request.fromUid });
+      // Optimistic removal — onSnapshot will also sync shortly after
+      setPendingRequests((prev) => prev.filter((r) => r.fromUid !== request.fromUid));
+    } catch (err) {
+      console.error('Failed to accept friend request:', err);
+      Alert.alert('Error', 'Could not accept request. Please try again.');
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
+
+  /**
+   * handleDeclineRequest — Declines an incoming request via Cloud Function,
+   * which atomically removes the uid from both sentRequests / receivedRequests.
+   */
+  const handleDeclineRequest = async (request) => {
+    setProcessingRequestId(request.fromUid);
+    try {
+      const declineFn = httpsCallable(getFunctions(), 'declineFriendRequest');
+      await declineFn({ fromUid: request.fromUid });
+      // Optimistic removal — onSnapshot will also sync shortly after
+      setPendingRequests((prev) => prev.filter((r) => r.fromUid !== request.fromUid));
+    } catch (err) {
+      console.error('Failed to decline friend request:', err);
+      Alert.alert('Error', 'Could not decline request. Please try again.');
+    } finally {
+      setProcessingRequestId(null);
+    }
+  };
+
   /**
    * handleSignOut — Signs the user out of Firebase Auth and resets navigation.
    *
@@ -275,6 +422,12 @@ export default function ProfileScreen({ navigation }) {
       </SafeAreaView>
     );
   }
+
+  // Friend count label with correct singular/plural
+  const friendCountLabel = (() => {
+    const n = liveProfile?.friends?.length || 0;
+    return n === 1 ? '1 friend' : `${n} friends`;
+  })();
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -472,24 +625,102 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
+        {/* ── Friend Requests ───────────────────────────────────────────── */}
+        {/* Only rendered when there is at least one pending incoming request */}
+        {pendingRequests.length > 0 && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Friend Requests</Text>
+            {pendingRequests.map((request) => (
+              <View key={request.id} style={styles.requestItem}>
+                {/* Sender avatar or placeholder */}
+                {request.senderPhotoURL ? (
+                  <Image
+                    source={{ uri: request.senderPhotoURL }}
+                    style={styles.requestAvatar}
+                  />
+                ) : (
+                  <View style={[styles.requestAvatar, styles.requestAvatarPlaceholder]}>
+                    <Ionicons name="person" size={18} color={colors.textMuted} />
+                  </View>
+                )}
+                <Text style={styles.requestName} numberOfLines={1}>
+                  {request.senderName}
+                </Text>
+                <View style={styles.requestActions}>
+                  {/* Accept — disabled while any row is processing */}
+                  <TouchableOpacity
+                    style={styles.requestAcceptBtn}
+                    onPress={() => handleAcceptRequest(request)}
+                    disabled={processingRequestId === request.id}
+                  >
+                    {processingRequestId === request.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.requestBtnText}>Accept</Text>
+                    )}
+                  </TouchableOpacity>
+                  {/* Decline */}
+                  <TouchableOpacity
+                    style={styles.requestDeclineBtn}
+                    onPress={() => handleDeclineRequest(request)}
+                    disabled={processingRequestId === request.id}
+                  >
+                    <Text style={[styles.requestBtnText, styles.requestDeclineBtnText]}>
+                      Decline
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* ── My Crew ───────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <View style={styles.crewHeaderRow}>
             <Text style={styles.cardTitle}>My Crew</Text>
-            <Text style={styles.crewCount}>0 friends</Text>
+            <Text style={styles.crewCount}>{friendCountLabel}</Text>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.crewScroll}>
-            {/* Add Friend button — crew feature coming in a future update */}
-            <TouchableOpacity
-              style={styles.friendItem}
-              onPress={() => Alert.alert('Coming Soon', 'Friend requests coming in a future update!')}
+          {friendsProfiles.length > 0 ? (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.crewScroll}
             >
-              <View style={styles.addFriendCircle}>
-                <Ionicons name="person-add-outline" size={20} color={colors.primary} />
-              </View>
-              <Text style={styles.friendName}>Add</Text>
-            </TouchableOpacity>
-          </ScrollView>
+              {friendsProfiles.map((friend) => (
+                <TouchableOpacity
+                  key={friend.uid}
+                  style={styles.friendItem}
+                  onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: friend.uid } })}
+                >
+                  <View style={styles.friendAvatarWrapper}>
+                    {friend.photoURL ? (
+                      <Image
+                        source={{ uri: friend.photoURL }}
+                        style={styles.friendAvatar}
+                      />
+                    ) : (
+                      <View style={[styles.friendAvatar, styles.friendAvatarPlaceholder]}>
+                        <Ionicons name="person" size={20} color={colors.textMuted} />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.friendName} numberOfLines={1}>
+                    {friend.name || 'Player'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            /* Empty state — shown until the user has at least one friend */
+            <View style={styles.crewEmpty}>
+              <Ionicons name="people-outline" size={24} color={colors.textMuted} />
+              <Text style={styles.crewEmptyText}>No crew yet</Text>
+              <Text style={styles.crewEmptySubtext}>
+                Send friend requests to build your crew
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* ── Current Status ────────────────────────────────────────────── */}
@@ -842,6 +1073,61 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.small,
       color: colors.textMuted,
     },
+    // ── Friend Requests card ─────────────────────────────────────────────────
+    requestItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: SPACING.sm,
+      gap: SPACING.sm,
+    },
+    requestAvatar: {
+      width: 42,
+      height: 42,
+      borderRadius: 21,
+      borderWidth: 1.5,
+      borderColor: colors.border,
+    },
+    requestAvatarPlaceholder: {
+      backgroundColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    requestName: {
+      flex: 1,
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textPrimary,
+    },
+    requestActions: {
+      flexDirection: 'row',
+      gap: SPACING.xs,
+    },
+    requestAcceptBtn: {
+      backgroundColor: colors.primary,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 6,
+      borderRadius: RADIUS.sm,
+      minWidth: 64,
+      alignItems: 'center',
+    },
+    requestDeclineBtn: {
+      backgroundColor: colors.surface,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 6,
+      borderRadius: RADIUS.sm,
+      borderWidth: 1,
+      borderColor: colors.border,
+      minWidth: 64,
+      alignItems: 'center',
+    },
+    requestBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#fff',
+    },
+    requestDeclineBtnText: {
+      color: colors.textSecondary,
+    },
     // My Crew
     crewHeaderRow: {
       flexDirection: 'row',
@@ -858,6 +1144,22 @@ const getStyles = (colors, isDark) =>
       gap: SPACING.md,
       paddingBottom: SPACING.xs,
     },
+    crewEmpty: {
+      alignItems: 'center',
+      paddingVertical: SPACING.lg,
+      gap: SPACING.xs,
+    },
+    crewEmptyText: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textSecondary,
+      marginTop: SPACING.xs,
+    },
+    crewEmptySubtext: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
     friendItem: {
       alignItems: 'center',
       width: 58,
@@ -872,6 +1174,11 @@ const getStyles = (colors, isDark) =>
       borderRadius: 25,
       borderWidth: 2,
       borderColor: colors.border,
+    },
+    friendAvatarPlaceholder: {
+      backgroundColor: colors.border,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     // Green dot positioned at the bottom-right of the friend's avatar
     friendActiveDot: {

@@ -9,7 +9,7 @@
  *   2. Already Checked In — if the user has an active presence, shows the
  *      current gym name, time remaining, and a hint to check out from Home.
  *   3. Check-In Form — the main state: a gym dropdown, info box, "Hot Right
- *      Now" nearby activity scroll, Check In button, and Back to Home button.
+ *      Now" nearby activity chips, Check In button, and Back to Home button.
  *
  * GPS error handling maps raw `usePresence` errors to user-friendly alerts:
  *   - "permission denied" → prompts to enable location services
@@ -37,7 +37,6 @@ import {
   SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
-  TouchableWithoutFeedback,
   Keyboard,
   Platform,
   ActivityIndicator,
@@ -289,74 +288,89 @@ export default function CheckInScreen({ navigation }) {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        {/*
+         * ScrollView replaces the former TouchableWithoutFeedback wrapper.
+         * keyboardShouldPersistTaps="handled" ensures child TouchableOpacity
+         * taps are not swallowed when the keyboard is open.
+         * onScrollBeginDrag dismisses the keyboard when the user scrolls blank space.
+         */}
+        <ScrollView
+          style={styles.scrollArea}
+          keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={Keyboard.dismiss}
+        >
           <View style={styles.innerContainer}>
-          <Text style={styles.title}>Check Into a Gym</Text>
-          <Text style={styles.subtitle}>
-            Let others know you're here to play
-          </Text>
-
-          <Text style={styles.label}>Select Gym:</Text>
-
-          {/*
-           * DropDownPicker — controlled component with high zIndex so its
-           * dropdown overlay appears above sibling Views.
-           * containerStyle height expands when open to push content down
-           * and prevent overlap with the dropdown list.
-           */}
-          <DropDownPicker
-            open={open}
-            value={selectedGym}
-            items={gymItems}
-            setOpen={setOpen}
-            setValue={setSelectedGym}
-            setItems={setGymItems}
-            placeholder="Choose a gym"
-            containerStyle={{ marginBottom: open ? 200 : 20 }}
-            style={styles.dropdown}
-            dropDownContainerStyle={styles.dropdownContainer}
-            textStyle={{ color: colors.textPrimary }}
-            placeholderStyle={{ color: colors.textMuted }}
-            listItemLabelStyle={{ color: colors.textPrimary }}
-            selectedItemLabelStyle={{ color: colors.primary }}
-            zIndex={5000}
-            zIndexInverse={1000}
-            listMode="SCROLLVIEW"
-          />
-
-          {/* Info box explaining auto-expiry behavior */}
-          <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
-              Your check-in will automatically expire after 3 hours, or you can
-              check out manually from the Home screen.
+            <Text style={styles.title}>Check Into a Gym</Text>
+            <Text style={styles.subtitle}>
+              Let others know you're here to play
             </Text>
-          </View>
 
-          {/* Hot Right Now — horizontally scrollable chips sorted by player count */}
-          <View style={styles.nearbySection}>
-            <Text style={styles.nearbyTitle}>Hot Right Now</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.nearbyScroll}
-              contentContainerStyle={styles.nearbyScrollContent}
-            >
-              {gyms.sort((a, b) => (b.currentPresenceCount || 0) - (a.currentPresenceCount || 0)).map((gym) => (
-                <View key={gym.id} style={styles.nearbyChip}>
-                  <View style={styles.nearbyDot} />
-                  <View>
-                    <Text style={styles.nearbyGymName} numberOfLines={1}>{gym.name}</Text>
-                    <Text style={styles.nearbyCount}>{gym.currentPresenceCount} playing now</Text>
-                    {gym.plannedToday > 0 && (
-                      <Text style={styles.nearbyPlanned}>+{gym.plannedToday} planned today</Text>
-                    )}
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
+            <Text style={styles.label}>Select Gym:</Text>
+
+            {/*
+             * DropDownPicker — controlled component with high zIndex so its
+             * dropdown overlay appears above sibling Views.
+             * containerStyle height expands when open to push content down
+             * and prevent overlap with the dropdown list.
+             */}
+            <DropDownPicker
+              open={open}
+              value={selectedGym}
+              items={gymItems}
+              setOpen={setOpen}
+              setValue={setSelectedGym}
+              setItems={setGymItems}
+              placeholder="Choose a gym"
+              containerStyle={{ marginBottom: open ? 200 : 20 }}
+              style={styles.dropdown}
+              dropDownContainerStyle={styles.dropdownContainer}
+              textStyle={{ color: colors.textPrimary }}
+              placeholderStyle={{ color: colors.textMuted }}
+              listItemLabelStyle={{ color: colors.textPrimary }}
+              selectedItemLabelStyle={{ color: colors.primary }}
+              zIndex={5000}
+              zIndexInverse={1000}
+              listMode="SCROLLVIEW"
+            />
+
+            {/* Info box explaining auto-expiry behavior */}
+            <View style={styles.infoBox}>
+              <Text style={styles.infoText}>
+                Your check-in will automatically expire after 3 hours, or you can
+                check out manually from the Home screen.
+              </Text>
+            </View>
+
+            {/* Hot Right Now — wrapping chip grid sorted by player count.
+                Tapping a chip sets it as the selected gym (same as the dropdown). */}
+            <View style={styles.nearbySection}>
+              <Text style={styles.nearbyTitle}>Hot Right Now</Text>
+              <View style={styles.nearbyChipRow}>
+                {[...gyms]
+                  .sort((a, b) => (b.currentPresenceCount || 0) - (a.currentPresenceCount || 0))
+                  .map((gym) => (
+                    <TouchableOpacity
+                      key={gym.id}
+                      style={[
+                        styles.nearbyChip,
+                        selectedGym === gym.id && styles.nearbyChipSelected,
+                      ]}
+                      onPress={() => setSelectedGym(gym.id)}
+                    >
+                      <View style={styles.nearbyDot} />
+                      <View>
+                        <Text style={styles.nearbyGymName} numberOfLines={1}>{gym.name}</Text>
+                        <Text style={styles.nearbyCount}>{gym.currentPresenceCount} playing now</Text>
+                        {gym.plannedToday > 0 && (
+                          <Text style={styles.nearbyPlanned}>+{gym.plannedToday} planned today</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+              </View>
+            </View>
           </View>
-          </View>
-        </TouchableWithoutFeedback>
+        </ScrollView>
 
         {/* Sticky footer with primary Check In and secondary Back to Home buttons */}
         <View style={styles.footer}>
@@ -409,6 +423,10 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginTop: SPACING.md,
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
+  },
+  // ScrollView that replaces the TouchableWithoutFeedback wrapper
+  scrollArea: {
+    flex: 1,
   },
   innerContainer: {
     padding: SPACING.lg,
@@ -469,11 +487,10 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: SPACING.sm,
   },
-  nearbyScroll: {
-    marginHorizontal: -SPACING.lg,
-  },
-  nearbyScrollContent: {
-    paddingHorizontal: SPACING.lg,
+  // Wrapping row replaces the horizontal ScrollView
+  nearbyChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.sm,
   },
   nearbyChip: {
@@ -485,6 +502,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     gap: SPACING.sm,
     ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  // Selected chip highlights with primary border
+  nearbyChipSelected: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
   },
   nearbyDot: {
     width: 8,

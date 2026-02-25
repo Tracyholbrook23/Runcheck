@@ -10,11 +10,12 @@
  *   - Name, rank badge, skill level badge
  *   - Stats row: Sessions Attended + Total Points
  *   - Followed Gyms list (gym names resolved via useGyms)
- *   - Add Friend / Friends ✓ button
+ *   - Add Friend / Request Sent / Friends ✓ button
  *     • Hidden when viewing your own profile
- *     • On press: arrayUnion the other user's UID into the current user's
- *       `friends` array, and arrayUnion the current user's UID into the
- *       other user's `friends` array — both client-side writes
+ *     • On press: calls the `addFriend` Cloud Function with { friendUserId }
+ *     • Shows "Request Sent" (disabled) if userId is in the current user's
+ *       sentRequests array (checked via target user's receivedRequests on mount)
+ *     • Shows "Friends ✓" (disabled) if already in target user's friends array
  *
  * Navigation:
  *   Registered in HomeStack so it sits naturally above HomeScreen in the
@@ -38,7 +39,8 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms } from '../hooks';
 import { auth, db } from '../config/firebase';
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getUserRank } from '../utils/badges';
 
 /**
@@ -66,11 +68,17 @@ export default function UserProfileScreen({ route, navigation }) {
   const [isFriend, setIsFriend] = useState(false);
   const [addingFriend, setAddingFriend] = useState(false);
 
+  // Request state — true if currentUid already appears in target user's
+  // receivedRequests (meaning we already sent a request via addFriend)
+  const [requestSent, setRequestSent] = useState(false);
+
   console.log('🧑 [UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
 
   const { gyms } = useGyms();
 
-  // ── Fetch the target user's profile once on mount ───────────────────────
+  // ── Fetch the target user's profile + current user's sentRequests ────────
+  // Two parallel reads: users/{userId} for the profile/isFriend check, and
+  // users/{currentUid} for the authoritative requestSent check.
   useEffect(() => {
     let cancelled = false;
 
@@ -94,6 +102,21 @@ export default function UserProfileScreen({ route, navigation }) {
         if (!cancelled) setFetchError(err.message || 'Permission denied');
       } finally {
         if (!cancelled) setLoading(false);
+      }
+
+      // Check requestSent from the CURRENT user's sentRequests array.
+      // Must not rely on the target user's receivedRequests, which is a
+      // different field owned by a different document.
+      if (currentUid && currentUid !== userId) {
+        try {
+          const currentUserSnap = await getDoc(doc(db, 'users', currentUid));
+          console.log('🧑 [UserProfileScreen] fetching sentRequests for currentUid:', currentUid);
+          if (!cancelled && currentUserSnap.exists()) {
+            setRequestSent((currentUserSnap.data().sentRequests || []).includes(userId));
+          }
+        } catch (reqErr) {
+          console.warn('🧑 [UserProfileScreen] sentRequests check failed:', reqErr.message);
+        }
       }
     };
 
@@ -132,23 +155,28 @@ export default function UserProfileScreen({ route, navigation }) {
   // Skill-level badge colours (matches the pattern used in ProfileScreen)
   const skillBadgeColors = skillColors?.[displaySkillLevel] ?? null;
 
-  // ── Add Friend handler ───────────────────────────────────────────────────
+  // ── Add Friend handler — calls the addFriend Cloud Function ─────────────
+  // The function handles both sending a new request and accepting an inbound
+  // one. The returned status drives local state so the button updates instantly.
   const handleAddFriend = async () => {
-    if (!currentUid || isOwnProfile || isFriend) return;
+    if (!currentUid || isOwnProfile || isFriend || requestSent) return;
     setAddingFriend(true);
     try {
-      // Add the target user to the current user's friends list
-      await updateDoc(doc(db, 'users', currentUid), {
-        friends: arrayUnion(userId),
-      });
-      // Add the current user to the target user's friends list
-      await updateDoc(doc(db, 'users', userId), {
-        friends: arrayUnion(currentUid),
-      });
-      setIsFriend(true);
+      const addFriendFn = httpsCallable(getFunctions(), 'addFriend');
+      const result = await addFriendFn({ friendUserId: userId });
+      const status = result?.data?.status;
+      console.log('🧑 [UserProfileScreen] addFriend status:', status);
+
+      if (status === 'accepted' || status === 'already_friends') {
+        setIsFriend(true);
+        setRequestSent(false);
+      } else {
+        // 'request_sent' | 'already_requested' | any other value
+        setRequestSent(true);
+      }
     } catch (err) {
       console.error('Add friend error:', err);
-      Alert.alert('Error', 'Could not add friend. Please try again.');
+      Alert.alert('Error', 'Could not send friend request. Please try again.');
     } finally {
       setAddingFriend(false);
     }
@@ -258,12 +286,16 @@ export default function UserProfileScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* ── Add Friend / Friends ✓ button ── */}
+        {/* ── Add Friend / Request Sent / Friends ✓ button ── */}
         {!isOwnProfile && (
           <TouchableOpacity
-            style={[styles.friendButton, isFriend && styles.friendButtonActive]}
+            style={[
+              styles.friendButton,
+              isFriend && styles.friendButtonActive,
+              requestSent && !isFriend && styles.friendButtonPending,
+            ]}
             onPress={handleAddFriend}
-            disabled={isFriend || addingFriend}
+            disabled={isFriend || requestSent || addingFriend}
           >
             {addingFriend ? (
               <ActivityIndicator size="small" color={isFriend ? colors.success : '#fff'} />
@@ -271,6 +303,11 @@ export default function UserProfileScreen({ route, navigation }) {
               <>
                 <Ionicons name="checkmark-circle" size={18} color={colors.success} style={{ marginRight: 6 }} />
                 <Text style={[styles.friendButtonText, styles.friendButtonTextActive]}>Friends</Text>
+              </>
+            ) : requestSent ? (
+              <>
+                <Ionicons name="time-outline" size={18} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                <Text style={[styles.friendButtonText, styles.friendButtonTextPending]}>Request Sent</Text>
               </>
             ) : (
               <>
@@ -467,10 +504,17 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     width: '100%',
     marginBottom: SPACING.lg,
   },
+  // Already friends state
   friendButtonActive: {
     backgroundColor: colors.success + '18',
     borderWidth: 1,
     borderColor: colors.success + '55',
+  },
+  // Pending request sent state
+  friendButtonPending: {
+    backgroundColor: colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   friendButtonText: {
     color: '#fff',
@@ -479,6 +523,9 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   friendButtonTextActive: {
     color: colors.success,
+  },
+  friendButtonTextPending: {
+    color: colors.textSecondary,
   },
 
   // ── Followed Gyms ────────────────────────────────────────────────────────

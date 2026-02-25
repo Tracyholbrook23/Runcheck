@@ -534,32 +534,35 @@ export default function RunDetailsScreen({ route, navigation }) {
             </View>
           )}
 
-          {/* Primary CTA — Check In Here (pinned near top so users find it immediately) */}
+          {/* Primary CTA — Check In Here (stands alone between identity and location blocks) */}
           <TouchableOpacity
-            style={[styles.checkInButton, { marginTop: SPACING.md, marginBottom: 0 }]}
+            style={styles.checkInButton}
             onPress={() => navigation.getParent()?.navigate('CheckIn')}
           >
             <Text style={styles.checkInButtonText}>Check In Here</Text>
           </TouchableOpacity>
 
-          <Text style={styles.gymAddress}>{gym?.address}</Text>
-          {gym?.location && (
-            <TouchableOpacity
-              style={styles.directionsButton}
-              onPress={() => openDirections(gym.location, gym.name)}
-            >
-              <Ionicons name="navigate-outline" size={16} color={colors.infoText} style={{ marginRight: 6 }} />
-              <Text style={styles.directionsButtonText}>Get Directions</Text>
-            </TouchableOpacity>
-          )}
-          {gym?.type && (
-            <Text style={styles.gymType}>
-              {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
-            </Text>
-          )}
-          {gym?.notes ? (
-            <Text style={styles.gymNotes}>{gym.notes}</Text>
-          ) : null}
+          {/* Location block — address, directions, type, and notes grouped together */}
+          <View style={styles.locationBlock}>
+            <Text style={styles.gymAddress}>{gym?.address}</Text>
+            {gym?.location && (
+              <TouchableOpacity
+                style={styles.directionsButton}
+                onPress={() => openDirections(gym.location, gym.name)}
+              >
+                <Ionicons name="navigate-outline" size={16} color={colors.infoText} style={{ marginRight: 6 }} />
+                <Text style={styles.directionsButtonText}>Get Directions</Text>
+              </TouchableOpacity>
+            )}
+            {gym?.type && (
+              <Text style={styles.gymType}>
+                {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
+              </Text>
+            )}
+            {gym?.notes ? (
+              <Text style={styles.gymNotes}>{gym.notes}</Text>
+            ) : null}
+          </View>
         </View>
 
         {/* Stats card — Players Here (with pulse dot), Planning Today, Planning Tomorrow */}
@@ -1069,10 +1072,16 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   checkInButton: {
     backgroundColor: colors.primary,
-    marginHorizontal: SPACING.lg,
     borderRadius: RADIUS.md,
-    padding: SPACING.md,
+    paddingVertical: SPACING.md,
     alignItems: 'center',
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.lg,
+  },
+  locationBlock: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: SPACING.md,
   },
   checkInButtonText: {
     color: '#fff',
