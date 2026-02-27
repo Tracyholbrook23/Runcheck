@@ -22,6 +22,7 @@ import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { FONT_SIZES, SPACING, RADIUS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { formatSkillLevel } from '../services/models';
 
 /**
  * Calculate duration since check-in
@@ -105,7 +106,7 @@ export const PresenceList = ({
                 {skillLevel && (
                   <View style={[styles.skillBadge, { backgroundColor: skillColors.bg }]}>
                     <Text style={[styles.skillBadgeText, { color: skillColors.text }]}>
-                      {skillLevel}
+                      {formatSkillLevel(skillLevel)}
                     </Text>
                   </View>
                 )}

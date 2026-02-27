@@ -50,6 +50,30 @@ export const usePresence = () => {
 
   // TODO: Auto-checkout via Cloud Function when presence expires after autoExpireMinutes (default 3hrs) — should NOT deduct points as user successfully attended
 
+  // Client-side expiry timer — clears presence locally the moment expiresAt is reached.
+  // This prevents the UI from showing the user as checked in after expiry, without
+  // requiring a Firestore write, a Cloud Function, or a logout/login cycle.
+  // The Firestore listener below will eventually confirm the cleared state once the
+  // server-side cleanup runs, but the UI transition happens immediately here.
+  useEffect(() => {
+    if (!presence?.expiresAt) return;
+
+    const expiresAt = presence.expiresAt.toDate();
+    const msUntilExpiry = expiresAt - Date.now();
+
+    // Already expired by the time this effect runs (e.g., app foregrounded after a long sleep)
+    if (msUntilExpiry <= 0) {
+      setPresence(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setPresence(null);
+    }, msUntilExpiry);
+
+    return () => clearTimeout(timer);
+  }, [presence]);
+
   // Subscribe to the user's active presence document in Firestore.
   // When the document changes (e.g., auto-expiry deletes it), React state updates automatically.
   useEffect(() => {
@@ -190,10 +214,19 @@ export const usePresence = () => {
     return `${hours}h ${mins}m`;
   }, [presence]);
 
+  // Derive active check-in state locally. A presence document is only considered
+  // active if it exists AND its expiresAt timestamp is in the future.
+  // The timer above handles the transition in real-time; this guard covers any
+  // edge-case window where the timer hasn't fired yet (e.g., a new snapshot
+  // arrives with a stale doc before the Cloud Function cleans it up).
+  const isCheckedIn =
+    !!presence &&
+    (!presence.expiresAt || presence.expiresAt.toDate() > new Date());
+
   return {
     presence,
     loading,
-    isCheckedIn: !!presence,
+    isCheckedIn,
     checkIn,
     checkOut,
     checkingIn,

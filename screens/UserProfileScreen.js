@@ -157,7 +157,7 @@ export default function UserProfileScreen({ route, navigation }) {
   const skillBadgeColors = skillColors?.[displaySkillLevel] ?? null;
 
   // Human-readable label for the skill/play-style badge — avoids showing "Either" raw
-  const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Open to any run' };
+  const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Casual / Competitive' };
   const displayPlayStyle = playStyleLabelMap[displaySkillLevel] ?? displaySkillLevel;
 
   // ── Remove Friend handler ────────────────────────────────────────────────

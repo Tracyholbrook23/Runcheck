@@ -341,7 +341,7 @@ export const checkOut = async (isManual = true) => {
   // Atomically:
   // 1. Mark presence as checked-out
   // 2. Decrement gym's currentPresenceCount
-  // 3. Clear user's activePresence (and optionally deduct points)
+  // 3. Clear user's activePresence — points are never deducted on checkout
   await runTransaction(db, async (transaction) => {
     transaction.update(presenceRef, {
       status: PRESENCE_STATUS.CHECKED_OUT,
@@ -353,19 +353,11 @@ export const checkOut = async (isManual = true) => {
       updatedAt: serverTimestamp(),
     });
 
-    if (isManual) {
-      // Manual early checkout: clear presence AND deduct the check-in points
-      // so the user can't farm points by rapidly checking in and out.
-      transaction.update(userRef, {
-        activePresence: null,
-        totalPoints: increment(-10),
-      });
-    } else {
-      // Auto-expiry: only clear the presence field — points stay intact.
-      transaction.update(userRef, {
-        activePresence: null,
-      });
-    }
+    // Clear the user's active presence regardless of checkout path.
+    // Points earned at check-in are permanent — manual checkout no longer deducts them.
+    transaction.update(userRef, {
+      activePresence: null,
+    });
   });
 
   // Manual checkout only: delete the "checked in at" activity feed entry.

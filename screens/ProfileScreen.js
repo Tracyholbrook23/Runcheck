@@ -399,7 +399,7 @@ export default function ProfileScreen({ navigation }) {
   const profileSkillColors = skillColors[displaySkillLevel] ?? null;
 
   // Human-readable label — avoids showing "Either" raw
-  const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Open to any run' };
+  const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Casual / Competitive' };
   const displayPlayStyle = playStyleLabelMap[displaySkillLevel] ?? displaySkillLevel;
 
   // Real reliability data from the hook — zero-state for brand new users

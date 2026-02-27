@@ -33,6 +33,7 @@ import {
 } from 'react-native';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { formatSkillLevel } from '../services/models';
 import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -160,7 +161,7 @@ export default function SignupScreen({ navigation }) {
                           selected && { color: skillColors.text },
                         ]}
                       >
-                        {level}
+                        {formatSkillLevel(level)}
                       </Text>
                     </TouchableOpacity>
                   );

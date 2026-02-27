@@ -26,7 +26,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
 import { auth, db } from '../config/firebase';
-// Activity write is handled inside presenceService.checkIn() — no Firestore imports needed here
+import { doc, updateDoc, increment } from 'firebase/firestore';
 import { awardPoints } from '../services/pointsService';
 import { findMatchingSchedule } from '../services/scheduleService';
 
@@ -128,7 +128,7 @@ export default function CheckInScreen({ navigation }) {
       const gymName = gymItem?.gymName || selectedGym;
       const uid = auth.currentUser?.uid;
 
-      await checkIn(selectedGym);
+      const checkinResult = await checkIn(selectedGym);
 
       // Activity feed event is written inside presenceService.checkIn() — no duplicate write here.
 
@@ -144,7 +144,15 @@ export default function CheckInScreen({ navigation }) {
         ? 'Nice follow-through! You earned a +5 bonus.'
         : 'Keep showing up to earn more points.';
 
-      const { rankChanged, newRank } = await awardPoints(uid, action);
+      const { rankChanged, newRank } = await awardPoints(uid, action, checkinResult?.id);
+
+      // Increment totalAttended every time a check-in succeeds.
+      // Fire-and-forget — non-critical, errors are logged but don't block the flow.
+      if (uid) {
+        updateDoc(doc(db, 'users', uid), {
+          'reliability.totalAttended': increment(1),
+        }).catch((err) => console.error('totalAttended increment error:', err));
+      }
 
       if (rankChanged && newRank) {
         // Show rank-up celebration first, then the check-in confirm

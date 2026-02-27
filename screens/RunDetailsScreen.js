@@ -61,6 +61,7 @@ import {
   getDocs, deleteDoc, where, limit,
 } from 'firebase/firestore';
 import { handleFollowPoints, awardPoints } from '../services/pointsService';
+import { formatSkillLevel } from '../services/models';
 
 /**
  * isToday — Checks whether a given Date falls on the current calendar day.
@@ -599,7 +600,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   {skillColors?.[player.skillLevel] && (
                     <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
                       <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
-                        {player.skillLevel}
+                        {formatSkillLevel(player.skillLevel)}
                       </Text>
                     </View>
                   )}
@@ -628,7 +629,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   {skillColors?.[player.skillLevel] && (
                     <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
                       <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
-                        {player.skillLevel}
+                        {formatSkillLevel(player.skillLevel)}
                       </Text>
                     </View>
                   )}
@@ -657,7 +658,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   {skillColors?.[player.skillLevel] && (
                     <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
                       <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
-                        {player.skillLevel}
+                        {formatSkillLevel(player.skillLevel)}
                       </Text>
                     </View>
                   )}

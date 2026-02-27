@@ -155,6 +155,18 @@ export const SKILL_LEVELS = {
   EITHER: 'Either',
 };
 
+/**
+ * Returns the human-readable display label for a skillLevel value stored in Firestore.
+ * Keeps Casual and Competitive as-is; maps Either → "Casual / Competitive".
+ *
+ * @param {string} skillLevel - The raw Firestore value: "Casual" | "Competitive" | "Either"
+ * @returns {string} Display label
+ */
+export const formatSkillLevel = (skillLevel) => {
+  if (skillLevel === 'Either') return 'Casual / Competitive';
+  return skillLevel || '';
+};
+
 export const GYM_TYPE = {
   INDOOR: 'indoor',
   OUTDOOR: 'outdoor',

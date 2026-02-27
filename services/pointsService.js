@@ -19,7 +19,7 @@
  */
 
 import { db } from '../config/firebase';
-import { doc, updateDoc, increment, getDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, increment, getDoc, runTransaction, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { POINT_VALUES, getUserRank } from '../utils/badges';
 
 /**
@@ -92,7 +92,7 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
  *   prevRank:     object | null, — The RANKS entry before the award.
  * }>}
  */
-export const awardPoints = async (uid, action) => {
+export const awardPoints = async (uid, action, presenceId = null) => {
   const noOp = { newTotal: 0, rankChanged: false, newRank: null, prevRank: null };
 
   if (!uid || !POINT_VALUES[action]) return noOp;
@@ -101,6 +101,34 @@ export const awardPoints = async (uid, action) => {
   const userRef = doc(db, 'users', uid);
 
   try {
+    // ── checkin / checkinWithPlan — idempotent guard via presenceId ──────────
+    // Runs inside a transaction so the read-check-write is atomic: even if the
+    // user taps "Check In" twice in rapid succession only one award goes through.
+    // Falls through to the normal path if presenceId is not provided (shouldn't
+    // happen in normal flow, but safe to handle gracefully).
+    if ((action === 'checkin' || action === 'checkinWithPlan') && presenceId) {
+      return await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(userRef);
+        const data = snap.data() || {};
+        const currentTotal = data.totalPoints || 0;
+        const prevRank = getUserRank(currentTotal);
+
+        // Already awarded for this exact presence — skip silently
+        if (data.pointsAwarded?.checkins?.[presenceId]) {
+          return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
+        }
+
+        transaction.update(userRef, {
+          totalPoints: increment(points),
+          [`pointsAwarded.checkins.${presenceId}`]: true,
+        });
+
+        const newTotal = currentTotal + points;
+        const newRank = getUserRank(newTotal);
+        return { newTotal, rankChanged: newRank.name !== prevRank.name, newRank, prevRank };
+      });
+    }
+
     const snap = await getDoc(userRef);
     const data = snap.data() || {};
     const currentTotal = data.totalPoints || 0;

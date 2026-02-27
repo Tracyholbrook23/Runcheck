@@ -35,6 +35,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { formatSkillLevel } from '../services/models';
 
 /** Placeholder review data — to be replaced by a Firestore reviews collection. */
 const FAKE_REVIEWS = [
@@ -151,7 +152,7 @@ export default function GymReviewsScreen({ route, navigation }) {
                       {badgeColors && (
                         <View style={[styles.skillBadge, { backgroundColor: badgeColors.bg }]}>
                           <Text style={[styles.skillBadgeText, { color: badgeColors.text }]}>
-                            {review.skillLevel}
+                            {formatSkillLevel(review.skillLevel)}
                           </Text>
                         </View>
                       )}
