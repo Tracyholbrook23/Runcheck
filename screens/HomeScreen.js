@@ -13,6 +13,9 @@
  *                        rendered when `isCheckedIn` is true.
  *   - Quick Actions    — Three BlurView cards linking to Check In,
  *                        Find Runs, and Plan a Visit tabs
+ *   - LIVE Indicator   — Compact banner showing total active players and
+ *                        the hottest court; hidden when totalActive === 0;
+ *                        tapping navigates to the hottest court's RunDetails
  *   - Hot Courts       — Horizontal scroll list of nearby active gyms
  *                        (currently seeded with placeholder data)
  *   - Recent Activity  — Feed of recent community check-ins and plans
@@ -26,7 +29,7 @@
  * every state change.
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -38,6 +41,7 @@ import {
   ScrollView,
   ImageBackground,
   Image,
+  Animated,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -47,6 +51,48 @@ import { usePresence, useGyms } from '../hooks';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
+
+/**
+ * BlinkingDot — A small green dot that pulses its opacity when `active` is
+ * true and renders as a plain static dot when `active` is false.
+ *
+ * Reused for both the LIVE indicator banner and each Hot Courts card dot.
+ * Accepts the caller's existing dot style so dimensions and color stay
+ * consistent with `liveBannerDot` / `courtLiveDot`.
+ *
+ * @param {{ active: boolean, style: object }} props
+ */
+const BlinkingDot = ({ active, style }) => {
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (active) {
+      const animation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(opacity, {
+            toValue: 0.2,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 1,
+            duration: 700,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      animation.start();
+      return () => animation.stop();
+    } else {
+      opacity.setValue(1);
+    }
+  }, [active]);
+
+  if (!active) {
+    return <View style={style} />;
+  }
+  return <Animated.View style={[style, { opacity }]} />;
+};
 
 /**
  * HomeScreen — Main dashboard component.
@@ -176,6 +222,14 @@ const HomeScreen = ({ navigation }) => {
 
   // Sum of currentPresenceCount across all gyms for the live badge
   const totalActive = gyms.reduce((sum, g) => sum + (g.currentPresenceCount || 0), 0);
+
+  // Gym with the highest currentPresenceCount — used by the LIVE indicator
+  const hottestGym = gyms.length > 0
+    ? gyms.reduce(
+        (best, g) => (g.currentPresenceCount || 0) > (best.currentPresenceCount || 0) ? g : best,
+        gyms[0]
+      )
+    : null;
 
   // Partition the feed into friends vs. community
   const friendsActivity = activityFeed.filter((item) => friendIds.includes(item.userId));
@@ -394,6 +448,44 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
 
+          {/*
+           * LIVE Indicator — compact banner shown above Hot Courts when any
+           * player is currently active. Tapping navigates to the hottest
+           * court's RunDetails screen. Renders nothing when totalActive === 0.
+           */}
+          {totalActive > 0 && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                if (hottestGym && (hottestGym.currentPresenceCount || 0) > 0) {
+                  navigation.getParent()?.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: {
+                      gymId: hottestGym.id,
+                      gymName: hottestGym.name,
+                      imageUrl: hottestGym.imageUrl,
+                    },
+                  });
+                }
+              }}
+            >
+              <BlurView intensity={40} tint="dark" style={styles.liveBanner}>
+                <View style={styles.liveBannerTop}>
+                  <BlinkingDot active={totalActive > 0} style={styles.liveBannerDot} />
+                  <Text style={styles.liveBannerLabel}>🔥 LIVE</Text>
+                  <Text style={styles.liveBannerCount}> · {totalActive} playing right now</Text>
+                </View>
+                {hottestGym && (hottestGym.currentPresenceCount || 0) > 0 && (
+                  <Text style={styles.liveBannerSub}>
+                    {'Top court: '}
+                    <Text style={styles.liveBannerGym}>{hottestGym.name}</Text>
+                    {` (${hottestGym.currentPresenceCount})`}
+                  </Text>
+                )}
+              </BlurView>
+            </TouchableOpacity>
+          )}
+
           {/* Hot Courts — horizontal scroll of nearby active gyms */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Hot Courts Near You</Text>
@@ -431,7 +523,10 @@ const HomeScreen = ({ navigation }) => {
               >
                 <BlurView intensity={60} tint="dark" style={styles.courtCard}>
                   <View style={styles.courtCardTop}>
-                    <View style={styles.courtLiveDot} />
+                    <BlinkingDot
+                      active={(gym.currentPresenceCount || 0) > 0}
+                      style={styles.courtLiveDot}
+                    />
                     <Text style={styles.courtPlayerCount}>{gym.currentPresenceCount || 0} playing</Text>
                   </View>
                   <Text style={styles.courtName}>{gym.name}</Text>
@@ -645,6 +740,52 @@ actionCard: {
     fontSize: FONT_SIZES.xs,
     color: 'rgba(255,255,255,0.6)',
   },
+
+  // LIVE Indicator banner — compact BlurView strip above Hot Courts
+  liveBanner: {
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.success,
+    marginTop: SPACING.xl,
+    gap: 4,
+  },
+  liveBannerTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  liveBannerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+  },
+  liveBannerLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    letterSpacing: 1,
+  },
+  liveBannerCount: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.65)',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  liveBannerSub: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 1,
+  },
+  liveBannerGym: {
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+
   liveActivity: {
     flexDirection: 'row',
     alignItems: 'center',

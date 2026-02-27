@@ -42,6 +42,10 @@ import { DEFAULT_CHECK_IN_RADIUS_METERS, DEFAULT_EXPIRE_MINUTES, GYM_TYPE } from
  * Seed initial gyms with GPS locations
  * Call once to populate database
  *
+ * Safe to run multiple times — will only create documents that do not already
+ * exist and will never overwrite existing documents or their location, placeId,
+ * or address fields.
+ *
  * @returns {Promise<Array>} Array of seeded gyms
  */
 export const seedGyms = async () => {
@@ -141,6 +145,9 @@ export const seedGyms = async () => {
     const existingGym = await getDoc(gymRef);
 
     if (!existingGym.exists()) {
+      // Only create the document if it does not already exist.
+      // Never overwrite an existing document — location, placeId, and address
+      // may have been updated via the app and must not be clobbered by seed data.
       await setDoc(gymRef, {
         ...gym,
         createdAt: serverTimestamp(),
@@ -148,22 +155,7 @@ export const seedGyms = async () => {
       });
       console.log(`Created gym: ${gym.name}`);
     } else {
-      // Always force update location data to ensure correct coordinates
-      await updateDoc(gymRef, {
-        name: gym.name,
-        address: gym.address,
-        city: gym.city,
-        state: gym.state,
-        type: gym.type,
-        accessType: gym.accessType,
-        notes: gym.notes,
-        imageUrl: gym.imageUrl || null,
-        location: gym.location,
-        checkInRadiusMeters: gym.checkInRadiusMeters,
-        autoExpireMinutes: gym.autoExpireMinutes,
-        updatedAt: serverTimestamp(),
-      });
-      console.log(`Updated gym location: ${gym.name}`);
+      console.log(`Skipped existing gym: ${gym.name}`);
     }
   }
 
