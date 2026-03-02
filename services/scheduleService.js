@@ -61,12 +61,7 @@ import {
   SCHEDULE_GRACE_PERIOD_MINUTES,
 } from './models';
 
-import {
-  updateReliabilityOnAttend,
-  updateReliabilityOnNoShow,
-  updateReliabilityOnCancel,
-  incrementScheduledCount,
-} from './reliabilityService';
+// Reliability writes removed — Cloud Functions handle all reliability updates.
 
 // Constants
 const MAX_ACTIVE_SCHEDULES = 5;
@@ -176,8 +171,7 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
   // Update gym schedule count
   await updateGymScheduleCount(gymId, timeSlot, 1);
 
-  // Update user's scheduled count
-  await incrementScheduledCount(odId);
+  // reliability.totalScheduled is incremented by Cloud Functions (onScheduleCreate trigger)
 
   return { id: scheduleId, ...scheduleData };
 };
@@ -224,8 +218,7 @@ export const cancelSchedule = async (scheduleId) => {
   // Update gym schedule count
   await updateGymScheduleCount(scheduleData.gymId, scheduleData.timeSlot, -1);
 
-  // Update reliability (penalize late cancellations)
-  await updateReliabilityOnCancel(scheduleData.odId, isLateCancellation);
+  // reliability.totalCancelled (and late-cancel penalty) handled by Cloud Functions
 
   return { ...scheduleData, status: SCHEDULE_STATUS.CANCELLED, isLateCancellation };
 };
@@ -262,8 +255,7 @@ export const markScheduleAttended = async (scheduleId, presenceId) => {
   // Update gym schedule count
   await updateGymScheduleCount(scheduleData.gymId, scheduleData.timeSlot, -1);
 
-  // Update reliability (bonus for showing up)
-  await updateReliabilityOnAttend(scheduleData.odId);
+  // reliability.totalAttended bonus handled by Cloud Functions
 
   return { ...scheduleData, status: SCHEDULE_STATUS.ATTENDED };
 };
@@ -298,8 +290,7 @@ export const markScheduleNoShow = async (scheduleId) => {
   // Update gym schedule count
   await updateGymScheduleCount(scheduleData.gymId, scheduleData.timeSlot, -1);
 
-  // Update reliability (penalty for not showing)
-  await updateReliabilityOnNoShow(scheduleData.odId);
+  // reliability.totalNoShow penalty handled by Cloud Functions
 
   return { ...scheduleData, status: SCHEDULE_STATUS.NO_SHOW };
 };

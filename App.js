@@ -34,6 +34,8 @@ import LoginScreen from './screens/LoginScreen';
 import ViewRunsScreen from './screens/ViewRunsScreen';
 import CheckInScreen from './screens/CheckInScreen';
 import RunDetailsScreen from './screens/RunDetailsScreen';
+import TrimClipScreen from './screens/TrimClipScreen';
+import RecordClipScreen from './screens/RecordClipScreen';
 import PlanVisitScreen from './screens/PlanVisitScreen';
 import GymMapScreen from './screens/GymMapScreen';
 import ProfileScreen from './screens/ProfileScreen';
@@ -88,6 +90,8 @@ function RunsStack() {
       />
       <Stack.Screen name="GymMap" component={GymMapScreen} options={{ title: 'Gym Map' }} />
       <Stack.Screen name="RunDetails" component={RunDetailsScreen} options={{ title: 'Run Details' }} />
+      <Stack.Screen name="RecordClipScreen" component={RecordClipScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="TrimClipScreen" component={TrimClipScreen} options={{ title: 'Trim Clip' }} />
       <Stack.Screen name="GymReviews" component={GymReviewsScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );

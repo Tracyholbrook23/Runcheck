@@ -25,8 +25,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { auth, db } from '../config/firebase';
-import { doc, updateDoc, increment } from 'firebase/firestore';
+import { auth } from '../config/firebase';
 import { awardPoints } from '../services/pointsService';
 import { findMatchingSchedule } from '../services/scheduleService';
 
@@ -146,13 +145,7 @@ export default function CheckInScreen({ navigation }) {
 
       const { rankChanged, newRank } = await awardPoints(uid, action, checkinResult?.id);
 
-      // Increment totalAttended every time a check-in succeeds.
-      // Fire-and-forget — non-critical, errors are logged but don't block the flow.
-      if (uid) {
-        updateDoc(doc(db, 'users', uid), {
-          'reliability.totalAttended': increment(1),
-        }).catch((err) => console.error('totalAttended increment error:', err));
-      }
+      // reliability.totalAttended is incremented by Cloud Functions (onCheckIn trigger)
 
       if (rankChanged && newRank) {
         // Show rank-up celebration first, then the check-in confirm

@@ -44,6 +44,7 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
@@ -114,6 +115,8 @@ export default function ProfileScreen({ navigation }) {
   // ID of the request row currently being accepted/declined — disables that
   // row's buttons while the Firestore writes are in-flight.
   const [processingRequestId, setProcessingRequestId] = useState(null);
+  const [reliability, setReliability] = useState(null);
+  const [showReliabilityInfo, setShowReliabilityInfo] = useState(false);
 
   // ── Rank / badge data — derived from live Firestore totalPoints ──────────
   const totalPoints = liveProfile?.totalPoints || 0;
@@ -274,6 +277,7 @@ export default function ProfileScreen({ navigation }) {
     const unsubscribe = onSnapshot(
       doc(db, 'users', user.uid),
       async (snap) => {
+        setReliability(snap.exists() ? (snap.data()?.reliability ?? null) : null);
         if (!snap.exists()) {
           setPendingRequests([]);
           return;
@@ -406,13 +410,14 @@ export default function ProfileScreen({ navigation }) {
   const displayScore = score || 0;
   const displayTier = tier || { label: 'New', color: colors.textMuted };
 
-  // Real session stats from the reliability hook
-  const displayScheduled  = stats?.scheduled  || 0;
-  const displayAttended   = stats?.attended   || 0;
-  const displayNoShows    = stats?.noShows    || 0;
-  const displayCancelled  = stats?.cancelled  || 0;
-  const displayAttendance = displayScheduled > 0
-    ? `${Math.round((displayAttended / displayScheduled) * 100)}%`
+  // Real session stats from Firestore users/{uid}.reliability
+  const displayScheduled  = reliability?.totalScheduled  ?? 0;
+  const displayAttended   = reliability?.totalAttended   ?? 0;
+  const displayNoShows    = reliability?.totalNoShow     ?? 0;
+  const displayCancelled  = reliability?.totalCancelled  ?? 0;
+  const _completionDenom  = displayAttended + displayCancelled + displayNoShows;
+  const displayAttendance = _completionDenom > 0
+    ? `${Math.round(((displayAttended + displayCancelled) / _completionDenom) * 100)}%`
     : '—';
 
   const loading = profileLoading || reliabilityLoading;
@@ -554,6 +559,14 @@ export default function ProfileScreen({ navigation }) {
               ]}
             />
           </View>
+          {/* Info link */}
+          <TouchableOpacity
+            onPress={() => setShowReliabilityInfo(true)}
+            style={styles.reliabilityInfoLink}
+          >
+            <Ionicons name="information-circle-outline" size={13} color={colors.primary} />
+            <Text style={styles.reliabilityInfoLinkText}>How reliability works</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Session Stats Grid ─────────────────────────────────────────── */}
@@ -792,6 +805,50 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ── Reliability Info Modal ─────────────────────────────────────── */}
+      <Modal
+        visible={showReliabilityInfo}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowReliabilityInfo(false)}
+      >
+        <TouchableOpacity
+          style={styles.reliabilityModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowReliabilityInfo(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={[styles.reliabilityModalSheet, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.reliabilityModalTitle, { color: colors.textPrimary }]}>
+              How Reliability Works
+            </Text>
+            <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary }]}>
+              Your reliability score reflects how consistently you show up to runs you commit to.
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• Attending a run protects your score'}
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• Cancelling 2+ hours before start has no penalty'}
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• Cancelling within 2 hours of start counts as a late cancel (\u22128)'}
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• No-shows lower your score the most (\u221220)'}
+            </Text>
+            <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary, marginTop: SPACING.sm }]}>
+              The more you play and show up, the more stable your score becomes.
+            </Text>
+            <TouchableOpacity
+              style={[styles.reliabilityModalClose, { backgroundColor: colors.primary }]}
+              onPress={() => setShowReliabilityInfo(false)}
+            >
+              <Text style={styles.reliabilityModalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1318,5 +1375,55 @@ editBadge: {
       fontSize: FONT_SIZES.small,
       color: colors.primary,
       fontWeight: FONT_WEIGHTS.semibold,
+    },
+    // Reliability info link
+    reliabilityInfoLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      marginTop: SPACING.sm,
+      alignSelf: 'flex-start',
+    },
+    reliabilityInfoLinkText: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.primary,
+      fontWeight: FONT_WEIGHTS.medium,
+    },
+    // Reliability info modal
+    reliabilityModalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      justifyContent: 'flex-end',
+    },
+    reliabilityModalSheet: {
+      borderTopLeftRadius: RADIUS.lg,
+      borderTopRightRadius: RADIUS.lg,
+      padding: SPACING.lg,
+      paddingBottom: SPACING.xl,
+    },
+    reliabilityModalTitle: {
+      fontSize: FONT_SIZES.subtitle,
+      fontWeight: FONT_WEIGHTS.extraBold,
+      marginBottom: SPACING.md,
+    },
+    reliabilityModalBody: {
+      fontSize: FONT_SIZES.body,
+      lineHeight: 22,
+    },
+    reliabilityModalBullet: {
+      fontSize: FONT_SIZES.body,
+      lineHeight: 26,
+      marginTop: 2,
+    },
+    reliabilityModalClose: {
+      marginTop: SPACING.lg,
+      borderRadius: RADIUS.md,
+      paddingVertical: SPACING.sm + 2,
+      alignItems: 'center',
+    },
+    reliabilityModalCloseText: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#fff',
     },
   });

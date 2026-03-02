@@ -5,10 +5,10 @@
  *
  * ARCHITECTURE:
  *
- * ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
- * │ presenceService │────>│ scheduleService  │────>│ reliabilityService  │
- * │   (check-in)    │     │  (scheduling)    │     │    (scoring)        │
- * └─────────────────┘     └──────────────────┘     └─────────────────────┘
+ * ┌─────────────────┐     ┌──────────────────┐
+ * │ presenceService │────>│ scheduleService  │
+ * │   (check-in)    │     │  (scheduling)    │
+ * └─────────────────┘     └──────────────────┘
  *         │                       │
  *         └───────────┬───────────┘
  *                     ▼
@@ -17,9 +17,11 @@
  *              │  (gyms)     │
  *              └─────────────┘
  *
+ *  reliabilityService — READ-ONLY on the client.
+ *  All reliability writes are handled by Cloud Functions (backend).
+ *
  * DEPENDENCIES:
  * - presenceService depends on scheduleService (to mark schedules attended)
- * - scheduleService depends on reliabilityService (to update scores)
  * - All services depend on gymService for gym data
  */
 
