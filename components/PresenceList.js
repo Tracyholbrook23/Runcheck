@@ -19,7 +19,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { FONT_SIZES, SPACING, RADIUS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { formatSkillLevel } from '../services/models';
@@ -97,9 +97,16 @@ export const PresenceList = ({
 
         return (
           <View key={item.id} style={styles.playerCard}>
-            <View style={styles.playerAvatar}>
-              <Text style={styles.playerInitial}>{initial}</Text>
-            </View>
+            {item.userAvatar ? (
+              <Image
+                source={{ uri: item.userAvatar }}
+                style={styles.playerAvatar}
+              />
+            ) : (
+              <View style={styles.playerAvatar}>
+                <Text style={styles.playerInitial}>{initial}</Text>
+              </View>
+            )}
             <View style={styles.playerInfo}>
               <View style={styles.playerNameRow}>
                 <Text style={styles.playerName}>{name}</Text>

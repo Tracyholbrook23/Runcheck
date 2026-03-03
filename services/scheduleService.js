@@ -109,6 +109,7 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
   const userRef = doc(db, 'users', odId);
   const userDoc = await getDoc(userRef);
   const userName = userDoc.exists() ? userDoc.data().name : 'Anonymous';
+  const userAvatar = userDoc.exists() ? (userDoc.data().photoURL || null) : null;
 
   // Validate time is in the future
   const now = new Date();
@@ -154,6 +155,7 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
   const scheduleData = {
     odId,
     userName,
+    userAvatar,
     gymId,
     gymName,
     status: SCHEDULE_STATUS.SCHEDULED,

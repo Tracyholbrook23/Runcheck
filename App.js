@@ -45,6 +45,7 @@ import GymReviewsScreen from './screens/GymReviewsScreen';
 import CityGateScreen from './screens/CityGateScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
+import ClipPlayerScreen from './screens/ClipPlayerScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -93,6 +94,7 @@ function RunsStack() {
       <Stack.Screen name="RecordClipScreen" component={RecordClipScreen} options={{ headerShown: false }} />
       <Stack.Screen name="TrimClipScreen" component={TrimClipScreen} options={{ title: 'Trim Clip' }} />
       <Stack.Screen name="GymReviews" component={GymReviewsScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

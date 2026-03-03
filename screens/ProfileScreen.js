@@ -244,6 +244,15 @@ export default function ProfileScreen({ navigation }) {
     registerPushToken();
   }, [user?.uid]);
 
+  // Keep photoUri in sync with the real-time liveProfile.
+  // Covers: first load before getDoc resolves, and cross-device photo updates.
+  useEffect(() => {
+    if (liveProfile?.photoURL) {
+      console.log('[ProfileScreen] syncing photoUri from liveProfile.photoURL');
+      setPhotoUri(liveProfile.photoURL);
+    }
+  }, [liveProfile?.photoURL]);
+
   // Fetch full profile objects for every uid in liveProfile.friends.
   // Re-runs whenever the friends array reference changes (i.e. when a new
   // friend is accepted and liveProfile updates from the real-time hook).
@@ -443,13 +452,15 @@ export default function ProfileScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* ── Avatar & User Info ─────────────────────────────────────────── */}
         <View style={styles.header}>
-          {/* Tappable avatar: shows picked photo or fallback placeholder */}
+          {/* Tappable avatar: shows picked photo, live profile photo, or initials fallback */}
           <TouchableOpacity onPress={handlePickImage} disabled={uploading}>
-            {photoUri ? (
-              <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+            {(photoUri || liveProfile?.photoURL) ? (
+              <Image source={{ uri: photoUri || liveProfile?.photoURL }} style={styles.avatarImage} />
             ) : (
               <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
-                <Ionicons name="person" size={40} color={colors.textMuted} />
+                <Text style={styles.avatarInitial}>
+                  {(profile?.name || liveProfile?.name || user?.displayName || '?')[0].toUpperCase()}
+                </Text>
               </View>
             )}
             {/* Upload spinner — overlays the avatar while the photo is uploading */}
@@ -1295,6 +1306,11 @@ const getStyles = (colors, isDark) =>
   backgroundColor: colors.surface,
   justifyContent: 'center',
   alignItems: 'center',
+},
+    avatarInitial: {
+  fontSize: 32,
+  fontWeight: '700',
+  color: colors.primary,
 },
 editBadge: {
   position: 'absolute',

@@ -226,6 +226,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   const presenceData = {
     odId,
     userName,
+    userAvatar: userData.photoURL || null,
     gymId,
     gymName: gymData.name,
     skillLevel,
