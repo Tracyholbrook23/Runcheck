@@ -64,6 +64,7 @@ import {
   doc, getDoc, updateDoc, arrayUnion, arrayRemove,
   collection, addDoc, onSnapshot, serverTimestamp, query, orderBy,
   getDocs, deleteDoc, where, limit, setDoc, runTransaction, deleteField,
+  Timestamp,
 } from 'firebase/firestore';
 import { handleFollowPoints, awardPoints } from '../services/pointsService';
 import { formatSkillLevel } from '../services/models';
@@ -117,6 +118,26 @@ const timeAgo = (timestamp) => {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   return `${days}d ago`;
+};
+
+/**
+ * tileTimeAgo — Compact timestamp for clip tiles ("now", "2m", "1h", "3d").
+ * Same input as timeAgo but omits the "ago" suffix so it fits in a small tile.
+ *
+ * @param {import('firebase/firestore').Timestamp|Date|null} timestamp
+ * @returns {string}
+ */
+const tileTimeAgo = (timestamp) => {
+  if (!timestamp) return '';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 };
 
 /**
@@ -266,9 +287,6 @@ export default function RunDetailsScreen({ route, navigation }) {
     console.log('[clips effect] db.app.options.projectId:', db.app.options.projectId, '| auth.app.options.projectId:', auth.app.options.projectId);
     if (!authedUid || !gymId) return;
     setClipsLoading(true);
-    const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
     /**
      * resolveClipUrls — For each clip that has a storagePath and hasn't been
      * fully resolved yet, fetches the Firebase Storage download URL then
@@ -331,17 +349,22 @@ export default function RunDetailsScreen({ route, navigation }) {
         });
     };
 
+    // NOTE: Requires a Firestore composite index on gymClips:
+    //   gymId ASC + expiresAt ASC
+    // If the app logs "index required", create the index in the Firebase console
+    // (or firestore.indexes.json) with fields: gymId (ASC), expiresAt (ASC).
     const clipsQuery = query(
       collection(db, 'gymClips'),
       where('gymId', '==', gymId),
-      where('createdAt', '>=', yesterday),
-      orderBy('createdAt', 'desc'),
+      where('expiresAt', '>', Timestamp.now()),
+      orderBy('expiresAt', 'desc'),
       limit(20)
     );
 
-    // Client-side guard: only show clips that are fully finalized.
-    // Keeps query shape unchanged (no new composite indexes needed).
-    const isReadyClip = (c) => c.status === 'ready' && !!c.storagePath;
+    // Client-side guard: only show clips that are fully finalized AND have a
+    // valid expiresAt field (belt-and-suspenders for any doc that bypassed the
+    // query filter, e.g. older docs written before expiresAt was added).
+    const isReadyClip = (c) => c.status === 'ready' && !!c.storagePath && !!c.expiresAt;
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
       // Exclude any clip that hasn't been finalized yet.
@@ -983,52 +1006,82 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Clips — Post a highlight clip from this gym */}
+        {/* Clips — Stories-style horizontal row */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Clips</Text>
-          <Text style={styles.clipsSubtitle}>Recent moments from this gym (last 24h).</Text>
-          <TouchableOpacity
-            style={[styles.postClipButton, postingClip && { opacity: 0.6 }]}
-            onPress={handlePostClip}
-            disabled={postingClip || !gymId}
-          >
-            {postingClip ? (
-              <ActivityIndicator color="#fff" size="small" style={{ marginRight: 8 }} />
-            ) : (
-              <Ionicons name="videocam-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-            )}
-            <Text style={styles.postClipButtonText}>
-              {postingClip ? 'Starting…' : 'Post Clip'}
-            </Text>
-          </TouchableOpacity>
+          {/* Section header */}
+          <View style={clipPlayerStyles.storiesHeaderRow}>
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Clips</Text>
+            <Text style={clipPlayerStyles.storiesSubtitle}>Live moments from this gym</Text>
+          </View>
 
           {clipsLoading ? (
-            <ActivityIndicator style={{ marginTop: 16 }} />
+            // Skeleton: Post tile + 3 grey placeholder tiles while data loads
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={clipPlayerStyles.storiesRow}
+            >
+              <TouchableOpacity
+                style={[clipPlayerStyles.storiesPostTile, postingClip && { opacity: 0.6 }]}
+                onPress={handlePostClip}
+                disabled={postingClip || !gymId}
+              >
+                {postingClip ? (
+                  <ActivityIndicator color="#FF7A45" size="small" />
+                ) : (
+                  <Ionicons name="add-circle-outline" size={30} color="#FF7A45" />
+                )}
+                <Text style={clipPlayerStyles.storiesPostLabel}>
+                  {postingClip ? 'Starting…' : 'Post'}
+                </Text>
+              </TouchableOpacity>
+              {[1, 2, 3].map((i) => (
+                <View key={i} style={clipPlayerStyles.storiesSkeletonTile} />
+              ))}
+            </ScrollView>
           ) : (
             <FlatList
-              data={gridData}
+              data={gymClips}
               keyExtractor={(item) => item.id}
-              numColumns={2}
-              scrollEnabled={false}
-              columnWrapperStyle={clipPlayerStyles.gridRow}
-              contentContainerStyle={clipPlayerStyles.gridContent}
-              style={{ marginTop: 12 }}
-              renderItem={({ item }) => {
-                if (item.spacer) {
-                  return <View style={[clipPlayerStyles.gridTile, { opacity: 0 }]} />;
-                }
-                return (
-                  <ClipTile
-                    clip={item}
-                    videoUrl={clipVideoUrls[item.id]}
-                    thumbnailUri={clipThumbnails[item.id]}
-                    liked={!!(item.likedBy?.[uid])}
-                    likesCount={item.likesCount ?? 0}
-                    navigation={navigation}
-                    onLike={toggleLike}
-                  />
-                );
-              }}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={clipPlayerStyles.storiesRow}
+              ListHeaderComponent={
+                <TouchableOpacity
+                  style={[clipPlayerStyles.storiesPostTile, postingClip && { opacity: 0.6 }]}
+                  onPress={handlePostClip}
+                  disabled={postingClip || !gymId}
+                >
+                  {postingClip ? (
+                    <ActivityIndicator color="#FF7A45" size="small" />
+                  ) : (
+                    <Ionicons name="add-circle-outline" size={30} color="#FF7A45" />
+                  )}
+                  <Text style={clipPlayerStyles.storiesPostLabel}>
+                    {postingClip ? 'Starting…' : 'Post'}
+                  </Text>
+                </TouchableOpacity>
+              }
+              ListEmptyComponent={
+                <View style={clipPlayerStyles.storiesEmptyWrap}>
+                  <Text style={clipPlayerStyles.storiesEmptyText}>
+                    No clips yet — be the first.
+                  </Text>
+                </View>
+              }
+              renderItem={({ item }) => (
+                <ClipTile
+                  clip={item}
+                  videoUrl={clipVideoUrls[item.id]}
+                  thumbnailUri={clipThumbnails[item.id]}
+                  liked={!!(item.likedBy?.[uid])}
+                  likesCount={item.likesCount ?? 0}
+                  navigation={navigation}
+                  onLike={toggleLike}
+                  style={clipPlayerStyles.storiesTile}
+                  uploaderInfo={clipUserMap[item.uploaderUid]}
+                />
+              )}
             />
           )}
         </View>
@@ -1308,57 +1361,83 @@ function ClipCard({ clip, videoUrl, thumbnailUri, onPlay, uploaderInfo, liked, d
   );
 }
 
-// ─── Clip tile (2-column grid) ────────────────────────────────────────────────
+// ─── Clip tile (stories horizontal row) ──────────────────────────────────────
 /**
- * ClipTile — Compact square tile used inside the 2-column FlatList grid.
+ * ClipTile — Portrait card used in the horizontal stories FlatList.
  *
- * Shows a thumbnail (or dark placeholder), a centred play-icon overlay,
- * and a small likes-count badge in the bottom-left corner.
- * Tapping the tile calls onPlay() which navigates to ClipPlayer.
+ * All overlays sit inside the clipped thumbnail:
+ *   ┌────────────────┐
+ *   │            ♥ 3 │  ← tileLikesPill    (top-right, tappable)
+ *   │     ▶          │  ← gridPlayOverlay  (centered)
+ *   │▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓│  ← tileScrim        (bottom 55%, readability)
+ *   │ 👤 name   2h   │  ← tileIdentityOverlay (bottom-left, over scrim)
+ *   └────────────────┘
  */
-function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation, onLike }) {
+function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation, onLike, style, uploaderInfo }) {
+  const initials = uploaderInfo?.name
+    ? uploaderInfo.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
+    : '?';
+
   return (
     <TouchableOpacity
-      style={clipPlayerStyles.gridTile}
+      style={[clipPlayerStyles.gridTile, style]}
       onPress={() => { if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId }); }}
       activeOpacity={0.85}
     >
-      {/* Thumbnail image or dark placeholder */}
+      {/* Background: thumbnail or dark placeholder */}
       {thumbnailUri ? (
-        <Image
-          source={{ uri: thumbnailUri }}
-          style={clipPlayerStyles.gridThumbnail}
-          resizeMode="cover"
-        />
+        <Image source={{ uri: thumbnailUri }} style={clipPlayerStyles.gridThumbnail} resizeMode="cover" />
       ) : (
         <View style={clipPlayerStyles.gridThumbnailPlaceholder} />
       )}
 
-      {/* Centred play icon overlay */}
+      {/* Bottom scrim — improves text readability without a gradient library */}
+      <View style={clipPlayerStyles.tileScrim} />
+
+      {/* Centered play icon */}
       <View style={clipPlayerStyles.gridPlayOverlay}>
         <Ionicons
           name={videoUrl ? 'play-circle' : 'hourglass-outline'}
-          size={32}
+          size={28}
           color="rgba(255,255,255,0.88)"
         />
       </View>
 
-      {/* Tappable likes badge — bottom-left; does NOT navigate */}
+      {/* Bottom-left identity: avatar + name + time — tappable, opens profile */}
       <TouchableOpacity
-        style={clipPlayerStyles.gridLikesBadge}
+        style={clipPlayerStyles.tileIdentityOverlay}
+        onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: clip.uploaderUid } })}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        activeOpacity={0.75}
+      >
+        {uploaderInfo?.photoURL ? (
+          <Image source={{ uri: uploaderInfo.photoURL }} style={clipPlayerStyles.tileAvatar} />
+        ) : (
+          <View style={clipPlayerStyles.tileAvatarFallback}>
+            <Text style={clipPlayerStyles.tileInitial}>{initials}</Text>
+          </View>
+        )}
+        <View style={clipPlayerStyles.tileNameTimeCol}>
+          <Text style={clipPlayerStyles.tileName} numberOfLines={1}>
+            {uploaderInfo?.name || '…'}
+          </Text>
+          <Text style={clipPlayerStyles.tileTimeAgo}>{tileTimeAgo(clip.createdAt)}</Text>
+        </View>
+      </TouchableOpacity>
+
+      {/* Top-right likes pill */}
+      <TouchableOpacity
+        style={[clipPlayerStyles.tileLikesPill, liked && clipPlayerStyles.tileLikesPillActive]}
         onPress={(e) => { e?.stopPropagation?.(); onLike && onLike(clip.id); }}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         activeOpacity={0.7}
       >
-        <Ionicons
-          name={liked ? 'heart' : 'heart-outline'}
-          size={11}
-          color={liked ? '#FF6B35' : '#ccc'}
-        />
-        <Text style={[clipPlayerStyles.gridLikesText, liked && clipPlayerStyles.gridLikesTextActive]}>
+        <Ionicons name={liked ? 'heart' : 'heart-outline'} size={10} color={liked ? '#FF6B35' : '#ccc'} />
+        <Text style={[clipPlayerStyles.tileLikesPillText, liked && clipPlayerStyles.tileLikesPillTextActive]}>
           {likesCount}
         </Text>
       </TouchableOpacity>
+
     </TouchableOpacity>
   );
 }
@@ -1501,6 +1580,144 @@ const clipPlayerStyles = StyleSheet.create({
   },
   gridLikesTextActive: {
     color: '#FF6B35',
+  },
+
+  // ── Stories-style horizontal clips row ────────────────────────────────────
+  storiesHeaderRow: {
+    marginBottom: SPACING.sm,
+  },
+  storiesSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: '#888',
+    marginTop: 2,
+  },
+  // Shared horizontal scroll container for both loaded and skeleton states.
+  storiesRow: {
+    gap: 10,
+    alignItems: 'flex-start',
+    paddingVertical: SPACING.xs,
+  },
+  // "+ Post" tile — same shape as clip tiles, more subtle styling.
+  storiesPostTile: {
+    width: 120,
+    height: 160,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,107,53,0.4)',
+    backgroundColor: 'rgba(255,107,53,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 6,
+    overflow: 'hidden',
+  },
+  storiesPostLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FF7A45',
+  },
+  // Override applied on top of gridTile for the horizontal stories row.
+  // Fixed height — all content (thumbnail + overlays) lives inside the clip.
+  storiesTile: {
+    width: 120,
+    height: 160,
+    flex: 0,
+    borderRadius: 12,
+    // overflow:'hidden' is inherited from gridTile — all overlays stay inside
+  },
+  // ── Tile overlay internals ─────────────────────────────────────────────────
+  // Dark scrim covering the bottom portion of the thumbnail for text legibility.
+  tileScrim: {
+    ...StyleSheet.absoluteFillObject,
+    top: '45%',
+    backgroundColor: 'rgba(0,0,0,0.52)',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  // Bottom-left identity row (avatar + name + time), rendered over the scrim.
+  tileIdentityOverlay: {
+    position: 'absolute',
+    left: 7,
+    bottom: 7,
+    right: 36,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 5,
+  },
+  tileAvatar: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#333',
+    flexShrink: 0,
+  },
+  tileAvatarFallback: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  tileInitial: {
+    color: '#fff',
+    fontSize: 8,
+    fontWeight: '700',
+  },
+  tileNameTimeCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 1,
+  },
+  tileName: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  tileTimeAgo: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 9,
+  },
+  // Top-right likes pill
+  tileLikesPill: {
+    position: 'absolute',
+    top: 7,
+    right: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  tileLikesPillActive: {
+    backgroundColor: 'rgba(255,107,53,0.25)',
+  },
+  tileLikesPillText: {
+    color: '#ccc',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  tileLikesPillTextActive: {
+    color: '#FF6B35',
+  },
+  // Grey placeholder shown while clips are loading.
+  storiesSkeletonTile: {
+    width: 120,
+    height: 160,
+    borderRadius: 12,
+    backgroundColor: '#2a2a2a',
+  },
+  // Empty state wrapper — same height as tiles so text centers in the row.
+  storiesEmptyWrap: {
+    height: 160,
+    justifyContent: 'center',
+    paddingLeft: SPACING.sm,
+  },
+  storiesEmptyText: {
+    fontSize: FONT_SIZES.small,
+    color: '#888',
   },
 });
 
