@@ -60,8 +60,8 @@ export default function ClipPlayerScreen({ route, navigation }) {
         isLooping={false}
         useNativeControls
         onPlaybackStatusUpdate={(status) => {
-          if (status.isLoaded) {
-            console.log('[ClipPlayer] durationMillis:', status.durationMillis, 'positionMillis:', status.positionMillis);
+          if (status.isLoaded && status.didJustFinish) {
+            console.log('[ClipPlayer] playback finished');
           }
         }}
       />

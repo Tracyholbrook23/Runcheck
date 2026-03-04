@@ -34,6 +34,7 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  FlatList,
   ActivityIndicator,
   TouchableOpacity,
   TouchableWithoutFeedback,
@@ -62,7 +63,7 @@ import * as ImagePicker from 'expo-image-picker';
 import {
   doc, getDoc, updateDoc, arrayUnion, arrayRemove,
   collection, addDoc, onSnapshot, serverTimestamp, query, orderBy,
-  getDocs, deleteDoc, where, limit, setDoc,
+  getDocs, deleteDoc, where, limit, setDoc, runTransaction, deleteField,
 } from 'firebase/firestore';
 import { handleFollowPoints, awardPoints } from '../services/pointsService';
 import { formatSkillLevel } from '../services/models';
@@ -163,7 +164,6 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [postingClip, setPostingClip] = useState(false);
 
   // Gym Clips feed
-  const [dailyHighlight, setDailyHighlight] = useState(null);
   const [gymClips, setGymClips] = useState([]);
   const [clipsLoading, setClipsLoading] = useState(true);
   // Resolved Firebase Storage download URLs, keyed by clip.id.
@@ -178,12 +178,9 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [clipUserMap, setClipUserMap] = useState({});
   // Prevents duplicate in-flight user fetches across effect re-fires.
   const resolvedUploaderUidsRef = useRef(new Set());
-  // Like state — keyed by clipId.
-  // likedByMe: whether the current user has liked that clip (optimistic heart state).
-  // likesLiveCount: real-time like count derived from the likes subcollection size.
-  const [likedByMe, setLikedByMe] = useState({});
-  const [likesLiveCount, setLikesLiveCount] = useState({});
-
+  // Map-model like state derived directly from the gymClips doc fields:
+  //   likedByMe[clipId]   — true if item.likedBy[uid] === true on the live doc
+  //   (no separate listeners needed — the gymClips onSnapshot covers this)
   // Who's Going — enriched user lists for today's and tomorrow's schedules.
   // Populated asynchronously so photo URLs load without blocking the screen.
   const [todayGoingUsers, setTodayGoingUsers] = useState([]);
@@ -263,7 +260,12 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   // Gym Clips — daily highlight + 24-hour feed, both live via onSnapshot
   useEffect(() => {
-    if (!gymId) return;
+    const authedUid = auth.currentUser?.uid;
+    console.log('[clips effect] uid (from component scope):', uid);
+    console.log('[clips effect] auth.currentUser?.uid (live):', authedUid);
+    console.log('[clips effect] db.app.options.projectId:', db.app.options.projectId, '| auth.app.options.projectId:', auth.app.options.projectId);
+    if (!authedUid || !gymId) return;
+    setClipsLoading(true);
     const now = new Date();
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
@@ -300,29 +302,34 @@ export default function RunDetailsScreen({ route, navigation }) {
           }
 
           // ── Step 2: thumbnail ─────────────────────────────────────────────
+          // Only attempt backend thumbnail when the clip is fully processed
+          // AND thumbnailPath is present. In fallback mode (status === "ready"
+          // but processor hasn't run), skip straight to client-side generation
+          // to avoid storage/object-not-found spam in the console.
+          if (c.status === 'ready_processed' && c.thumbnailPath) {
+            try {
+              const thumbUrl = await getDownloadURL(ref(storage, c.thumbnailPath));
+              setClipThumbnails((prev) => {
+                if (prev[c.id]) return prev;
+                return { ...prev, [c.id]: thumbUrl };
+              });
+              return; // backend thumbnail resolved — done
+            } catch {
+              // Silently fall through to client-side generation.
+            }
+          }
+          // Client-side thumbnail via expo-video-thumbnails (fallback path)
           try {
             const thumb = await VideoThumbnails.getThumbnailAsync(url, { time: 0 });
             setClipThumbnails((prev) => {
               if (prev[c.id]) return prev;
               return { ...prev, [c.id]: thumb.uri };
             });
-          } catch (err) {
-            // Non-fatal — clip card falls back to the plain play-icon button.
-            console.warn('[clips] thumbnail failed for', c.id, err.message);
+          } catch {
+            // Non-fatal — tile shows dark placeholder + play icon.
           }
         });
     };
-
-    // NOTE: status filter is intentionally omitted from both queries to avoid
-    // requiring new composite indexes. Ready-only filtering is done client-side
-    // after the snapshot arrives (see isReadyClip below).
-    const highlightQuery = query(
-      collection(db, 'gymClips'),
-      where('gymId', '==', gymId),
-      where('isDailyHighlight', '==', true),
-      orderBy('createdAt', 'desc'),
-      limit(1)
-    );
 
     const clipsQuery = query(
       collection(db, 'gymClips'),
@@ -335,21 +342,6 @@ export default function RunDetailsScreen({ route, navigation }) {
     // Client-side guard: only show clips that are fully finalized.
     // Keeps query shape unchanged (no new composite indexes needed).
     const isReadyClip = (c) => c.status === 'ready' && !!c.storagePath;
-
-    const unsubHighlight = onSnapshot(highlightQuery, (snap) => {
-      // Take the first doc that has been finalized; ignore pending/processing ones.
-      const readyDoc = snap.docs.find((d) => isReadyClip(d.data()));
-      if (readyDoc) {
-        const clip = { id: readyDoc.id, ...readyDoc.data() };
-        setDailyHighlight(clip);
-        resolveClipUrls([clip]);
-      } else {
-        setDailyHighlight(null);
-      }
-    }, (err) => {
-      console.error('[gymClips highlight] error:', err.code, err.message);
-      setClipsLoading(false);
-    });
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
       // Exclude any clip that hasn't been finalized yet.
@@ -365,17 +357,15 @@ export default function RunDetailsScreen({ route, navigation }) {
     });
 
     return () => {
-      unsubHighlight();
       unsubClips();
     };
-  }, [gymId]);
+  }, [uid, gymId, auth.currentUser]);
 
   // Resolve uploader name + avatar for every visible clip.
   // Uses resolvedUploaderUidsRef so rapid snapshot re-fires don't launch
   // duplicate getDoc calls for the same uid.
   useEffect(() => {
-    const allClips = dailyHighlight ? [dailyHighlight, ...gymClips] : gymClips;
-    allClips.forEach(async (c) => {
+    gymClips.forEach(async (c) => {
       const uid = c.uploaderUid;
       if (!uid || resolvedUploaderUidsRef.current.has(uid)) return;
       resolvedUploaderUidsRef.current.add(uid);
@@ -390,64 +380,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         setClipUserMap((prev) => ({ ...prev, [uid]: { name: 'Player', photoURL: null } }));
       }
     });
-  }, [gymClips, dailyHighlight]);
-
-  // ── Like-status check — run once per clip when the feed loads ─────────────
-  // For each clip (highlight + feed), fetch the gymClips/{id}/likes/{uid} doc
-  // to seed likedByMe. We only do this when uid is known and skip clips we've
-  // already resolved (resolvedLikeIdsRef) so snapshot re-fires don't repeat.
-  const resolvedLikeIdsRef = useRef(new Set());
-  // Stores onSnapshot unsubscribers for per-clip likes listeners, keyed by clipId.
-  const likesListenersRef = useRef({});
-  useEffect(() => {
-    if (!uid) return;
-    const allClips = dailyHighlight ? [dailyHighlight, ...gymClips] : gymClips;
-    allClips.forEach(async (c) => {
-      if (!c.id || resolvedLikeIdsRef.current.has(c.id)) return;
-      resolvedLikeIdsRef.current.add(c.id);
-      try {
-        const likeSnap = await getDoc(doc(db, 'gymClips', c.id, 'likes', uid));
-        setLikedByMe((prev) => ({ ...prev, [c.id]: likeSnap.exists() }));
-      } catch {
-        // Leave likedByMe[c.id] as undefined (treated as false).
-      }
-    });
-  }, [gymClips, dailyHighlight, uid]);
-
-  // ── Real-time like counts — one onSnapshot per rendered clip ──────────────
-  // Keeps likesLiveCount[clipId] = snapshot.size in sync with the subcollection.
-  // Stale listeners (clips no longer rendered) are unsubscribed on each run.
-  useEffect(() => {
-    const allClips = dailyHighlight ? [dailyHighlight, ...gymClips] : gymClips;
-    const currentIds = new Set(allClips.map((c) => c.id).filter(Boolean));
-
-    // Unsubscribe listeners for clips no longer in the rendered list.
-    Object.keys(likesListenersRef.current).forEach((id) => {
-      if (!currentIds.has(id)) {
-        likesListenersRef.current[id]();
-        delete likesListenersRef.current[id];
-      }
-    });
-
-    // Attach a new listener for each clip not yet subscribed.
-    allClips.forEach((c) => {
-      if (!c.id || likesListenersRef.current[c.id]) return;
-      const unsub = onSnapshot(
-        collection(db, 'gymClips', c.id, 'likes'),
-        (snap) => setLikesLiveCount((prev) => ({ ...prev, [c.id]: snap.size })),
-        (err) => console.warn('[likes listener]', c.id, err.message)
-      );
-      likesListenersRef.current[c.id] = unsub;
-    });
-  }, [gymClips, dailyHighlight]);
-
-  // Unsubscribe all likes listeners when the screen unmounts.
-  useEffect(() => {
-    return () => {
-      Object.values(likesListenersRef.current).forEach((unsub) => unsub());
-      likesListenersRef.current = {};
-    };
-  }, []);
+  }, [gymClips]);
 
   /**
    * toggleFollow — Adds or removes this gym from the user's `followedGyms` array
@@ -765,35 +698,57 @@ export default function RunDetailsScreen({ route, navigation }) {
   }, [playerCount]);
 
   /**
-   * handleToggleLike — Optimistically toggles the current user's like on a clip.
+   * toggleLike — Atomically likes or unlikes a clip via runTransaction.
    *
-   * Firestore model:
-   *   gymClips/{clipId}/likes/{uid}  — presence doc (set on like, deleted on unlike)
+   * Firestore model (on the gymClips doc itself):
+   *   likedBy: { [uid]: true }  — map of uids who have liked
+   *   likesCount: number        — total like count
    *
-   * Optimistic UI: only the heart icon toggles immediately; the numeric count
-   * updates automatically via the real-time likesLiveCount listener.
+   * Validated by isValidClipLikeUpdate() in security rules:
+   *   only likesCount and likedBy may change, count moves by exactly ±1,
+   *   and only the calling uid's key may be affected inside likedBy.
+   *
+   * The live gymClips onSnapshot propagates the updated fields back to the
+   * tile automatically — no separate local state needed.
    */
-  const handleToggleLike = async (clipId) => {
-    if (!uid) {
-      Alert.alert('Sign in required', 'You need to be signed in to like clips.');
-      return;
-    }
-    const alreadyLiked = !!likedByMe[clipId];
-    // Optimistic update for the heart icon only — count comes from the live listener.
-    setLikedByMe((prev) => ({ ...prev, [clipId]: !alreadyLiked }));
+  const toggleLike = async (clipId) => {
+    if (!uid) return;
+    const clipRef = doc(db, 'gymClips', clipId);
     try {
-      const likeRef = doc(db, 'gymClips', clipId, 'likes', uid);
-      if (alreadyLiked) {
-        await deleteDoc(likeRef);
-      } else {
-        await setDoc(likeRef, { uid, createdAt: serverTimestamp() });
-      }
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(clipRef);
+        if (!snap.exists()) return;
+        const data = snap.data();
+        const likedBy = (data.likedBy instanceof Object && !Array.isArray(data.likedBy))
+          ? data.likedBy : {};
+        const currentCount = typeof data.likesCount === 'number' ? data.likesCount : 0;
+        if (likedBy[uid] === true) {
+          // Unlike: remove uid key, decrement (floor 0)
+          tx.update(clipRef, {
+            [`likedBy.${uid}`]: deleteField(),
+            likesCount: Math.max(0, currentCount - 1),
+          });
+        } else {
+          // Like: set uid key to true, increment
+          tx.update(clipRef, {
+            [`likedBy.${uid}`]: true,
+            likesCount: currentCount + 1,
+          });
+        }
+      });
     } catch (err) {
-      // Roll back optimistic heart state on failure.
-      console.error('[handleToggleLike] error:', err);
-      setLikedByMe((prev) => ({ ...prev, [clipId]: alreadyLiked }));
+      console.error('[toggleLike] error:', err.message);
     }
   };
+
+  // Pad gymClips to an even count so the last tile never stretches full width.
+  const gridData = React.useMemo(() => {
+    const data = [...gymClips];
+    if (data.length % 2 === 1) {
+      data.push({ id: '__spacer__', spacer: true });
+    }
+    return data;
+  }, [gymClips]);
 
   if (loading) {
     return (
@@ -1050,36 +1005,31 @@ export default function RunDetailsScreen({ route, navigation }) {
           {clipsLoading ? (
             <ActivityIndicator style={{ marginTop: 16 }} />
           ) : (
-            <>
-              {dailyHighlight && (
-                <View style={styles.highlightCard}>
-                  <Text style={styles.highlightLabel}>🔥 Daily Highlight</Text>
-                  <ClipCard
-                    clip={dailyHighlight}
-                    videoUrl={clipVideoUrls[dailyHighlight.id]}
-                    thumbnailUri={clipThumbnails[dailyHighlight.id]}
-                    onPlay={() => { const url = clipVideoUrls[dailyHighlight.id]; if (url) navigation.navigate('ClipPlayer', { videoUrl: url }); }}
-                    uploaderInfo={clipUserMap[dailyHighlight.uploaderUid]}
-                    liked={!!likedByMe[dailyHighlight.id]}
-                    displayCount={Math.max(0, likesLiveCount[dailyHighlight.id] ?? dailyHighlight.likesCount ?? 0)}
-                    onLike={handleToggleLike}
+            <FlatList
+              data={gridData}
+              keyExtractor={(item) => item.id}
+              numColumns={2}
+              scrollEnabled={false}
+              columnWrapperStyle={clipPlayerStyles.gridRow}
+              contentContainerStyle={clipPlayerStyles.gridContent}
+              style={{ marginTop: 12 }}
+              renderItem={({ item }) => {
+                if (item.spacer) {
+                  return <View style={[clipPlayerStyles.gridTile, { opacity: 0 }]} />;
+                }
+                return (
+                  <ClipTile
+                    clip={item}
+                    videoUrl={clipVideoUrls[item.id]}
+                    thumbnailUri={clipThumbnails[item.id]}
+                    liked={!!(item.likedBy?.[uid])}
+                    likesCount={item.likesCount ?? 0}
+                    navigation={navigation}
+                    onLike={toggleLike}
                   />
-                </View>
-              )}
-              {gymClips.map((clip) => (
-                <ClipCard
-                  key={clip.id}
-                  clip={clip}
-                  videoUrl={clipVideoUrls[clip.id]}
-                  thumbnailUri={clipThumbnails[clip.id]}
-                  onPlay={() => { const url = clipVideoUrls[clip.id]; if (url) navigation.navigate('ClipPlayer', { videoUrl: url }); }}
-                  uploaderInfo={clipUserMap[clip.uploaderUid]}
-                  liked={!!likedByMe[clip.id]}
-                  displayCount={Math.max(0, likesLiveCount[clip.id] ?? clip.likesCount ?? 0)}
-                  onLike={handleToggleLike}
-                />
-              ))}
-            </>
+                );
+              }}
+            />
           )}
         </View>
 
@@ -1358,6 +1308,61 @@ function ClipCard({ clip, videoUrl, thumbnailUri, onPlay, uploaderInfo, liked, d
   );
 }
 
+// ─── Clip tile (2-column grid) ────────────────────────────────────────────────
+/**
+ * ClipTile — Compact square tile used inside the 2-column FlatList grid.
+ *
+ * Shows a thumbnail (or dark placeholder), a centred play-icon overlay,
+ * and a small likes-count badge in the bottom-left corner.
+ * Tapping the tile calls onPlay() which navigates to ClipPlayer.
+ */
+function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation, onLike }) {
+  return (
+    <TouchableOpacity
+      style={clipPlayerStyles.gridTile}
+      onPress={() => { if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId }); }}
+      activeOpacity={0.85}
+    >
+      {/* Thumbnail image or dark placeholder */}
+      {thumbnailUri ? (
+        <Image
+          source={{ uri: thumbnailUri }}
+          style={clipPlayerStyles.gridThumbnail}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={clipPlayerStyles.gridThumbnailPlaceholder} />
+      )}
+
+      {/* Centred play icon overlay */}
+      <View style={clipPlayerStyles.gridPlayOverlay}>
+        <Ionicons
+          name={videoUrl ? 'play-circle' : 'hourglass-outline'}
+          size={32}
+          color="rgba(255,255,255,0.88)"
+        />
+      </View>
+
+      {/* Tappable likes badge — bottom-left; does NOT navigate */}
+      <TouchableOpacity
+        style={clipPlayerStyles.gridLikesBadge}
+        onPress={(e) => { e?.stopPropagation?.(); onLike && onLike(clip.id); }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={liked ? 'heart' : 'heart-outline'}
+          size={11}
+          color={liked ? '#FF6B35' : '#ccc'}
+        />
+        <Text style={[clipPlayerStyles.gridLikesText, liked && clipPlayerStyles.gridLikesTextActive]}>
+          {likesCount}
+        </Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+}
+
 const clipPlayerStyles = StyleSheet.create({
   // ── ClipCard ──────────────────────────────────────────────────────────────
   card: {
@@ -1445,6 +1450,56 @@ const clipPlayerStyles = StyleSheet.create({
     marginLeft: 5,
   },
   likeCountActive: {
+    color: '#FF6B35',
+  },
+
+  // ── 2-column grid (ClipTile) ───────────────────────────────────────────────
+  gridContent: {
+    gap: 12,
+  },
+  gridRow: {
+    gap: 12,
+    justifyContent: 'flex-start',
+  },
+  gridTile: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
+  },
+  gridThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  gridThumbnailPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#2a2a2a',
+  },
+  gridPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gridLikesBadge: {
+    position: 'absolute',
+    bottom: 5,
+    left: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    gap: 3,
+  },
+  gridLikesText: {
+    color: '#ccc',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  gridLikesTextActive: {
     color: '#FF6B35',
   },
 });
@@ -2004,13 +2059,6 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
 
   // ─── Gym Clips feed ──────────────────────────────────────────────────────
-  highlightCard: {
-    marginTop: 16,
-  },
-  highlightLabel: {
-    fontWeight: '600',
-    marginBottom: 8,
-  },
   clipCard: {
     backgroundColor: '#1a1a1a',
     padding: 12,
