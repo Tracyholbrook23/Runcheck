@@ -295,33 +295,49 @@ const HomeScreen = ({ navigation }) => {
     navigation.getParent()?.navigate(tabName);
   };
 
-  // Sum of deduplicated active presences across all gyms — same source of truth
-  // as the per-card `activePresences` computation so the LIVE banner, "X active"
-  // badge, and each card count are always consistent with each other.
-  // Deduplication is by `odId` (the userId key written onto presence docs at check-in).
-  const totalActive = Object.values(livePresenceMap).reduce((sum, players) => {
+  // Per-gym deduped active count — the single source of truth for every LIVE
+  // number shown on this screen.  Replaces gym.currentPresenceCount everywhere
+  // in the LIVE section; that field is a stale denormalized counter and must
+  // NOT be used for display (see PROJECT_MEMORY "Known Issues").
+  // Keys: gymId  Values: unique active player count (deduped by odId)
+  const liveCountMap = {};
+  Object.entries(livePresenceMap).forEach(([gymId, players]) => {
     const seen = new Set();
-    return sum + players.filter((p) => {
+    liveCountMap[gymId] = players.filter((p) => {
       const uid = p.odId;
       if (!uid || seen.has(uid)) return false;
       seen.add(uid);
       return true;
     }).length;
-  }, 0);
+  });
 
-  // Gym with the highest currentPresenceCount — used by the LIVE indicator
-  const hottestGym = gyms.length > 0
-    ? gyms.reduce(
-        (best, g) => (g.currentPresenceCount || 0) > (best.currentPresenceCount || 0) ? g : best,
-        gyms[0]
-      )
-    : null;
+  // Sum of all per-gym real-time counts — shown in the LIVE banner.
+  const totalActive = Object.values(liveCountMap).reduce((s, n) => s + n, 0);
 
-  // Gyms with at least one active player, sorted hottest first.
+  // TEMP debug — remove once counts confirmed correct
+  if (__DEV__ && totalActive > 0) {
+    const topId = Object.entries(liveCountMap).sort((a, b) => b[1] - a[1])[0]?.[0];
+    if (topId) {
+      console.log('[LiveBanner] hottestGym id:', topId);
+      console.log('[LiveBanner] raw presence docs:', (livePresenceMap[topId] || []).length);
+      console.log('[LiveBanner] deduped active count:', liveCountMap[topId]);
+    }
+  }
+
+  // Gym with the most real-time active players — used by the LIVE indicator.
+  // Derived from liveCountMap, NOT from the stale gym.currentPresenceCount field.
+  let hottestGym = null;
+  let hottestCount = 0;
+  gyms.forEach((g) => {
+    const count = liveCountMap[g.id] || 0;
+    if (count > hottestCount) { hottestCount = count; hottestGym = g; }
+  });
+
+  // Gyms with at least one real-time active player, sorted hottest first.
   // These drive the "Live Runs Near You" horizontal scroll section.
   const liveRuns = gyms
-    .filter((g) => (g.currentPresenceCount || 0) > 0)
-    .sort((a, b) => (b.currentPresenceCount || 0) - (a.currentPresenceCount || 0));
+    .filter((g) => (liveCountMap[g.id] || 0) > 0)
+    .sort((a, b) => (liveCountMap[b.id] || 0) - (liveCountMap[a.id] || 0));
 
   // Partition the feed into friends vs. community
   const friendsActivity = activityFeed.filter((item) => friendIds.includes(item.userId));
@@ -549,7 +565,7 @@ const HomeScreen = ({ navigation }) => {
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => {
-                if (hottestGym && (hottestGym.currentPresenceCount || 0) > 0) {
+                if (hottestGym) {
                   navigation.getParent()?.navigate('Runs', {
                     screen: 'RunDetails',
                     params: {
@@ -567,11 +583,11 @@ const HomeScreen = ({ navigation }) => {
                   <Text style={styles.liveBannerLabel}>🔥 LIVE</Text>
                   <Text style={styles.liveBannerCount}> · {totalActive} playing right now</Text>
                 </View>
-                {hottestGym && (hottestGym.currentPresenceCount || 0) > 0 && (
+                {hottestGym && (
                   <Text style={styles.liveBannerSub}>
                     {'Top court: '}
                     <Text style={styles.liveBannerGym}>{hottestGym.name}</Text>
-                    {` (${hottestGym.currentPresenceCount})`}
+                    {` (${liveCountMap[hottestGym.id] || 0})`}
                   </Text>
                 )}
               </BlurView>

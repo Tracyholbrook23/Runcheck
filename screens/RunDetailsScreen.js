@@ -54,7 +54,7 @@ import { openDirections } from '../utils/openMapsDirections';
 
 const courtImage = require('../assets/basketball-court.png');
 import { useTheme } from '../contexts';
-import { useGym, useGymPresences, useGymSchedules, useProfile } from '../hooks';
+import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
@@ -66,6 +66,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { handleFollowPoints, awardPoints } from '../services/pointsService';
+import { findMatchingSchedule } from '../services/scheduleService';
 import { formatSkillLevel } from '../services/models';
 
 /**
@@ -164,6 +165,80 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   // Current user UID — stable for the lifetime of the screen
   const uid = auth.currentUser?.uid;
+
+  // Presence hook — provides checkIn() and checkingIn loading flag for the
+  // one-tap "Check In Here" button.  Business logic lives in presenceService;
+  // we never duplicate it here.
+  const { checkIn, checkingIn } = usePresence();
+
+  /**
+   * handleCheckInHere — One-tap check-in directly into the gym being viewed.
+   *
+   * Calls the same checkIn / findMatchingSchedule / awardPoints chain that
+   * CheckInScreen uses — no business logic is duplicated.  On success the user
+   * stays on this screen; the live useGymPresences subscription surfaces the
+   * updated player list automatically.
+   */
+  const handleCheckInHere = async () => {
+    try {
+      const currentUid = auth.currentUser?.uid;
+      const gymDisplayName = gym?.name || gymName;
+
+      const checkinResult = await checkIn(gymId);
+
+      // Check if this check-in fulfils a prior scheduled visit (±60 min window)
+      const matchedSchedule = currentUid
+        ? await findMatchingSchedule(currentUid, gymId).catch(() => null)
+        : null;
+
+      const action    = matchedSchedule ? 'checkinWithPlan' : 'checkin';
+      const ptsLabel  = matchedSchedule ? '+15 pts' : '+10 pts';
+      const bonusNote = matchedSchedule
+        ? 'Nice follow-through! You earned a +5 bonus.'
+        : 'Keep showing up to earn more points.';
+
+      const { rankChanged, newRank } = await awardPoints(currentUid, action, checkinResult?.id);
+
+      if (rankChanged && newRank) {
+        Alert.alert(
+          'You ranked up!',
+          `You're now ${newRank.name}! ${bonusNote}`,
+          [
+            {
+              text: "Let's Go!",
+              onPress: () =>
+                Alert.alert(
+                  `Checked In! ${ptsLabel}`,
+                  `You're now checked in at ${gymDisplayName}. Your check-in will expire in 3 hours.`,
+                  [{ text: 'OK' }]
+                ),
+            },
+          ]
+        );
+      } else {
+        Alert.alert(
+          `Checked In! ${ptsLabel}`,
+          `You're now checked in at ${gymDisplayName}. ${bonusNote}`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('[RunDetails] Check-in error:', error);
+      if (error.message?.includes('permission denied')) {
+        Alert.alert(
+          'Location Required',
+          'Please enable location services to check in. We use your location to verify you are at the gym.'
+        );
+      } else if (error.message?.includes('Unable to retrieve')) {
+        Alert.alert(
+          'GPS Unavailable',
+          'Could not get your location. Please check that GPS is enabled and try again.'
+        );
+      } else {
+        Alert.alert('Check-in Failed', error.message || 'Please try again.');
+      }
+    }
+  };
 
   // Reviews state
   const [reviews, setReviews] = useState([]);
@@ -880,12 +955,17 @@ export default function RunDetailsScreen({ route, navigation }) {
             </View>
           )}
 
-          {/* Primary CTA — Check In Here (stands alone between identity and location blocks) */}
+          {/* Primary CTA — one-tap check-in directly into this gym */}
           <TouchableOpacity
-            style={styles.checkInButton}
-            onPress={() => navigation.getParent()?.navigate('CheckIn')}
+            style={[styles.checkInButton, checkingIn && { opacity: 0.6 }]}
+            onPress={handleCheckInHere}
+            disabled={checkingIn}
           >
-            <Text style={styles.checkInButtonText}>Check In Here</Text>
+            {checkingIn ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.checkInButtonText}>Check In Here</Text>
+            )}
           </TouchableOpacity>
 
           {/* Location block — address, directions, type, and notes grouped together */}

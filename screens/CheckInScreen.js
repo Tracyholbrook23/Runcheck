@@ -342,34 +342,6 @@ export default function CheckInScreen({ navigation }) {
               </Text>
             </View>
 
-            {/* Hot Right Now — wrapping chip grid sorted by player count.
-                Tapping a chip sets it as the selected gym (same as the dropdown). */}
-            <View style={styles.nearbySection}>
-              <Text style={styles.nearbyTitle}>Hot Right Now</Text>
-              <View style={styles.nearbyChipRow}>
-                {[...gyms]
-                  .sort((a, b) => (b.currentPresenceCount || 0) - (a.currentPresenceCount || 0))
-                  .map((gym) => (
-                    <TouchableOpacity
-                      key={gym.id}
-                      style={[
-                        styles.nearbyChip,
-                        selectedGym === gym.id && styles.nearbyChipSelected,
-                      ]}
-                      onPress={() => setSelectedGym(gym.id)}
-                    >
-                      <View style={styles.nearbyDot} />
-                      <View>
-                        <Text style={styles.nearbyGymName} numberOfLines={1}>{gym.name}</Text>
-                        <Text style={styles.nearbyCount}>{gym.currentPresenceCount} playing now</Text>
-                        {gym.plannedToday > 0 && (
-                          <Text style={styles.nearbyPlanned}>+{gym.plannedToday} planned today</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-              </View>
-            </View>
           </View>
         </ScrollView>
 
@@ -476,61 +448,6 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.infoText,
     lineHeight: 20,
-  },
-  nearbySection: {
-    marginTop: SPACING.lg,
-  },
-  nearbyTitle: {
-    fontSize: FONT_SIZES.small,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: colors.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: SPACING.sm,
-  },
-  // Wrapping row replaces the horizontal ScrollView
-  nearbyChipRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  nearbyChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    gap: SPACING.sm,
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
-  },
-  // Selected chip highlights with primary border
-  nearbyChipSelected: {
-    borderWidth: 1.5,
-    borderColor: colors.primary,
-  },
-  nearbyDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  nearbyGymName: {
-    fontSize: FONT_SIZES.small,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: colors.textPrimary,
-    maxWidth: 150,
-  },
-  nearbyCount: {
-    fontSize: FONT_SIZES.xs,
-    color: colors.success,
-    fontWeight: FONT_WEIGHTS.medium,
-    marginTop: 1,
-  },
-  nearbyPlanned: {
-    fontSize: FONT_SIZES.xs,
-    color: colors.textMuted,
-    marginTop: 1,
   },
   footer: {
     padding: SPACING.lg,
