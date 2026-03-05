@@ -186,42 +186,31 @@ export default function RunDetailsScreen({ route, navigation }) {
 
       const checkinResult = await checkIn(gymId);
 
+      // Trigger server-side point awarding — fire-and-forget, does not block UI.
+      // The backend callable verifies the presence doc before writing any points.
+      if (checkinResult?.id) {
+        httpsCallable(getFunctions(), 'checkIn')({
+          gymId,
+          presenceId: checkinResult.id,
+        }).catch((err) => console.warn('[RunDetails] points callable failed:', err.message));
+      }
+
       // Check if this check-in fulfils a prior scheduled visit (±60 min window)
       const matchedSchedule = currentUid
         ? await findMatchingSchedule(currentUid, gymId).catch(() => null)
         : null;
 
-      const action    = matchedSchedule ? 'checkinWithPlan' : 'checkin';
+      // Points are awarded server-side by the backend checkIn callable.
       const ptsLabel  = matchedSchedule ? '+15 pts' : '+10 pts';
       const bonusNote = matchedSchedule
         ? 'Nice follow-through! You earned a +5 bonus.'
         : 'Keep showing up to earn more points.';
 
-      const { rankChanged, newRank } = await awardPoints(currentUid, action, checkinResult?.id);
-
-      if (rankChanged && newRank) {
-        Alert.alert(
-          'You ranked up!',
-          `You're now ${newRank.name}! ${bonusNote}`,
-          [
-            {
-              text: "Let's Go!",
-              onPress: () =>
-                Alert.alert(
-                  `Checked In! ${ptsLabel}`,
-                  `You're now checked in at ${gymDisplayName}. Your check-in will expire in 3 hours.`,
-                  [{ text: 'OK' }]
-                ),
-            },
-          ]
-        );
-      } else {
-        Alert.alert(
-          `Checked In! ${ptsLabel}`,
-          `You're now checked in at ${gymDisplayName}. ${bonusNote}`,
-          [{ text: 'OK' }]
-        );
-      }
+      Alert.alert(
+        `Checked In! ${ptsLabel}`,
+        `You're now checked in at ${gymDisplayName}. ${bonusNote}`,
+        [{ text: 'OK' }]
+      );
     } catch (error) {
       console.error('[RunDetails] Check-in error:', error);
       if (error.message?.includes('permission denied')) {

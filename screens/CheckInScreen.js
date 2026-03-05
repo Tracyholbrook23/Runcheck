@@ -26,7 +26,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
 import { auth } from '../config/firebase';
-import { awardPoints } from '../services/pointsService';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { findMatchingSchedule } from '../services/scheduleService';
 
 import {
@@ -129,6 +129,15 @@ export default function CheckInScreen({ navigation }) {
 
       const checkinResult = await checkIn(selectedGym);
 
+      // Trigger server-side point awarding — fire-and-forget, does not block UI.
+      // The backend callable verifies the presence doc before writing any points.
+      if (checkinResult?.id) {
+        httpsCallable(getFunctions(), 'checkIn')({
+          gymId:      selectedGym,
+          presenceId: checkinResult.id,
+        }).catch((err) => console.warn('[CheckIn] points callable failed:', err.message));
+      }
+
       // Activity feed event is written inside presenceService.checkIn() — no duplicate write here.
 
       // Check if this check-in fulfils a prior plan (±60 min grace window)
@@ -136,46 +145,22 @@ export default function CheckInScreen({ navigation }) {
         ? await findMatchingSchedule(uid, selectedGym).catch(() => null)
         : null;
 
-      // Award 15 pts for attending a planned visit, 10 pts for a standard check-in
-      const action = matchedSchedule ? 'checkinWithPlan' : 'checkin';
+      // Points are awarded server-side by the backend checkIn callable.
       const ptsLabel = matchedSchedule ? '+15 pts' : '+10 pts';
       const bonusNote = matchedSchedule
         ? 'Nice follow-through! You earned a +5 bonus.'
         : 'Keep showing up to earn more points.';
 
-      const { rankChanged, newRank } = await awardPoints(uid, action, checkinResult?.id);
-
-      // reliability.totalAttended is incremented by Cloud Functions (onCheckIn trigger)
-
-      if (rankChanged && newRank) {
-        // Show rank-up celebration first, then the check-in confirm
-        Alert.alert(
-          'You ranked up!',
-          `You're now ${newRank.name}! ${bonusNote}`,
-          [
-            {
-              text: "Let's Go!",
-              onPress: () =>
-                Alert.alert(
-                  `Checked In! ${ptsLabel}`,
-                  `You're now checked in at ${gymName}. Your check-in will expire in 3 hours.`,
-                  [{ text: 'View Gyms', onPress: () => navigation.getParent()?.navigate('Runs') }]
-                ),
-            },
-          ]
-        );
-      } else {
-        Alert.alert(
-          `Checked In! ${ptsLabel}`,
-          `You're now checked in at ${gymName}. ${bonusNote}`,
-          [
-            {
-              text: 'View Gyms',
-              onPress: () => navigation.getParent()?.navigate('Runs'),
-            },
-          ]
-        );
-      }
+      Alert.alert(
+        `Checked In! ${ptsLabel}`,
+        `You're now checked in at ${gymName}. ${bonusNote}`,
+        [
+          {
+            text: 'View Gyms',
+            onPress: () => navigation.getParent()?.navigate('Runs'),
+          },
+        ]
+      );
     } catch (error) {
       console.error('Check-in error:', error);
       if (error.message.includes('permission denied')) {
