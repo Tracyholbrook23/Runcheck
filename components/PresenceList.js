@@ -19,7 +19,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { FONT_SIZES, SPACING, RADIUS, SKILL_LEVEL_COLORS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { formatSkillLevel } from '../services/models';
@@ -62,12 +62,15 @@ const formatScheduledTime = (timestamp) => {
  * @param {string} props.type - 'presence' or 'schedule'
  * @param {string} props.emptyMessage - Message when list is empty
  * @param {string} props.emptySubtext - Optional subtext when list is empty
+ * @param {Object} [props.navigation] - React Navigation prop. When provided, each row
+ *   becomes tappable and navigates to UserProfile for that player.
  */
 export const PresenceList = ({
   items = [],
   type = 'presence',
   emptyMessage = 'No players',
   emptySubtext,
+  navigation,
 }) => {
   const { colors } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
@@ -95,8 +98,14 @@ export const PresenceList = ({
             ? getHereDuration(item.checkedInAt)
             : formatScheduledTime(item.scheduledTime);
 
-        return (
-          <View key={item.id} style={styles.playerCard}>
+        // userId lives on `odId` (presence) or `userId` (schedule)
+        const userId = item.odId || item.userId || null;
+        const handlePress = navigation && userId
+          ? () => navigation.navigate('Home', { screen: 'UserProfile', params: { userId } })
+          : null;
+
+        const rowContent = (
+          <>
             {item.userAvatar ? (
               <Image
                 source={{ uri: item.userAvatar }}
@@ -120,6 +129,24 @@ export const PresenceList = ({
               </View>
               <Text style={styles.playerTime}>{timeInfo}</Text>
             </View>
+            {handlePress && (
+              <Text style={styles.playerChevron}>›</Text>
+            )}
+          </>
+        );
+
+        return handlePress ? (
+          <TouchableOpacity
+            key={item.id}
+            style={styles.playerCard}
+            onPress={handlePress}
+            activeOpacity={0.7}
+          >
+            {rowContent}
+          </TouchableOpacity>
+        ) : (
+          <View key={item.id} style={styles.playerCard}>
+            {rowContent}
           </View>
         );
       })}
@@ -197,6 +224,11 @@ const getStyles = (colors) =>
       fontSize: FONT_SIZES.small,
       color: colors.textSecondary,
       marginTop: 2,
+    },
+    playerChevron: {
+      fontSize: 20,
+      color: colors.textSecondary,
+      marginLeft: SPACING.xs,
     },
   });
 

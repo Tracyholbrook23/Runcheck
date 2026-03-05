@@ -10,9 +10,8 @@
  *   - `useGymPresences(gymId)`  — real-time "Now Playing" list
  *   - `useGymSchedules(gymId)`  — real-time scheduled visits, filtered by date
  *
- * When Firestore data is available it takes priority; placeholder arrays
- * (`fakePlayers`, `fakeScheduledToday`, etc.) are sliced to fill in the
- * count if real data hasn't loaded yet, giving the screen a populated feel.
+ * All player and schedule data comes exclusively from Firestore in real time.
+ * No placeholder / fake data is used — empty states are shown when data is absent.
  *
  * Animations:
  *   - Pulsing live indicator dot on the "Players Here" stat — a looping
@@ -461,41 +460,21 @@ export default function RunDetailsScreen({ route, navigation }) {
   };
 
   /**
-   * handlePostClip — Reserves a clip session, then lets the user choose
-   * between recording in-app (→ RecordClipScreen) or picking from their
-   * library (→ TrimClipScreen directly after picker).
+   * handlePostClip — Lets the user choose a clip source, validates the video,
+   * then reserves a clip session only after validation passes.
    *
    * Steps:
-   *   1. Call `createClipSession` so we hold a reserved clipId before the
-   *      user even touches the camera or picker.
-   *   2. Show an Alert: "Record Clip" | "Upload from Phone" | "Cancel".
-   *   3a. Record Clip  → navigate to RecordClipScreen with { clipSession, gymId }.
-   *       RecordClipScreen handles camera/mic permissions, 10 s auto-stop, and
-   *       ultimately navigates itself to TrimClipScreen.
-   *   3b. Upload       → open library picker here; enforce ≤10 s, then go to
-   *       TrimClipScreen.
-   *   4.  Cancel       → reset postingClip; the reserved session is silently
-   *       abandoned (TTL-based cleanup handled by the backend).
+   *   1. Show an Alert: "Record Clip" | "Upload from Phone" | "Cancel".
+   *   2a. Record Clip  → createClipSession → navigate to RecordClipScreen.
+   *       RecordClipScreen handles camera/mic permissions and 10 s auto-stop.
+   *   2b. Upload       → open library picker; enforce ≤10 s duration;
+   *       createClipSession only after validation passes → TrimClipScreen.
+   *   3.  Cancel / picker dismissed / duration fail → no session reserved,
+   *       no cleanup needed.
    */
   const handlePostClip = async () => {
     if (!gymId) {
       Alert.alert('Error', 'No gym selected. Please try again.');
-      return;
-    }
-
-    // ── 1. Reserve a clip session before showing the choice dialog ────────
-    setPostingClip(true);
-    let clipSession;
-    try {
-      const fn = httpsCallable(getFunctions(), 'createClipSession');
-      const res = await fn({ gymId });
-      clipSession = res.data;
-    } catch (err) {
-      Alert.alert(
-        'Could not start clip',
-        err?.message || 'Something went wrong. Please try again.'
-      );
-      setPostingClip(false);
       return;
     }
 
@@ -504,22 +483,34 @@ export default function RunDetailsScreen({ route, navigation }) {
     const MAX_CLIP_DURATION_SEC = 10;
 
     // ── Path A: in-app recording ──────────────────────────────────────────
-    // RecordClipScreen owns camera/mic permissions and the 10 s auto-stop.
-    const goToRecorder = () => {
-      setPostingClip(false);
-      navigation.navigate('RecordClipScreen', { clipSession, gymId });
+    // Reserve the session here because RecordClipScreen needs it immediately.
+    const goToRecorder = async () => {
+      setPostingClip(true);
+      try {
+        const fn = httpsCallable(getFunctions(), 'createClipSession');
+        const res = await fn({ gymId });
+        navigation.navigate('RecordClipScreen', { clipSession: res.data, gymId });
+      } catch (err) {
+        Alert.alert(
+          'Could not start clip',
+          err?.message || 'Something went wrong. Please try again.'
+        );
+      } finally {
+        setPostingClip(false);
+      }
     };
 
     // ── Path B: upload an existing video from the photo library ──────────
+    // Session is reserved AFTER duration validation to avoid ghost sessions.
     const uploadFromLibrary = async () => {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      console.log('[clips] photo library permission status:', status);
       // 'limited' = iOS 14+ partial access — the picker still works, so allow it.
       if (status !== 'granted' && status !== 'limited') {
         Alert.alert(
           'Permission required',
           'Please allow access to your photo library in Settings to post a clip.'
         );
-        setPostingClip(false);
         return;
       }
       let pickerResult;
@@ -532,40 +523,50 @@ export default function RunDetailsScreen({ route, navigation }) {
       } catch (err) {
         console.log('Video picker error:', err);
         Alert.alert('Error', 'Could not open the video picker. Please try again.');
-        setPostingClip(false);
         return;
       }
-      if (pickerResult.canceled) { setPostingClip(false); return; }
+      if (pickerResult.canceled) { return; }
       const asset = pickerResult.assets?.[0];
-      if (!asset?.uri) { setPostingClip(false); return; }
+      if (!asset?.uri) { return; }
 
       // expo-image-picker returns duration in milliseconds.
-      // If present and exceeds the limit, block before navigating.
+      // Block here — before reserving a session — if the video is too long.
       if (asset.duration != null && asset.duration / 1000 > MAX_CLIP_DURATION_SEC) {
         Alert.alert(
           'Clip too long',
           `Please choose a video that is ${MAX_CLIP_DURATION_SEC} seconds or shorter.`
         );
-        setPostingClip(false);
         return;
       }
 
-      setPostingClip(false);
-      navigation.navigate('TrimClipScreen', {
-        clipSession,
-        sourceVideoUri: asset.uri,
-        gymId,
-      });
+      // ── Validation passed — reserve session now ───────────────────────
+      setPostingClip(true);
+      try {
+        const fn = httpsCallable(getFunctions(), 'createClipSession');
+        const res = await fn({ gymId });
+        navigation.navigate('TrimClipScreen', {
+          clipSession: res.data,
+          sourceVideoUri: asset.uri,
+          gymId,
+        });
+      } catch (err) {
+        Alert.alert(
+          'Could not start clip',
+          err?.message || 'Something went wrong. Please try again.'
+        );
+      } finally {
+        setPostingClip(false);
+      }
     };
 
-    // ── 2. Present the choice ─────────────────────────────────────────────
+    // ── Present the choice ────────────────────────────────────────────────
     Alert.alert(
       'Post a Clip',
-      'How would you like to add your clip?',
+      'Clips must be 10 seconds or less.',
       [
-        { text: 'Record Clip',      onPress: goToRecorder      },
+        { text: 'Record Clip',       onPress: goToRecorder      },
         { text: 'Upload from Phone', onPress: uploadFromLibrary },
-        { text: 'Cancel', style: 'cancel', onPress: () => setPostingClip(false) },
+        { text: 'Cancel', style: 'cancel' },
       ]
     );
   };
@@ -680,14 +681,50 @@ export default function RunDetailsScreen({ route, navigation }) {
     return { todaySchedules: today, tomorrowSchedules: tomorrow };
   }, [schedules]);
 
+  // ── Single source of truth for "Now Playing" ─────────────────────────────
+  // De-duplicate the real-time presence list by `odId` (the userId key written
+  // onto every presence doc at check-in time). This ensures the "Players Here"
+  // stat, the pulse animation, and the PresenceList rows all reflect the same
+  // set of users — even if a stale/duplicate doc slipped through.
+  //
+  // A presence must have a non-empty `odId` to be counted; docs without one
+  // cannot be linked to a user and are silently excluded.
+  const uniqueActivePresences = useMemo(() => {
+    const seen = new Set();
+    return presences.filter((p) => {
+      const uid = p.odId;
+      if (!uid || seen.has(uid)) return false;
+      seen.add(uid);
+      return true;
+    });
+  }, [presences]);
+
+  // Debug — remove once counts are confirmed stable
+  if (__DEV__) {
+    console.log(
+      '[RunDetails] raw presences:', presences.length,
+      'ids:', presences.map((p) => p.odId)
+    );
+    console.log(
+      '[RunDetails] unique presences:', uniqueActivePresences.length,
+      'ids:', uniqueActivePresences.map((p) => p.odId)
+    );
+    const missingProfiles = uniqueActivePresences
+      .filter((p) => !p.userName && !p.userAvatar)
+      .map((p) => p.odId);
+    if (missingProfiles.length > 0) {
+      console.log('[RunDetails] missing profiles (will show placeholder):', missingProfiles);
+    }
+  }
+
   // Tick counter forces a re-render every 60 seconds so "X minutes ago"
   // timestamps on presence cards stay current without a full data refetch.
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (presences.length === 0) return;
+    if (uniqueActivePresences.length === 0) return;
     const interval = setInterval(() => setTick((t) => t + 1), 60000);
     return () => clearInterval(interval);
-  }, [presences.length]);
+  }, [uniqueActivePresences.length]);
 
   // Hide the default navigation header — this screen uses a custom hero image header
   useEffect(() => {
@@ -697,8 +734,13 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Animated value for the pulsing live indicator dot next to the player count
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Prefer live Firestore counts; fall back to route params for instant display
-  const playerCount = gym?.currentPresenceCount ?? paramPlayers ?? 0;
+  // playerCount is derived from uniqueActivePresences — the same deduplicated
+  // real-time array rendered by PresenceList — so the stat card, pulse animation,
+  // and player rows always agree. Route-param fallback is used only while the
+  // initial Firestore snapshot is still loading (presencesLoading === true).
+  const playerCount = presencesLoading
+    ? (paramPlayers ?? 0)
+    : uniqueActivePresences.length;
   const todayCount = todaySchedules.length || paramPlannedToday || 0;
   const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
 
@@ -918,92 +960,38 @@ export default function RunDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Now Playing section — real presences first, fake data as fallback */}
+        {/* Now Playing section — deduplicated real-time presences */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Now Playing</Text>
-          {presences.length > 0 ? (
-            <PresenceList items={presences} type="presence" />
-          ) : playerCount > 0 ? (
-            // Slice placeholder players to match the reported count
-            <View style={styles.playerList}>
-              {fakePlayers.slice(0, playerCount).map((player) => (
-                <View key={player.id} style={styles.playerRow}>
-                  <Image source={{ uri: player.avatarUrl }} style={styles.playerAvatar} />
-                  <View style={styles.playerInfo}>
-                    <Text style={styles.playerName}>{player.name}</Text>
-                    <Text style={styles.playerMeta}>{player.minutesAgo}m ago</Text>
-                  </View>
-                  {skillColors?.[player.skillLevel] && (
-                    <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
-                      <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
-                        {formatSkillLevel(player.skillLevel)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <PresenceList items={[]} type="presence" emptyMessage="No one here yet" emptySubtext="Be the first to check in!" />
-          )}
+          <PresenceList
+            items={uniqueActivePresences}
+            type="presence"
+            navigation={navigation}
+            emptyMessage="No one here yet"
+            emptySubtext="Be the first to check in!"
+          />
         </View>
 
-        {/* Scheduled Today — real Firestore schedules first, fake data as fallback */}
+        {/* Scheduled Today — live Firestore schedules only */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scheduled Today</Text>
-          {todaySchedules.length > 0 ? (
-            <PresenceList items={todaySchedules} type="schedule" />
-          ) : todayCount > 0 ? (
-            <View style={styles.playerList}>
-              {fakeScheduledToday.slice(0, todayCount).map((player) => (
-                <View key={player.id} style={styles.playerRow}>
-                  <Image source={{ uri: player.avatarUrl }} style={styles.playerAvatar} />
-                  <View style={styles.playerInfo}>
-                    <Text style={styles.playerName}>{player.name}</Text>
-                    <Text style={styles.playerMeta}>{player.time}</Text>
-                  </View>
-                  {skillColors?.[player.skillLevel] && (
-                    <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
-                      <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
-                        {formatSkillLevel(player.skillLevel)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <PresenceList items={[]} type="schedule" emptyMessage="No one scheduled today" />
-          )}
+          <PresenceList
+            items={todaySchedules}
+            type="schedule"
+            navigation={navigation}
+            emptyMessage="No one scheduled today"
+          />
         </View>
 
-        {/* Scheduled Tomorrow — real Firestore schedules first, fake data as fallback */}
+        {/* Scheduled Tomorrow — live Firestore schedules only */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Scheduled Tomorrow</Text>
-          {tomorrowSchedules.length > 0 ? (
-            <PresenceList items={tomorrowSchedules} type="schedule" />
-          ) : tomorrowCount > 0 ? (
-            <View style={styles.playerList}>
-              {fakeScheduledTomorrow.slice(0, tomorrowCount).map((player) => (
-                <View key={player.id} style={styles.playerRow}>
-                  <Image source={{ uri: player.avatarUrl }} style={styles.playerAvatar} />
-                  <View style={styles.playerInfo}>
-                    <Text style={styles.playerName}>{player.name}</Text>
-                    <Text style={styles.playerMeta}>{player.time}</Text>
-                  </View>
-                  {skillColors?.[player.skillLevel] && (
-                    <View style={[styles.skillBadge, { backgroundColor: skillColors[player.skillLevel].bg }]}>
-                      <Text style={[styles.skillBadgeText, { color: skillColors[player.skillLevel].text }]}>
-                        {formatSkillLevel(player.skillLevel)}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              ))}
-            </View>
-          ) : (
-            <PresenceList items={[]} type="schedule" emptyMessage="No one scheduled tomorrow" />
-          )}
+          <PresenceList
+            items={tomorrowSchedules}
+            type="schedule"
+            navigation={navigation}
+            emptyMessage="No one scheduled tomorrow"
+          />
         </View>
 
         {/* Clips — Stories-style horizontal row */}

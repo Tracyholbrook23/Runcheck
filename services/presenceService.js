@@ -406,11 +406,14 @@ const markPresenceExpired = async (presenceId, gymId) => {
       // Update gym count
       await updateGymPresenceCount(gymId, -1);
 
-      // Clear user's activePresence
-      const userRef = doc(db, 'users', data.odId);
-      const userDoc = await getDoc(userRef);
-      if (userDoc.exists() && userDoc.data().activePresence?.gymId === gymId) {
-        await updateDoc(userRef, { activePresence: null });
+      // Clear user's activePresence — only permitted when the current user IS the owner
+      // (Firestore rules enforce isSelf; other users expiring a stale presence can't write here)
+      if (auth.currentUser?.uid === data.odId) {
+        const userRef = doc(db, 'users', data.odId);
+        const userDoc = await getDoc(userRef);
+        if (userDoc.exists() && userDoc.data().activePresence?.gymId === gymId) {
+          await updateDoc(userRef, { activePresence: null });
+        }
       }
     }
   } catch (error) {

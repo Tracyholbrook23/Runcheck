@@ -16,8 +16,9 @@
  *   - LIVE Indicator   — Compact banner showing total active players and
  *                        the hottest court; hidden when totalActive === 0;
  *                        tapping navigates to the hottest court's RunDetails
- *   - Hot Courts       — Horizontal scroll list of nearby active gyms
- *                        (currently seeded with placeholder data)
+ *   - Live Runs        — Horizontal scroll of gyms with active players right now,
+ *                        each card showing a 🔴 LIVE badge, avatar stack, gym name,
+ *                        and player count. Empty state shown when totalActive === 0.
  *   - Recent Activity  — Feed of recent community check-ins and plans
  *                        (currently seeded with placeholder data)
  *
@@ -56,7 +57,7 @@ import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'fireb
  * BlinkingDot — A small green dot that pulses its opacity when `active` is
  * true and renders as a plain static dot when `active` is false.
  *
- * Reused for both the LIVE indicator banner and each Hot Courts card dot.
+ * Reused for both the LIVE indicator banner and each Live Run card dot.
  * Accepts the caller's existing dot style so dimensions and color stay
  * consistent with `liveBannerDot` / `courtLiveDot`.
  *
@@ -122,6 +123,11 @@ const HomeScreen = ({ navigation }) => {
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
 
+  // Map of gymId → array of active presence entries (userName, userAvatar).
+  // Populated by a real-time subscription to presence docs with checkedOutAt == null.
+  // Used to render player avatar stacks on each Live Run card.
+  const [livePresenceMap, setLivePresenceMap] = useState({});
+
   // Subscribe to the current user's friends list in real time.
   useEffect(() => {
     const currentUid = auth.currentUser?.uid;
@@ -130,6 +136,38 @@ const HomeScreen = ({ navigation }) => {
       doc(db, 'users', currentUid),
       (snap) => { setFriendIds(snap.exists() ? (snap.data().friends ?? []) : []); },
       () => { setFriendIds([]); }
+    );
+    return () => unsubscribe();
+  }, []);
+
+  // Subscribe to all active presence docs (checkedOutAt == null) in real time.
+  // Groups results by gymId so each Live Run card can show up to 3 player avatars.
+  // userAvatar and userName are denormalized onto presence docs at check-in time,
+  // so no additional user-doc reads are needed here.
+  useEffect(() => {
+    const q = query(
+      collection(db, 'presence'),
+      where('checkedOutAt', '==', null),
+      limit(100)
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const map = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (!data.gymId) return;
+          if (!map[data.gymId]) map[data.gymId] = [];
+          map[data.gymId].push({
+            odId: data.odId,
+            userName: data.userName || null,
+            userAvatar: data.userAvatar || null,
+            checkedInAt: data.checkedInAt || null,
+          });
+        });
+        setLivePresenceMap(map);
+      },
+      () => setLivePresenceMap({})
     );
     return () => unsubscribe();
   }, []);
@@ -216,12 +254,60 @@ const HomeScreen = ({ navigation }) => {
    *
    * @param {string} tabName — Name of the tab to navigate to (e.g., 'CheckIn', 'Runs').
    */
+  /**
+   * getStartedAgoText — Returns a compact "started Xm ago" / "active now" string
+   * for a Live Run card, derived from the earliest checkedInAt across all players.
+   *
+   * @param {Array} players — Entries from livePresenceMap (each has checkedInAt Timestamp).
+   * @returns {string}
+   */
+  /**
+   * getRunEnergyLabel — Maps active player count to a run-energy label + color.
+   * Displayed inline in the Live Run card: "{count} players • {label}".
+   * Pure UI helper — no data side effects.
+   *
+   * Thresholds:
+   *   1–4   → Starting Up    (dim white  — run hasn't hit critical mass yet)
+   *   5–9   → Games Forming  (amber      — enough for a game, momentum building)
+   *   10–14 → Good Run       (green      — full run in progress)
+   *   15+   → 🔥🔥 Packed Run (red        — gym is hot, visual urgency)
+   */
+  const getRunEnergyLabel = (count) => {
+    if (count >= 15) return { label: '🔥🔥 Packed Run', color: '#FF3B30' };
+    if (count >= 10) return { label: 'Good Run',        color: '#34C759' };
+    if (count >= 5)  return { label: 'Games Forming',   color: '#FF9500' };
+    return                   { label: 'Starting Up',    color: 'rgba(255,255,255,0.50)' };
+  };
+
+  const getStartedAgoText = (players) => {
+    const millis = players
+      .map((p) => p.checkedInAt?.toMillis?.() ?? null)
+      .filter(Boolean);
+    if (millis.length === 0) return 'active now';
+    const diffMins = Math.round((Date.now() - Math.min(...millis)) / 60000);
+    if (diffMins < 1) return 'active now';
+    if (diffMins < 60) return `started ${diffMins}m ago`;
+    const hrs = Math.floor(diffMins / 60);
+    return `started ${hrs}h ago`;
+  };
+
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
 
-  // Sum of currentPresenceCount across all gyms for the live badge
-  const totalActive = gyms.reduce((sum, g) => sum + (g.currentPresenceCount || 0), 0);
+  // Sum of deduplicated active presences across all gyms — same source of truth
+  // as the per-card `activePresences` computation so the LIVE banner, "X active"
+  // badge, and each card count are always consistent with each other.
+  // Deduplication is by `odId` (the userId key written onto presence docs at check-in).
+  const totalActive = Object.values(livePresenceMap).reduce((sum, players) => {
+    const seen = new Set();
+    return sum + players.filter((p) => {
+      const uid = p.odId;
+      if (!uid || seen.has(uid)) return false;
+      seen.add(uid);
+      return true;
+    }).length;
+  }, 0);
 
   // Gym with the highest currentPresenceCount — used by the LIVE indicator
   const hottestGym = gyms.length > 0
@@ -230,6 +316,12 @@ const HomeScreen = ({ navigation }) => {
         gyms[0]
       )
     : null;
+
+  // Gyms with at least one active player, sorted hottest first.
+  // These drive the "Live Runs Near You" horizontal scroll section.
+  const liveRuns = gyms
+    .filter((g) => (g.currentPresenceCount || 0) > 0)
+    .sort((a, b) => (b.currentPresenceCount || 0) - (a.currentPresenceCount || 0));
 
   // Partition the feed into friends vs. community
   const friendsActivity = activityFeed.filter((item) => friendIds.includes(item.userId));
@@ -486,9 +578,9 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
 
-          {/* Hot Courts — horizontal scroll of nearby active gyms */}
+          {/* Live Runs Near You — horizontal scroll of gyms with active players */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Hot Courts Near You</Text>
+            <Text style={styles.sectionTitle}>Live Runs Near You</Text>
             {totalActive > 0 && (
               <View style={styles.liveActivity}>
                 <View style={styles.liveDot} />
@@ -496,49 +588,137 @@ const HomeScreen = ({ navigation }) => {
               </View>
             )}
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.courtScroll}
-            contentContainerStyle={styles.courtScrollContent}
-          >
-            {gyms.slice(0, 4).map((gym) => (
+
+          {totalActive === 0 ? (
+            // Empty state — no real-time active presences anywhere
+            <BlurView intensity={40} tint="dark" style={styles.liveRunsEmpty}>
+              <Text style={styles.liveRunsEmptyText}>
+                No live runs right now — be the first to check in.
+              </Text>
               <TouchableOpacity
-                key={gym.id}
+                style={styles.liveRunsEmptyButton}
+                onPress={() => goToTab('CheckIn')}
                 activeOpacity={0.8}
-                onPress={() =>
-                  // Navigate into the Runs tab's nested RunDetails screen, passing gym data
-                  navigation.getParent()?.navigate('Runs', {
-                    screen: 'RunDetails',
-                    params: {
-                      gymId: gym.id,
-                      gymName: gym.name,
-                      players: gym.currentPresenceCount || 0,
-                      imageUrl: gym.imageUrl,
-                      plannedToday: gym.plannedToday || 0,
-                      plannedTomorrow: gym.plannedTomorrow || 0,
-                    },
-                  })
-                }
               >
-                <BlurView intensity={60} tint="dark" style={styles.courtCard}>
-                  <View style={styles.courtCardTop}>
-                    <BlinkingDot
-                      active={(gym.currentPresenceCount || 0) > 0}
-                      style={styles.courtLiveDot}
-                    />
-                    <Text style={styles.courtPlayerCount}>{gym.currentPresenceCount || 0} playing</Text>
-                  </View>
-                  <Text style={styles.courtName}>{gym.name}</Text>
-                  <View style={styles.courtMeta}>
-                    <Text style={styles.courtType}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
-                    <Text style={styles.courtDot}> · </Text>
-                    <Text style={styles.courtDistance}>+{gym.plannedToday || 0} today</Text>
-                  </View>
-                </BlurView>
+                <Text style={styles.liveRunsEmptyButtonText}>Check In</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
+            </BlurView>
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.courtScroll}
+              contentContainerStyle={styles.courtScrollContent}
+            >
+              {liveRuns.slice(0, 6).map((gym) => {
+                // ── Single source of truth ────────────────────────────────
+                // Deduplicate by `odId` (the userId key on presence docs) so
+                // one user never appears twice in count, avatars, or startedAgo.
+                const rawPresences = livePresenceMap[gym.id] || [];
+                const seenUids = new Set();
+                const activePresences = rawPresences.filter((p) => {
+                  const uid = p.odId;
+                  if (!uid || seenUids.has(uid)) return false;
+                  seenUids.add(uid);
+                  return true;
+                });
+
+                const activeCount    = activePresences.length;
+
+                // Guard: skip this gym if livePresenceMap has no real-time
+                // active presences — prevents a "LIVE RUN" card with 0 players
+                // when gym.currentPresenceCount is stale and hasn't decremented yet.
+                if (activeCount < 1) return null;
+
+                const visibleAvatars = activePresences.slice(0, 3);
+                const overflow       = Math.max(0, activeCount - 3);
+                // startedAgo is derived from the SAME activePresences array —
+                // never from gym.currentPresenceCount or any other source.
+                const startedAgo     = getStartedAgoText(activePresences);
+
+                // Debug logs — active player list + timestamp
+                if (__DEV__) {
+                  const startMillis = activePresences
+                    .map((p) => p.checkedInAt?.toMillis?.() ?? null)
+                    .filter(Boolean);
+                  const startedAt = startMillis.length > 0
+                    ? new Date(Math.min(...startMillis)).toISOString()
+                    : 'unknown';
+                  console.log(
+                    `[LiveRun:${gym.name}] activeUniqueCount=${activeCount}`,
+                    'userIds=[' + activePresences.map((p) => p.odId).join(', ') + ']'
+                  );
+                  console.log(
+                    `[LiveRun:${gym.name}] startedAt=${startedAt} startedAgo="${startedAgo}"`
+                  );
+                }
+                return (
+                  <TouchableOpacity
+                    key={gym.id}
+                    activeOpacity={0.8}
+                    onPress={() =>
+                      navigation.getParent()?.navigate('Runs', {
+                        screen: 'RunDetails',
+                        params: {
+                          gymId: gym.id,
+                          gymName: gym.name,
+                          players: activeCount,
+                          imageUrl: gym.imageUrl,
+                          plannedToday: gym.plannedToday || 0,
+                          plannedTomorrow: gym.plannedTomorrow || 0,
+                        },
+                      })
+                    }
+                  >
+                    <BlurView intensity={65} tint="dark" style={styles.liveRunCard}>
+                      {/* 🔴 LIVE badge */}
+                      <View style={styles.liveRunBadge}>
+                        <BlinkingDot active style={styles.liveRunDot} />
+                        <Text style={styles.liveRunBadgeText}>LIVE RUN</Text>
+                      </View>
+
+                      {/* Gym name — prominent, sits just under the badge */}
+                      <Text style={styles.liveRunGymName} numberOfLines={2}>{gym.name}</Text>
+
+                      {/* Avatar stack — up to 3 overlapping circles + overflow pill */}
+                      <View style={styles.liveRunAvatarRow}>
+                        {visibleAvatars.map((p, i) => (
+                          <View
+                            key={p.odId || i}
+                            style={[styles.liveRunAvatarWrap, i > 0 && styles.liveRunAvatarOffset]}
+                          >
+                            {p.userAvatar ? (
+                              <Image source={{ uri: p.userAvatar }} style={styles.liveRunAvatar} />
+                            ) : (
+                              <View style={[styles.liveRunAvatar, styles.liveRunAvatarFallback]}>
+                                <Text style={styles.liveRunAvatarInitial}>
+                                  {(p.userName || '?')[0].toUpperCase()}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        ))}
+                        {overflow > 0 && (
+                          <View style={[styles.liveRunAvatar, styles.liveRunAvatarOverflow, styles.liveRunAvatarOffset]}>
+                            <Text style={styles.liveRunOverflowText}>+{overflow}</Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {/* Bottom row: "{N} players • {energy label}" */}
+                      <Text style={styles.liveRunPlayerCount} numberOfLines={1}>
+                        {activeCount} {activeCount === 1 ? 'player' : 'players'}
+                        {' • '}
+                        <Text style={{ color: getRunEnergyLabel(activeCount).color }}>
+                          {getRunEnergyLabel(activeCount).label}
+                        </Text>
+                      </Text>
+                    </BlurView>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
 
           {/* Friends Activity feed — only shown when friends have recent activity */}
           {friendsActivity.length > 0 && (
@@ -897,6 +1077,139 @@ actionCard: {
   courtDistance: {
     fontSize: FONT_SIZES.xs,
     color: 'rgba(255,255,255,0.5)',
+  },
+
+  // Live Runs Near You — empty state
+  liveRunsEmpty: {
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+  },
+  liveRunsEmptyText: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center',
+  },
+  liveRunsEmptyButton: {
+    marginTop: SPACING.sm,
+    paddingVertical: 7,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  liveRunsEmptyButtonText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: 'rgba(255,255,255,0.7)',
+  },
+
+  // Live Runs card (replaces courtCard)
+  liveRunCard: {
+    width: 190,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.40)',
+    gap: 9,
+    // Elevation/glow — makes the card pop off the dark background
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+
+  // 🔴 LIVE badge row
+  liveRunBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  liveRunDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#FF3B30',
+  },
+  liveRunBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FF3B30',
+    letterSpacing: 0.9,
+  },
+
+  // Avatar stack
+  liveRunAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  liveRunAvatarWrap: {},
+  liveRunAvatarOffset: {
+    marginLeft: -12,
+  },
+  liveRunAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.55)',
+  },
+  liveRunAvatarFallback: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  liveRunAvatarInitial: {
+    fontSize: 14,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+  },
+  liveRunAvatarOverflow: {
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  liveRunOverflowText: {
+    fontSize: 11,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: 'rgba(255,255,255,0.8)',
+  },
+
+  // Gym name
+  liveRunGymName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
+    lineHeight: 20,
+  },
+
+  // Bottom row: player count + quality badge side by side
+  liveRunBottomRow: {
+    gap: 5,
+  },
+  liveRunPlayerCount: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.success,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  liveRunQualityBadge: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  liveRunQualityText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+    letterSpacing: 0.2,
   },
 
   // Recent Activity feed
