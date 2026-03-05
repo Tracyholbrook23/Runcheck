@@ -368,6 +368,12 @@ export default function RunDetailsScreen({ route, navigation }) {
           resolvedClipIdsRef.current.add(c.id);
 
           // ── Step 1: download URL ──────────────────────────────────────────
+          // Always use c.storagePath — the backend sets this to whichever
+          // Storage object actually exists and is playable right now:
+          //   No processor → rawStoragePath   (raw upload, exists immediately)
+          //   Processor ran → finalStoragePath (transcoded output)
+          // Do NOT use finalStoragePath directly: it is reserved by name at
+          // finalize time but no file exists there until the processor runs.
           let url;
           try {
             url = await getDownloadURL(ref(storage, c.storagePath));
@@ -424,16 +430,33 @@ export default function RunDetailsScreen({ route, navigation }) {
       limit(20)
     );
 
-    // Client-side guard: only show clips that are fully finalized AND have a
-    // valid expiresAt field (belt-and-suspenders for any doc that bypassed the
-    // query filter, e.g. older docs written before expiresAt was added).
-    const isReadyClip = (c) => c.status === 'ready' && !!c.storagePath && !!c.expiresAt;
+    // Client-side guard: show clips that are either fully finalized ("ready")
+    // OR freshly uploaded and awaiting backend processing ("ready_raw").
+    // Both statuses have storagePath + expiresAt set by createClipSession /
+    // finalizeClipUpload, so they pass the Firestore query; we just need to
+    // stop excluding "ready_raw" here.
+    const isReadyClip = (c) =>
+      (c.status === 'ready' || c.status === 'ready_raw') &&
+      !!c.storagePath &&
+      !!c.expiresAt;
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
-      // Exclude any clip that hasn't been finalized yet.
+      // TEMP: log every returned doc so we can confirm status/field shape
+      if (__DEV__) {
+        snap.docs.forEach((d) => {
+          const { status, createdAt, expiresAt, thumbnailPath, storagePath, finalStoragePath, uploaderUid } = d.data();
+          console.log('[gymClips doc]', {
+            id: d.id, status, createdAt, expiresAt,
+            thumbnailPath, storagePath, finalStoragePath, uploaderUid,
+          });
+        });
+      }
       const readyList = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter(isReadyClip);
+      if (__DEV__) {
+        console.log('[gymClips] total returned:', snap.docs.length, '| visible after filter:', readyList.length);
+      }
       setGymClips(readyList);
       setClipsLoading(false);
       resolveClipUrls(readyList);
@@ -1434,11 +1457,16 @@ function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation,
   const initials = uploaderInfo?.name
     ? uploaderInfo.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)
     : '?';
+  const isProcessing = clip.status === 'ready_raw';
 
   return (
     <TouchableOpacity
       style={[clipPlayerStyles.gridTile, style]}
-      onPress={() => { if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId }); }}
+      onPress={() => {
+        // Allow playback if a URL is resolved even while raw; "Processing" is
+        // just informational. If no URL yet, tapping does nothing.
+        if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId });
+      }}
       activeOpacity={0.85}
     >
       {/* Background: thumbnail or dark placeholder */}
@@ -1494,6 +1522,13 @@ function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation,
           {likesCount}
         </Text>
       </TouchableOpacity>
+
+      {/* Processing badge — shown while backend transcodes the raw upload */}
+      {isProcessing && (
+        <View style={clipPlayerStyles.processingBadge}>
+          <Text style={clipPlayerStyles.processingBadgeText}>Processing…</Text>
+        </View>
+      )}
 
     </TouchableOpacity>
   );
@@ -1775,6 +1810,22 @@ const clipPlayerStyles = StyleSheet.create({
   storiesEmptyText: {
     fontSize: FONT_SIZES.small,
     color: '#888',
+  },
+  // "Processing…" badge overlaid on ready_raw clip tiles.
+  processingBadge: {
+    position: 'absolute',
+    bottom: 30,           // sits just above the identity overlay
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  processingBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.4,
   },
 });
 
