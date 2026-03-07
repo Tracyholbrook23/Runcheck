@@ -38,6 +38,7 @@ import {
   getReactNativePersistence,
   initializeAuth,
   connectAuthEmulator,
+  getAuth,
 } from 'firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
@@ -66,15 +67,18 @@ const firebaseConfig = {
 // `getApps()` returns the list of already-initialised apps.  If one exists we
 // reuse it; otherwise we create it.  This prevents "duplicate app" errors on
 // Expo Fast Refresh.
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const isNewApp = getApps().length === 0;
+const app = isNewApp ? initializeApp(firebaseConfig) : getApps()[0];
 
 // ─── Auth — with AsyncStorage persistence (required for React Native) ──────────
-// We must use initializeAuth (not getAuth) the very first time so we can attach
-// the persistence adapter.  On subsequent reloads getApps() will be non-empty
-// and this branch won't re-run, so initializeAuth is only ever called once.
-const auth = initializeAuth(app, {
-  persistence: getReactNativePersistence(AsyncStorage),
-});
+// initializeAuth must only be called once — it registers the persistence adapter.
+// On Fast Refresh the module re-evaluates but the Firebase SDK persists, so
+// calling initializeAuth again throws auth/already-initialized.
+// We use the same `isNewApp` flag to decide: first run → initializeAuth,
+// subsequent runs → getAuth (which returns the already-configured instance).
+const auth = isNewApp
+  ? initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) })
+  : getAuth(app);
 
 // ─── Firestore ────────────────────────────────────────────────────────────────
 const db = getFirestore(app);

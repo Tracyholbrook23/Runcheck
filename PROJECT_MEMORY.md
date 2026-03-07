@@ -1,14 +1,39 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-05_
+_Last updated: 2026-03-06_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
 
 ## Tech Stack
-- React Native (Expo) + React Navigation v7
-- Firebase: Firestore, Auth, Storage
-- firebase-admin (migration scripts only)
+- React Native 0.81.5 + Expo SDK 54 + React 19.1.0
+- React Navigation v7
+- Firebase v12 (Firestore, Auth, Storage)
+- firebase-admin (migration scripts only — devDependency)
+- expo-dev-client ~6.0.20 (custom dev build — NOT Expo Go)
+- react-native-reanimated ~4.1.1, react-native-maps 1.20.1
 - DropDownPicker, Ionicons, Animated API, BlurView
+
+## Build Environment (STABLE as of 2026-03-06)
+- Node: v20.20.1 via nvm (`/Users/tracy/.nvm/versions/node/v20.20.1/bin/node`)
+- npm: 10.8.2
+- EAS CLI: active, using profile `development`
+- Bundle ID: `com.runcheck.app`
+- EAS Project: `@tracyholbrook23/runcheck-new`
+- Last successful build: 2026-03-06
+  - Build URL: https://expo.dev/accounts/tracyholbrook23/projects/runcheck-new/builds/450f8aea-ecb3-4c0b-9a22-36807a01e11b
+- Apple Distribution Certificate: expires Mar 2027
+- Provisioning Profile: active (68UP4NV263), 3 devices registered
+
+## How to Rebuild from Scratch (if environment breaks again)
+```bash
+cd ~/Desktop/Runcheck
+mv node_modules /tmp/nm_old && rm -rf /tmp/nm_old &   # fast delete
+rm -rf ios android .expo dist package-lock.json
+npm install
+npx expo prebuild --clean
+EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile development
+```
+**Do NOT use `rm -rf node_modules` directly** — it hangs on macOS due to deeply nested dirs. Use the `mv` trick above.
 
 ## Navigation Structure
 - Root navigator contains tab navigator
@@ -109,6 +134,7 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 2. Re-enable GPS distance enforcement in `usePresence.js` and `presenceService.js` (remove the commented-out blocks)
 3. Build the Cloud Function for auto-expiry: mark presence expired + decrement gym count + clear `activePresence`, call `checkOut(isManual=false)`
 4. Add a Firestore composite index for the `activity` collection on `(createdAt DESC)` and confirm the HomeScreen feed query is covered
+5. Set `cli.appVersionSource` in eas.json (EAS warned this will be required in the future)
 
 ## How to Give Claude Context at Start of Each Session
 Tell Claude: "Read PROJECT_MEMORY.md in my Runcheck folder before we start."

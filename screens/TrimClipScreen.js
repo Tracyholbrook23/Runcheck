@@ -171,7 +171,19 @@ export default function TrimClipScreen({ route, navigation }) {
     console.log('[clips] ── post clip complete ✓ ────────────────────────────');
     setUploadState(IDLE);
     Alert.alert('Posted', 'Your clip has been posted!', [
-      { text: 'OK', onPress: () => navigation.goBack() },
+      {
+        text: 'OK',
+        onPress: () => {
+          // Pop back to RunDetailsScreen.
+          //   In-app record path: stack is RunDetails → RecordClip → TrimClip
+          //     pop(2) removes both TrimClip and RecordClip → lands on RunDetails.
+          //   Library upload path: stack is RunDetails → TrimClip
+          //     pop(2) is clamped by React Navigation to pop(1) → lands on RunDetails.
+          // Either way we return to RunDetails; the onSnapshot listener there
+          // picks up the new clip doc without any extra refresh needed.
+          navigation.pop(2);
+        },
+      },
     ]);
   };
 
