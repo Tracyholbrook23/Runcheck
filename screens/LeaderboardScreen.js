@@ -52,6 +52,16 @@ import {
 // ─── Trophy colors for top-3 positions ───────────────────────────────────────
 const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
 
+// ─── Rank perk descriptions — display-only copy, no business logic ────────────
+// Communicates reputation, trust, and progression for each tier.
+// Do not derive rewards or unlock logic from this object.
+const RANK_PERKS = {
+  Bronze:   "You're in the game. Start building your rep.",
+  Silver:   'Community recognized. Players know you show up.',
+  Gold:     'Elite status. Your name carries weight on the court.',
+  Platinum: "Top tier. RunCheck's most trusted hoopers.",
+};
+
 // ─── RankBadgePill ────────────────────────────────────────────────────────────
 /**
  * RankBadgePill — Compact solid-color pill showing the rank name.
@@ -261,6 +271,35 @@ export default function LeaderboardScreen({ navigation }) {
           </Text>
         </View>
 
+        {/* ── Why Rank Matters ─────────────────────────────────────── */}
+        <Text style={styles.sectionTitle}>Why Rank Matters</Text>
+        <View style={styles.listCard}>
+          {RANKS.map((r, index) => {
+            const isCurrentRank = r.name === currentRank.name;
+            return (
+              <View
+                key={r.name}
+                style={[
+                  styles.perksRow,
+                  isCurrentRank && { backgroundColor: r.color + '18' },
+                  index < RANKS.length - 1 && styles.rowBorder,
+                ]}
+              >
+                <Text style={styles.perksIcon}>{r.icon}</Text>
+                <View style={styles.perksInfo}>
+                  <Text style={[styles.tierName, { color: r.color }]}>{r.name}</Text>
+                  <Text style={styles.perksDesc}>{RANK_PERKS[r.name]}</Text>
+                </View>
+                {isCurrentRank && (
+                  <View style={[styles.currentBadge, { borderColor: r.color + '60' }]}>
+                    <Text style={[styles.currentBadgeText, { color: r.color }]}>You</Text>
+                  </View>
+                )}
+              </View>
+            );
+          })}
+        </View>
+
         {/* ── Leaderboard list ─────────────────────────────────────── */}
         <Text style={styles.sectionTitle}>Top Players</Text>
 
@@ -286,8 +325,12 @@ export default function LeaderboardScreen({ navigation }) {
                 .toUpperCase();
 
               return (
-                <View
+                <TouchableOpacity
                   key={user.id}
+                  // Own row is not tappable — disabled suppresses press and opacity flash
+                  disabled={isMe}
+                  activeOpacity={isMe ? 1 : 0.7}
+                  onPress={() => navigation.push('UserProfile', { userId: user.id })}
                   style={[
                     styles.row,
                     isMe && styles.rowHighlight,
@@ -338,7 +381,12 @@ export default function LeaderboardScreen({ navigation }) {
                   <Text style={[styles.pts, { color: rank.color }]}>
                     {(user.totalPoints || 0).toLocaleString()}
                   </Text>
-                </View>
+
+                  {/* Tap affordance — only shown for other players */}
+                  {!isMe && (
+                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
+                  )}
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -392,8 +440,7 @@ export default function LeaderboardScreen({ navigation }) {
                 index < RANKS.length - 1 && styles.rowBorder,
               ]}
             >
-              {/* Colored filled circle instead of emoji */}
-              <View style={[styles.tierDot, { backgroundColor: rank.color }]} />
+              <Text style={styles.tierIcon}>{rank.icon}</Text>
               <Text style={[styles.tierName, { color: rank.color }]}>{rank.name}</Text>
               <Text style={styles.tierRange}>
                 {rank.nextRankAt
@@ -640,6 +687,40 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   tierRange: {
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
+  },
+
+  // ── Rank icon — replaces the small colored dot in the Rank Tiers section ────
+  tierIcon: {
+    fontSize: 22,
+    width: 28,
+    textAlign: 'center',
+  },
+
+  // ── Why Rank Matters — perks rows ─────────────────────────────────────────
+  perksRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  perksInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  perksDesc: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textSecondary,
+  },
+  currentBadge: {
+    borderWidth: 1,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+  },
+  currentBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 
   // ── Misc ──────────────────────────────────────────────────────────────────

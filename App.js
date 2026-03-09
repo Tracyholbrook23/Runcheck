@@ -147,6 +147,8 @@ function ProfileStack() {
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Premium" component={PremiumScreen} options={{ headerShown: false }} />
+      {/* Required so leaderboard row taps can navigate to UserProfile from the Profile tab */}
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
