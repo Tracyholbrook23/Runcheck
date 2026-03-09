@@ -1,191 +1,61 @@
 /**
- * CheckInScreen.js — Gym Check-In Interface
+ * CheckInScreen.js — Check-In Status Screen
  *
- * Allows users to select a gym and check in, proving they are physically
- * present via GPS validation (handled inside `usePresence.checkIn`).
+ * Repurposed from a gym-picker form into a clean session status screen.
+ * The primary check-in path is via the "Check In Here" button on RunDetailsScreen.
  *
  * Screen states:
- *   1. Loading — shows a spinner while gyms and presence data are fetched.
- *   2. Already Checked In — if the user has an active presence, shows the
- *      current gym name, time remaining, and a hint to check out from Home.
- *   3. Check-In Form — the main state: a gym dropdown, info box, "Hot Right
- *      Now" nearby activity chips, Check In button, and Back to Home button.
- *
- * GPS error handling maps raw `usePresence` errors to user-friendly alerts:
- *   - "permission denied" → prompts to enable location services
- *   - "Unable to retrieve" → prompts to check GPS is on
- *   - Any other error     → shows the raw error message
- *
- * The DropDownPicker uses `zIndex: 5000` so its dropdown overlay appears
- * above all other content when open. `containerStyle` is dynamically
- * adjusted to reserve space below the picker when it is open.
+ *   1. Loading     — spinner while presence data loads.
+ *   2. Checked In  — current gym, time remaining, "View This Run" + "Check Out" buttons.
+ *   3. Not Checked In — status message, "Find a Run" CTA, optional followed-gym shortcuts.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
-import { useTheme } from '../contexts';
-import { Logo } from '../components';
-import { auth } from '../config/firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
-import { findMatchingSchedule } from '../services/scheduleService';
-
+import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
-  ScrollView,
-  KeyboardAvoidingView,
-  Keyboard,
-  Platform,
-  ActivityIndicator,
   TouchableOpacity,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
-import DropDownPicker from 'react-native-dropdown-picker';
+import { Ionicons } from '@expo/vector-icons';
+import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
+import { useTheme } from '../contexts';
 import { usePresence, useGyms, useProfile } from '../hooks';
 
 /**
- * CheckInScreen — GPS-gated gym check-in screen.
+ * CheckInScreen — Session status screen.
  *
  * @param {object} props
  * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
- *   React Navigation prop for hiding the header and navigating to other tabs.
  * @returns {JSX.Element}
  */
 export default function CheckInScreen({ navigation }) {
-  // Dropdown open/close and selected value state — required by DropDownPicker API
-  const [open, setOpen] = useState(false);
-  const [selectedGym, setSelectedGym] = useState(null);
-  const [gymItems, setGymItems] = useState([]);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  // User profile provides name + avatar for activity feed writes
-  const { profile } = useProfile();
+  const { followedGyms } = useProfile();
+  const { gyms } = useGyms();
 
   const {
     presence,
     loading: presenceLoading,
     isCheckedIn,
-    checkIn,
     checkOut,
-    checkingIn,
     checkingOut,
     getTimeRemaining,
   } = usePresence();
-
-  const {
-    gyms,
-    loading: gymsLoading,
-    ensureGymsExist,
-  } = useGyms();
 
   // Hide the default stack header — this screen uses its own layout
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // Trigger gym seed/migration on mount to ensure GPS coordinates are available
-  useEffect(() => {
-    ensureGymsExist();
-  }, [ensureGymsExist]);
-
-  // Transform the Firestore gyms array into the format DropDownPicker expects:
-  // { label: string, value: string, gymName: string }
-  useEffect(() => {
-    const items = gyms.map((gym) => ({
-      label: `${gym.name} (${gym.currentPresenceCount || 0} here)`,
-      value: gym.id,
-      gymName: gym.name,
-    }));
-    setGymItems(items);
-  }, [gyms]);
-
   /**
-   * handleCheckIn — Validates selection and triggers GPS-gated check-in.
-   *
-   * Looks up the selected gym's display name from `gymItems` before calling
-   * `checkIn(gymId)` so the success alert can show the gym name.
-   *
-   * Point logic:
-   *   - If the user had a scheduled visit for this gym within the ±60-minute
-   *     grace window, they earn 15 pts (checkinWithPlan) as a follow-through
-   *     bonus. Otherwise the standard 10 pts (checkin) are awarded.
-   *
-   * On success, shows a confirmation alert with a shortcut to the Runs tab.
-   * On failure, maps the error to a user-friendly message.
-   */
-  const handleCheckIn = async () => {
-    if (!selectedGym) {
-      Alert.alert('Select a Gym', 'Please select a gym to check into.');
-      return;
-    }
-
-    try {
-      const gymItem = gymItems.find((item) => item.value === selectedGym);
-      const gymName = gymItem?.gymName || selectedGym;
-      const uid = auth.currentUser?.uid;
-
-      const checkinResult = await checkIn(selectedGym);
-
-      // Trigger server-side point awarding — fire-and-forget, does not block UI.
-      // The backend callable verifies the presence doc before writing any points.
-      if (checkinResult?.id) {
-        httpsCallable(getFunctions(), 'checkIn')({
-          gymId:      selectedGym,
-          presenceId: checkinResult.id,
-        }).catch((err) => console.warn('[CheckIn] points callable failed:', err.message));
-      }
-
-      // Activity feed event is written inside presenceService.checkIn() — no duplicate write here.
-
-      // Check if this check-in fulfils a prior plan (±60 min grace window)
-      const matchedSchedule = uid
-        ? await findMatchingSchedule(uid, selectedGym).catch(() => null)
-        : null;
-
-      // Points are awarded server-side by the backend checkIn callable.
-      const ptsLabel = matchedSchedule ? '+15 pts' : '+10 pts';
-      const bonusNote = matchedSchedule
-        ? 'Nice follow-through! You earned a +5 bonus.'
-        : 'Keep showing up to earn more points.';
-
-      Alert.alert(
-        `Checked In! ${ptsLabel}`,
-        `You're now checked in at ${gymName}. ${bonusNote}`,
-        [
-          {
-            text: 'View Gyms',
-            onPress: () => navigation.getParent()?.navigate('Runs'),
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Check-in error:', error);
-      if (error.message.includes('permission denied')) {
-        Alert.alert(
-          'Location Required',
-          'Please enable location services to check in. We use your location to verify you are at the gym.'
-        );
-      } else if (error.message.includes('Unable to retrieve')) {
-        Alert.alert(
-          'GPS Unavailable',
-          'Could not get your location. Please check that GPS is enabled and try again.'
-        );
-      } else {
-        Alert.alert('Check-in Failed', error.message || 'Please try again.');
-      }
-    }
-  };
-
-
-  /**
-   * handleCheckOut — Calls checkOut() from usePresence, which delegates to
-   * presenceService.checkOut(isManual=true).
-   *
-   * Manual check-out deducts 10 pts and removes the "checked in at" activity
-   * entry so users cannot farm points by checking in and out repeatedly.
+   * handleCheckOut — delegates to usePresence.checkOut() (manual check-out).
+   * Deducts 10 pts server-side via presenceService.checkOut(isManual=true).
    */
   const handleCheckOut = async () => {
     try {
@@ -201,332 +71,361 @@ export default function CheckInScreen({ navigation }) {
     }
   };
 
-  // Combine presence and gyms loading states for a single loading flag
-  const loading = presenceLoading || gymsLoading;
-  const isProcessing = checkingIn;
+  /** Navigate to the RunDetails screen for the active session. */
+  const handleViewRun = () => {
+    if (!presence) return;
+    navigation.getParent()?.navigate('Runs', {
+      screen: 'RunDetails',
+      params: { gymId: presence.gymId, gymName: presence.gymName, players: 0 },
+    });
+  };
 
-  // State 2: Already checked in — show active session card with Check Out button
+  /** Switch to the Runs tab so the user can browse gyms. */
+  const handleFindRun = () => {
+    navigation.getParent()?.navigate('Runs');
+  };
+
+  /**
+   * Build the list of followed gyms to show as quick-nav shortcuts.
+   * Cross-references followedGyms (array of IDs) with the gyms catalogue.
+   * Capped at 3 entries to keep the UI compact.
+   */
+  const followedGymItems = useMemo(() => {
+    if (!followedGyms?.length || !gyms?.length) return [];
+    return followedGyms
+      .slice(0, 3)
+      .map((gymId) => gyms.find((g) => g.id === gymId))
+      .filter(Boolean);
+  }, [followedGyms, gyms]);
+
+  // ── State 1: Loading ───────────────────────────────────────────────────────
+  if (presenceLoading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ── State 2: Checked In ────────────────────────────────────────────────────
   if (isCheckedIn && presence) {
     const timeRemaining = getTimeRemaining();
 
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.activeContainer}>
-          <Text style={styles.activeTitle}>You're Checked In</Text>
-
-          {/* Active session card — gym name + countdown */}
-          <View style={styles.activeCard}>
-            <Text style={styles.activeGym}>{presence.gymName}</Text>
-            <Text style={styles.activeTime}>
-              {timeRemaining ? `Expires in ${timeRemaining}` : 'Expiring soon...'}
-            </Text>
+        <View style={styles.container}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={styles.screenTitle}>Check In</Text>
           </View>
 
-          {/* Primary CTA — red Check Out button */}
-          <TouchableOpacity
-            style={[styles.checkOutButton, checkingOut && styles.buttonDisabled]}
-            onPress={handleCheckOut}
-            disabled={checkingOut}
-          >
-            {checkingOut ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.checkOutButtonText}>Check Out</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.body}>
+            {/* Live status pill */}
+            <View style={styles.statusPill}>
+              <View style={styles.liveDot} />
+              <Text style={styles.statusPillText}>You're Checked In</Text>
+            </View>
 
-          <Text style={styles.activeHint}>
-            Checking out early deducts 10 pts. Auto-expiry after 3 hrs keeps your points.
-          </Text>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => navigation.getParent()?.navigate('Home')}
-          >
-            <Text style={styles.secondaryButtonText}>Back to Home</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // State 1: Loading spinner
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          <Logo size="small" style={{ marginBottom: SPACING.sm }} />
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading gyms...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // State 3: Check-in form
-  return (
-    <SafeAreaView style={styles.safe}>
-      {/*
-       * KeyboardAvoidingView prevents the dropdown and button from being
-       * covered by the software keyboard on iOS when the picker is open.
-       */}
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        {/*
-         * ScrollView replaces the former TouchableWithoutFeedback wrapper.
-         * keyboardShouldPersistTaps="handled" ensures child TouchableOpacity
-         * taps are not swallowed when the keyboard is open.
-         * onScrollBeginDrag dismisses the keyboard when the user scrolls blank space.
-         */}
-        <ScrollView
-          style={styles.scrollArea}
-          keyboardShouldPersistTaps="handled"
-          onScrollBeginDrag={Keyboard.dismiss}
-        >
-          <View style={styles.innerContainer}>
-            <Text style={styles.title}>Check Into a Gym</Text>
-            <Text style={styles.subtitle}>
-              Let others know you're here to play
-            </Text>
-
-            <Text style={styles.label}>Select Gym:</Text>
-
-            {/*
-             * DropDownPicker — controlled component with high zIndex so its
-             * dropdown overlay appears above sibling Views.
-             * containerStyle height expands when open to push content down
-             * and prevent overlap with the dropdown list.
-             */}
-            <DropDownPicker
-              open={open}
-              value={selectedGym}
-              items={gymItems}
-              setOpen={setOpen}
-              setValue={setSelectedGym}
-              setItems={setGymItems}
-              placeholder="Choose a gym"
-              containerStyle={{ marginBottom: open ? 200 : 20 }}
-              style={styles.dropdown}
-              dropDownContainerStyle={styles.dropdownContainer}
-              textStyle={{ color: colors.textPrimary }}
-              placeholderStyle={{ color: colors.textMuted }}
-              listItemLabelStyle={{ color: colors.textPrimary }}
-              selectedItemLabelStyle={{ color: colors.primary }}
-              zIndex={5000}
-              zIndexInverse={1000}
-              listMode="SCROLLVIEW"
-            />
-
-            {/* Info box explaining auto-expiry behavior */}
-            <View style={styles.infoBox}>
-              <Text style={styles.infoText}>
-                Your check-in will automatically expire after 3 hours, or you can
-                check out manually from the Home screen.
+            {/* Active session card */}
+            <View style={styles.activeCard}>
+              <Ionicons
+                name="basketball-outline"
+                size={28}
+                color={colors.presenceTextBright}
+                style={{ marginBottom: SPACING.xs }}
+              />
+              <Text style={styles.activeGym}>{presence.gymName}</Text>
+              <Text style={styles.activeTime}>
+                {timeRemaining ? `${timeRemaining} remaining` : 'Expiring soon…'}
               </Text>
             </View>
 
+            {/* View This Run */}
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={handleViewRun}
+              activeOpacity={0.82}
+            >
+              <Text style={styles.primaryButtonText}>View This Run</Text>
+              <Ionicons name="chevron-forward" size={18} color="#fff" style={{ marginLeft: SPACING.xs }} />
+            </TouchableOpacity>
+
+            {/* Check Out — outlined danger button */}
+            <TouchableOpacity
+              style={[styles.checkOutButton, checkingOut && styles.buttonDisabled]}
+              onPress={handleCheckOut}
+              disabled={checkingOut}
+              activeOpacity={0.82}
+            >
+              {checkingOut ? (
+                <ActivityIndicator size="small" color={colors.danger} />
+              ) : (
+                <Text style={styles.checkOutButtonText}>Check Out</Text>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.hint}>
+              Checking out early deducts 10 pts. Auto-expiry after 3 hrs keeps your points.
+            </Text>
           </View>
-        </ScrollView>
-
-        {/* Sticky footer with primary Check In and secondary Back to Home buttons */}
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.checkInButton, isProcessing && styles.buttonDisabled]}
-            onPress={handleCheckIn}
-            disabled={isProcessing}
-          >
-            {isProcessing ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.checkInButtonText}>Check In</Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={() => navigation.getParent()?.navigate('Home')}
-          >
-            <Text style={styles.secondaryButtonText}>Back to Home</Text>
-          </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── State 3: Not Checked In ────────────────────────────────────────────────
+  return (
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.screenTitle}>Check In</Text>
+        </View>
+
+        <View style={styles.body}>
+          {/* Icon */}
+          <View style={styles.iconWrap}>
+            <Ionicons name="basketball-outline" size={48} color={colors.textMuted} />
+          </View>
+
+          <Text style={styles.notCheckedTitle}>Not Checked In</Text>
+          <Text style={styles.notCheckedSubtitle}>
+            You're not checked into a gym right now. Find a run and tap{' '}
+            <Text style={styles.emphasis}>Check In Here</Text>
+            {' '}to join.
+          </Text>
+
+          {/* Primary CTA */}
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={handleFindRun}
+            activeOpacity={0.82}
+          >
+            <Ionicons name="search-outline" size={18} color="#fff" style={{ marginRight: SPACING.xs }} />
+            <Text style={styles.primaryButtonText}>Find a Run</Text>
+          </TouchableOpacity>
+
+          {/* Followed gym quick-nav shortcuts */}
+          {followedGymItems.length > 0 && (
+            <View style={styles.shortcutsSection}>
+              <Text style={styles.shortcutsLabel}>Your Gyms</Text>
+              {followedGymItems.map((gym) => (
+                <TouchableOpacity
+                  key={gym.id}
+                  style={styles.gymShortcut}
+                  activeOpacity={0.75}
+                  onPress={() =>
+                    navigation.getParent()?.navigate('Runs', {
+                      screen: 'RunDetails',
+                      params: { gymId: gym.id, gymName: gym.name, players: 0 },
+                    })
+                  }
+                >
+                  <Ionicons name="location-outline" size={16} color={colors.primary} style={{ marginRight: SPACING.xs }} />
+                  <Text style={styles.gymShortcutText}>{gym.name}</Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
 
 /**
- * getStyles — Generates a themed StyleSheet for CheckInScreen.
+ * getStyles — Themed StyleSheet for CheckInScreen.
  *
- * @param {object} colors — Active color palette from ThemeContext.
+ * @param {object}  colors — Active color palette from ThemeContext.
  * @param {boolean} isDark — Whether dark mode is active.
  * @returns {object} React Native StyleSheet object.
  */
-const getStyles = (colors, isDark) => StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  container: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: SPACING.md,
-    fontSize: FONT_SIZES.body,
-    color: colors.textSecondary,
-  },
-  // ScrollView that replaces the TouchableWithoutFeedback wrapper
-  scrollArea: {
-    flex: 1,
-  },
-  innerContainer: {
-    padding: SPACING.lg,
-    paddingTop: SPACING.xl,
-    zIndex: 1000,
-  },
-  title: {
-    fontSize: FONT_SIZES.title,
-    fontWeight: FONT_WEIGHTS.bold,
-    marginBottom: SPACING.xs,
-    textAlign: 'left',
-    color: colors.textPrimary,
-    letterSpacing: 0.5,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.body,
-    color: colors.textSecondary,
-    textAlign: 'left',
-    marginBottom: SPACING.lg,
-  },
-  label: {
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.semibold,
-    marginBottom: SPACING.sm,
-    color: colors.textPrimary,
-  },
-  dropdown: {
-    borderColor: colors.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: colors.surfaceLight,  // Elevated input surface
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
-  },
-  dropdownContainer: {
-    borderColor: colors.border,
-    borderRadius: RADIUS.md,
-    backgroundColor: colors.surfaceLight,
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
-  },
-  infoBox: {
-    backgroundColor: colors.infoBackground,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginTop: SPACING.md,
-  },
-  infoText: {
-    fontSize: FONT_SIZES.small,
-    color: colors.infoText,
-    lineHeight: 20,
-  },
-  footer: {
-    padding: SPACING.lg,
-    borderTopWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  checkInButton: {
-    backgroundColor: colors.primary,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  checkInButtonText: {
-    color: '#fff',
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  secondaryButton: {
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    alignItems: 'center',
-  },
-  secondaryButtonText: {
-    color: colors.primary,
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  activeContainer: {
-    flex: 1,
-    padding: SPACING.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  activeTitle: {
-    fontSize: FONT_SIZES.title,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: colors.textPrimary,
-    marginBottom: SPACING.lg,
-    letterSpacing: 0.5,
-  },
-  activeCard: {
-    backgroundColor: colors.presenceBackground,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
-  },
-  activeGym: {
-    fontSize: FONT_SIZES.subtitle,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: colors.presenceTextBright,
-    marginBottom: SPACING.sm,
-    letterSpacing: 0.3,
-  },
-  activeTime: {
-    fontSize: FONT_SIZES.body,
-    color: colors.presenceText,
-  },
-  checkOutButton: {
-    backgroundColor: '#EF4444',
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg * 2,
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-    width: '100%',
-  },
-  checkOutButtonText: {
-    color: '#fff',
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  activeHint: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-  },
-  backButton: {
-    backgroundColor: colors.primary,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg * 2,
-  },
-  backButtonText: {
-    color: '#fff',
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-});
+const getStyles = (colors, isDark) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    container: {
+      flex: 1,
+    },
+    centered: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+
+    // ── Header ────────────────────────────────────────────
+    header: {
+      paddingHorizontal: SPACING.lg,
+      paddingTop: SPACING.lg,
+      paddingBottom: SPACING.md,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    screenTitle: {
+      fontSize: FONT_SIZES.h2,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textPrimary,
+      letterSpacing: -0.3,
+    },
+
+    // ── Body ──────────────────────────────────────────────
+    body: {
+      flex: 1,
+      paddingHorizontal: SPACING.lg,
+      paddingTop: SPACING.xl,
+      alignItems: 'center',
+    },
+
+    // ── Checked-in state ──────────────────────────────────
+    statusPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? '#132A1F' : '#DCFCE7',
+      borderRadius: RADIUS.full,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: 5,
+      marginBottom: SPACING.lg,
+    },
+    liveDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: colors.success,
+      marginRight: SPACING.xs,
+    },
+    statusPillText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.success,
+    },
+    activeCard: {
+      width: '100%',
+      backgroundColor: colors.presenceBackground,
+      borderRadius: RADIUS.lg,
+      padding: SPACING.lg,
+      alignItems: 'center',
+      marginBottom: SPACING.lg,
+      borderWidth: 1,
+      borderColor: isDark ? 'transparent' : colors.border,
+      ...SHADOWS.card,
+    },
+    activeGym: {
+      fontSize: FONT_SIZES.h2,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.presenceTextBright,
+      textAlign: 'center',
+      marginBottom: SPACING.xs,
+    },
+    activeTime: {
+      fontSize: FONT_SIZES.body,
+      color: colors.presenceText,
+    },
+
+    // ── Not-checked-in state ──────────────────────────────
+    iconWrap: {
+      width: 88,
+      height: 88,
+      borderRadius: RADIUS.xl,
+      backgroundColor: colors.surfaceLight,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: SPACING.lg,
+    },
+    notCheckedTitle: {
+      fontSize: FONT_SIZES.h2,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textPrimary,
+      marginBottom: SPACING.xs,
+    },
+    notCheckedSubtitle: {
+      fontSize: FONT_SIZES.body,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 22,
+      marginBottom: SPACING.xl,
+      paddingHorizontal: SPACING.md,
+    },
+    emphasis: {
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.primary,
+    },
+
+    // ── Shared buttons ────────────────────────────────────
+    primaryButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: RADIUS.sm,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.xl,
+      width: '100%',
+      marginBottom: SPACING.md,
+    },
+    primaryButtonText: {
+      color: '#fff',
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+    },
+    checkOutButton: {
+      width: '100%',
+      borderRadius: RADIUS.sm,
+      paddingVertical: SPACING.md,
+      alignItems: 'center',
+      marginBottom: SPACING.md,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      backgroundColor: isDark ? 'transparent' : '#FEF2F2',
+    },
+    checkOutButtonText: {
+      color: colors.danger,
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+    },
+    buttonDisabled: {
+      opacity: 0.6,
+    },
+    hint: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textMuted,
+      textAlign: 'center',
+      lineHeight: 18,
+      paddingHorizontal: SPACING.md,
+    },
+
+    // ── Followed gym shortcuts ────────────────────────────
+    shortcutsSection: {
+      width: '100%',
+      marginTop: SPACING.lg,
+    },
+    shortcutsLabel: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
+      marginBottom: SPACING.xs,
+    },
+    gymShortcut: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.md,
+      marginBottom: SPACING.xs,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    gymShortcutText: {
+      flex: 1,
+      fontSize: FONT_SIZES.body,
+      color: colors.textPrimary,
+      fontWeight: FONT_WEIGHTS.medium,
+    },
+  });

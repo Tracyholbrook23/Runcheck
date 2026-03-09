@@ -16,7 +16,7 @@
  * when the theme changes.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -35,7 +36,17 @@ import { useGyms, useProfile } from '../hooks';
 import { Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { auth, db } from '../config/firebase';
-import { doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import {
+  doc,
+  updateDoc,
+  arrayUnion,
+  arrayRemove,
+  collection,
+  query,
+  where,
+  onSnapshot,
+  limit,
+} from 'firebase/firestore';
 import { handleFollowPoints } from '../services/pointsService';
 
 /**
@@ -50,8 +61,82 @@ export default function ViewRunsScreen({ navigation }) {
   const { gyms, loading, ensureGymsExist } = useGyms();
   const { followedGyms } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  // ── Live player counts ────────────────────────────────────────────────────
+  // Map of gymId → deduplicated active player count.
+  // Derived from a single real-time Firestore subscription that covers every
+  // gym at once — the same pattern HomeScreen uses for its livePresenceMap.
+  //
+  // Key architecture choices (matching HomeScreen & PROJECT_MEMORY):
+  //   1. Single query (not per-gym) — one subscription for all gyms
+  //   2. Dedup by odId via a Set — prevents one person counting twice
+  //   3. Client-side expiresAt filter — drops stale presences not yet cleaned up
+  //   4. Does NOT read gym.currentPresenceCount — that field is a stale counter
+  //      that drifts whenever a decrement is missed (see Known Issues)
+  const [liveCountMap, setLiveCountMap] = useState({});
+
+  useEffect(() => {
+    // One subscription covers all gyms — we group by gymId client-side.
+    // Using checkedOutAt == null (same index HomeScreen uses) so no new
+    // composite index is required.
+    const q = query(
+      collection(db, 'presence'),
+      where('checkedOutAt', '==', null),
+      limit(200)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const now = new Date();
+        // Use a Map of gymId → Set<odId> to deduplicate per gym in one pass
+        const uidSets = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (!data.gymId || !data.odId) return;
+
+          // Drop presences whose expiry has already passed (client-side guard)
+          const expiresAt = data.expiresAt?.toDate?.();
+          if (expiresAt && expiresAt < now) return;
+
+          if (!uidSets[data.gymId]) uidSets[data.gymId] = new Set();
+          uidSets[data.gymId].add(data.odId);
+        });
+
+        // Convert Set sizes to a plain number map
+        const counts = {};
+        Object.entries(uidSets).forEach(([gymId, set]) => {
+          counts[gymId] = set.size;
+        });
+        setLiveCountMap(counts);
+      },
+      () => setLiveCountMap({})
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  /**
+   * getRunStatusLabel — Maps a live player count to a run-quality label,
+   * color, and formatted display string for the gym card.
+   *
+   * Replaces the old "{count}/15" format. Public gyms have no hard cap so
+   * showing "/15" implied a limit that doesn't exist.
+   *
+   * @param {number} count — Deduplicated active player count for this gym.
+   * @returns {{ label: string, countText: string, color: string }}
+   */
+  const getRunStatusLabel = (count) => {
+    if (count === 0) return { label: 'Empty',     countText: '',                color: colors.activityEmpty };
+    if (count <= 3)  return { label: 'Light Run', countText: `· ${count} playing`, color: colors.activityLight };
+    if (count <= 7)  return { label: 'Building',  countText: `· ${count} playing`, color: colors.activityActive };
+    if (count <= 11) return { label: 'Good Run',  countText: `· ${count} playing`, color: colors.activityLight };
+    if (count <= 15) return { label: 'Packed',    countText: `· ${count} playing`, color: colors.activityBusy };
+    return                  { label: 'Jumping',   countText: `· ${count} playing`, color: colors.activityBusy };
+  };
 
   /**
    * toggleFollow — Adds or removes a gym from the user's `followedGyms` array
@@ -106,6 +191,50 @@ export default function ViewRunsScreen({ navigation }) {
   };
 
 
+  /**
+   * sanitizeSearch — Strips unsafe characters from raw search input and
+   * enforces structural constraints before the value is stored or used.
+   *
+   * Allowed characters: letters (a-z A-Z), digits (0-9), space, apostrophe,
+   * hyphen, period, ampersand. Everything else is silently removed so that
+   * pasting or typing unusual characters degrades gracefully rather than
+   * blocking the input entirely.
+   *
+   * Additional rules applied in order:
+   *   1. Strip disallowed characters
+   *   2. Remove leading whitespace (so the field can't start with a space)
+   *   3. Collapse runs of 2+ spaces into a single space
+   *   4. Hard-cap at 50 characters
+   *
+   * The sanitized value is used as the TextInput `value` so the displayed
+   * text always reflects exactly what will be matched against.
+   *
+   * @param {string} raw — Text string straight from onChangeText.
+   * @returns {string} Safe, normalised search string.
+   */
+  const sanitizeSearch = (raw) =>
+    raw
+      .replace(/[^a-zA-Z0-9 '.\-&]/g, '') // strip disallowed chars
+      .replace(/^ +/, '')                   // no leading spaces
+      .replace(/ {2,}/g, ' ')              // collapse repeated spaces
+      .slice(0, 50);                        // max length
+
+  /**
+   * filteredGyms — Local-only filter over the already-loaded gyms array.
+   * Matches the sanitized query (trimmed for comparison) case-insensitively
+   * against gym.name and gym.address so users can search by gym name or area.
+   * No Firestore query is involved — this is a pure client-side filter.
+   */
+  const filteredGyms = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return gyms;
+    return gyms.filter((gym) => {
+      const name    = gym.name?.toLowerCase()    ?? '';
+      const address = gym.address?.toLowerCase() ?? '';
+      return name.includes(q) || address.includes(q);
+    });
+  }, [gyms, searchQuery]);
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -132,23 +261,53 @@ export default function ViewRunsScreen({ navigation }) {
   </TouchableOpacity>
 </View>
 
+        {/* ── Search bar ────────────────────────────────────────────────── */}
+        <View style={styles.searchBar}>
+          <Ionicons name="search-outline" size={16} color={colors.textMuted} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search gyms"
+            placeholderTextColor={colors.textMuted}
+            value={searchQuery}
+            onChangeText={(text) => setSearchQuery(sanitizeSearch(text))}
+            returnKeyType="search"
+            clearButtonMode="while-editing"
+            autoCorrect={false}
+            autoCapitalize="words"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+
         <ScrollView
           contentContainerStyle={styles.scroll}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {gyms.length === 0 ? (
+          {filteredGyms.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No gyms available</Text>
-              <Text style={styles.emptySubtext}>
-                Pull down to refresh
-              </Text>
+              {searchQuery.trim().length > 0 ? (
+                <>
+                  <Text style={styles.emptyText}>No gyms found</Text>
+                  <Text style={styles.emptySubtext}>Try another gym name or area</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.emptyText}>No gyms available</Text>
+                  <Text style={styles.emptySubtext}>Pull down to refresh</Text>
+                </>
+              )}
             </View>
           ) : (
-            gyms.map((gym) => {
-              const count = gym.currentPresenceCount || 0;
+            filteredGyms.map((gym) => {
+              // Real-time deduplicated count — NOT gym.currentPresenceCount
+              const count = liveCountMap[gym.id] ?? 0;
               const activity = getActivityLevel(count);
+              const runStatus = getRunStatusLabel(count);
 
               const isFollowed = followedGyms.includes(gym.id);
 
@@ -215,8 +374,11 @@ export default function ViewRunsScreen({ navigation }) {
                         {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
                         <Text style={styles.runTypeAccent}>OPEN RUN</Text>
                       </Text>
-                      <Text style={styles.playerCount}>
-                        {count}/15
+                      {/* Run quality label — replaces the old "{count}/15" format.
+                          Public gyms have no hard cap so showing /15 was misleading.
+                          Count comes from real-time liveCountMap, deduped by odId. */}
+                      <Text style={[styles.runStatusLabel, { color: runStatus.color }]}>
+                        {runStatus.label}{runStatus.countText ? ` ${runStatus.countText}` : ''}
                       </Text>
                     </View>
 
@@ -292,6 +454,32 @@ loadingText: {
   subtitle: {
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
+  },
+  // ── Search bar ────────────────────────────────────────────────────
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 11,
+    marginBottom: SPACING.md,
+    borderWidth: 1.5,
+    borderColor: isDark ? 'rgba(255,255,255,0.18)' : colors.textMuted,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: isDark ? 0.4 : 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  searchIcon: {
+    marginRight: SPACING.xs,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    paddingVertical: 0, // remove default Android padding
   },
   scroll: {
     paddingBottom: SPACING.lg,
@@ -381,10 +569,9 @@ loadingText: {
     color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
   },
-  playerCount: {
+  runStatusLabel: {
     fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   addressRow: {
     flexDirection: 'row',

@@ -556,44 +556,6 @@ const HomeScreen = ({ navigation }) => {
             </View>
           </View>
 
-          {/*
-           * LIVE Indicator — compact banner shown above Hot Courts when any
-           * player is currently active. Tapping navigates to the hottest
-           * court's RunDetails screen. Renders nothing when totalActive === 0.
-           */}
-          {totalActive > 0 && (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                if (hottestGym) {
-                  navigation.getParent()?.navigate('Runs', {
-                    screen: 'RunDetails',
-                    params: {
-                      gymId: hottestGym.id,
-                      gymName: hottestGym.name,
-                      imageUrl: hottestGym.imageUrl,
-                    },
-                  });
-                }
-              }}
-            >
-              <BlurView intensity={40} tint="dark" style={styles.liveBanner}>
-                <View style={styles.liveBannerTop}>
-                  <BlinkingDot active={totalActive > 0} style={styles.liveBannerDot} />
-                  <Text style={styles.liveBannerLabel}>🔥 LIVE</Text>
-                  <Text style={styles.liveBannerCount}> · {totalActive} playing right now</Text>
-                </View>
-                {hottestGym && (
-                  <Text style={styles.liveBannerSub}>
-                    {'Top court: '}
-                    <Text style={styles.liveBannerGym}>{hottestGym.name}</Text>
-                    {` (${liveCountMap[hottestGym.id] || 0})`}
-                  </Text>
-                )}
-              </BlurView>
-            </TouchableOpacity>
-          )}
-
           {/* Live Runs Near You — horizontal scroll of gyms with active players */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Live Runs Near You</Text>
@@ -686,7 +648,21 @@ const HomeScreen = ({ navigation }) => {
                       })
                     }
                   >
-                    <BlurView intensity={65} tint="dark" style={styles.liveRunCard}>
+                    <View style={styles.liveRunCard}>
+                      {/* Gym image — faded background layer */}
+                      <Image
+                        source={
+                          gym.imageUrl
+                            ? { uri: gym.imageUrl }
+                            : require('../assets/basketball-court.png')
+                        }
+                        style={styles.liveRunBgImage}
+                        resizeMode="cover"
+                        blurRadius={1.5}
+                      />
+                      {/* Dark overlay — sits above the image, below content */}
+                      <View style={styles.liveRunBgOverlay} />
+
                       {/* 🔴 LIVE badge */}
                       <View style={styles.liveRunBadge}>
                         <BlinkingDot active style={styles.liveRunDot} />
@@ -695,6 +671,15 @@ const HomeScreen = ({ navigation }) => {
 
                       {/* Gym name — prominent, sits just under the badge */}
                       <Text style={styles.liveRunGymName} numberOfLines={2}>{gym.name}</Text>
+
+                      {/* City label — subtle secondary line; gym.city is set directly on the
+                          gym doc (e.g. "Round Rock"). No parsing needed, and the label is
+                          suppressed entirely if the field is absent so nothing breaks. */}
+                      {gym.city ? (
+                        <Text style={styles.liveRunLocation} numberOfLines={1}>
+                          📍 {gym.city}
+                        </Text>
+                      ) : null}
 
                       {/* Avatar stack — up to 3 overlapping circles + overflow pill */}
                       <View style={styles.liveRunAvatarRow}>
@@ -729,7 +714,7 @@ const HomeScreen = ({ navigation }) => {
                           {getRunEnergyLabel(activeCount).label}
                         </Text>
                       </Text>
-                    </BlurView>
+                    </View>
                   </TouchableOpacity>
                 );
               })}
@@ -937,51 +922,6 @@ actionCard: {
     color: 'rgba(255,255,255,0.6)',
   },
 
-  // LIVE Indicator banner — compact BlurView strip above Hot Courts
-  liveBanner: {
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    borderLeftWidth: 3,
-    borderLeftColor: colors.success,
-    marginTop: SPACING.xl,
-    gap: 4,
-  },
-  liveBannerTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  liveBannerDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.success,
-  },
-  liveBannerLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: '#FFFFFF',
-    letterSpacing: 1,
-  },
-  liveBannerCount: {
-    fontSize: FONT_SIZES.xs,
-    color: 'rgba(255,255,255,0.65)',
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  liveBannerSub: {
-    fontSize: FONT_SIZES.xs,
-    color: 'rgba(255,255,255,0.45)',
-    marginTop: 1,
-  },
-  liveBannerGym: {
-    color: colors.primary,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-
   liveActivity: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1140,6 +1080,25 @@ actionCard: {
     elevation: 6,
   },
 
+  // Gym image background — absolutely fills the card at reduced opacity
+  liveRunBgImage: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    opacity: 0.99,
+  },
+  // Dark scrim — sits above the image to keep text readable
+  liveRunBgOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+  },
+
   // 🔴 LIVE badge row
   liveRunBadge: {
     flexDirection: 'row',
@@ -1204,6 +1163,11 @@ actionCard: {
     color: '#FFFFFF',
     letterSpacing: -0.1,
     lineHeight: 20,
+  },
+  liveRunLocation: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 2,
   },
 
   // Bottom row: player count + quality badge side by side

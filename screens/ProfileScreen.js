@@ -781,6 +781,36 @@ export default function ProfileScreen({ navigation }) {
           )}
         </View>
 
+        {/* ── Premium Teaser ────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.premiumCard}
+          activeOpacity={0.82}
+          onPress={() => navigation.navigate('Premium')}
+        >
+          {/* Icon + title row */}
+          <View style={styles.premiumTopRow}>
+            <View style={styles.premiumIconWrap}>
+              <Ionicons name="flash" size={22} color="#FF6B35" />
+            </View>
+            <View style={styles.premiumText}>
+              <View style={styles.premiumTitleRow}>
+                <Text style={styles.premiumTitle}>RunCheck Premium</Text>
+                <View style={styles.premiumPill}>
+                  <Text style={styles.premiumPillText}>Coming Soon</Text>
+                </View>
+              </View>
+              <Text style={styles.premiumSubtitle}>
+                Unlock private runs, skill filters, smart alerts, unlimited clips, and more.
+              </Text>
+            </View>
+          </View>
+          {/* CTA link row */}
+          <View style={styles.premiumCtaRow}>
+            <Text style={styles.premiumCtaText}>See What's Included</Text>
+            <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
+          </View>
+        </TouchableOpacity>
+
         {/* ── Settings ──────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Settings</Text>
@@ -941,6 +971,77 @@ const getStyles = (colors, isDark) =>
       textTransform: 'uppercase',
       letterSpacing: 0.8,
       marginBottom: SPACING.sm,
+    },
+    // Premium teaser card
+    premiumCard: {
+      backgroundColor: isDark ? '#1F1510' : '#FFF3ED',
+      borderRadius: RADIUS.md,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+      borderWidth: 1,
+      borderColor: '#FF6B3544',
+    },
+    premiumTopRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+    },
+    premiumIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: RADIUS.sm,
+      backgroundColor: '#FF6B3520',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: SPACING.sm,
+      flexShrink: 0,
+    },
+    premiumText: {
+      flex: 1,
+    },
+    premiumTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      marginBottom: 3,
+    },
+    premiumTitle: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#FF6B35',
+      marginRight: SPACING.xs,
+    },
+    premiumPill: {
+      backgroundColor: '#FF6B3520',
+      borderRadius: RADIUS.full,
+      borderWidth: 1,
+      borderColor: '#FF6B3555',
+      paddingHorizontal: 7,
+      paddingVertical: 1,
+    },
+    premiumPillText: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#FF6B35',
+      letterSpacing: 0.5,
+    },
+    premiumSubtitle: {
+      fontSize: FONT_SIZES.small,
+      color: isDark ? '#FF8F60' : '#C4501A',
+      lineHeight: 18,
+    },
+    premiumCtaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: SPACING.sm,
+      paddingTop: SPACING.xs,
+      borderTopWidth: 1,
+      borderTopColor: '#FF6B3530',
+    },
+    premiumCtaText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#FF6B35',
+      marginRight: 3,
     },
     // Reliability score
     scoreRow: {

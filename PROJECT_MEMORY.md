@@ -44,6 +44,7 @@ EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile development
   navigation.navigate('Home', { screen: 'UserProfile', params: { userId } })
   // NOT navigation.push('UserProfile') — that throws "not handled by any navigator"
   ```
+- **Check In tab is a status screen, not a gym picker.** Primary check-in path: Runs tab → RunDetailsScreen → "Check In Here" button. The tab shows: (a) not-checked-in state with "Find a Run" CTA + followed-gym shortcuts; (b) active session state with gym name, time remaining, "View This Run", and "Check Out". Do not add a gym picker back to this tab.
 
 ## Key Architectural Decisions
 - Presence doc ID is a compound key `{userId}_{gymId}` — prevents duplicate active presences
@@ -54,6 +55,7 @@ EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile development
 - Skill level valid values are `['Casual', 'Competitive', 'Either']`; all screens normalize legacy values to `'Casual'`
 - **Single source of truth for player counts**: always derive from real-time `livePresenceMap` / `presences` — never from `gym.currentPresenceCount` (that's a stale Firestore counter)
 - **Deduplication**: a user can have two presence docs in edge cases; always dedup by `odId` using a `Set` before counting or rendering
+- **Player count display format**: use run-quality labels, not `{count}/15`. Public gyms have no hard cap. Labels: Empty / Light Run · N playing / Building · N playing / Good Run · N playing / Packed · N playing / Jumping · N playing. See `getRunStatusLabel` in ViewRunsScreen.js and `getRunEnergyLabel` in HomeScreen.js.
 
 ## Presence Doc Shape
 ```js
@@ -104,9 +106,12 @@ const getRunEnergyLabel = (count) => {
 - Badge/rank system: Bronze/Silver/Gold/Platinum with correct distinct colors
 - Skill level migration script at `scripts/migrateSkillLevels.js`
 - UserProfileScreen and ProfileScreen normalize legacy skill level values
-- Live Runs section on HomeScreen: real-time cards with avatars, player count, energy label, empty state
+- Live Runs section on HomeScreen: real-time cards with avatars, player count, energy label, empty state; gym photo background (opacity 0.30) + dark overlay; city label from `gym.city`; top LIVE banner removed (was redundant)
 - RunDetailsScreen: Now Playing list deduped by odId; playerCount matches row count
 - PresenceList navigation fixed (nested navigator path)
+- RunCheck Premium: UI-only teaser card on ProfileScreen (below Current Status, above Settings) → PremiumScreen with 5 feature cards ($4.99/mo · $29.99/yr) + Alert-based CTA; zero billing logic
+- Check In tab: repurposed as session status screen (see Navigation Structure); gym picker removed
+- Find a Run (ViewRunsScreen): gym search bar with local-only filter against name + address; input sanitized (strip non-`[a-zA-Z0-9 '.-&]`, max 50 chars)
 
 ## Files Modified Recently (2026-03-05 session)
 | File | What changed |
@@ -114,6 +119,16 @@ const getRunEnergyLabel = (count) => {
 | `components/PresenceList.js` | Fixed nested nav: `navigate('Home', { screen: 'UserProfile', params })` |
 | `screens/HomeScreen.js` | Energy labels, totalActive from livePresenceMap, empty state with Check In button, per-card dedup + guard, debug logs |
 | `screens/RunDetailsScreen.js` | Removed fake data (fakePlayers etc.), added uniqueActivePresences useMemo, playerCount from unique count, debug logs |
+
+## Files Modified Recently (2026-03-09 session)
+| File | What changed |
+|---|---|
+| `screens/ProfileScreen.js` | Added Premium teaser card (below Current Status, above Settings) |
+| `screens/PremiumScreen.js` | Created new screen: 5 feature cards, pricing tiles, Alert-based CTA, no billing |
+| `App.js` | Registered PremiumScreen in ProfileStack |
+| `screens/CheckInScreen.js` | Replaced gym-picker form with status screen; removed DropDownPicker |
+| `screens/ViewRunsScreen.js` | Fixed player counts (liveCountMap subscription); run status labels; gym search bar |
+| `screens/HomeScreen.js` | Live Run card gym photo backgrounds + overlay + city label; removed top LIVE banner |
 
 ## Debug Logs (intentionally left in, remove after confirming)
 Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console logs:

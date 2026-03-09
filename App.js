@@ -46,6 +46,7 @@ import CityGateScreen from './screens/CityGateScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import ClipPlayerScreen from './screens/ClipPlayerScreen';
+import PremiumScreen from './screens/PremiumScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -145,6 +146,7 @@ function ProfileStack() {
     <Stack.Navigator>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Premium" component={PremiumScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
