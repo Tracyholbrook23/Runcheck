@@ -52,6 +52,7 @@ import { usePresence, useGyms } from '../hooks';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
+import { PRESENCE_STATUS } from '../services/models';
 
 /**
  * BlinkingDot — A small green dot that pulses its opacity when `active` is
@@ -140,23 +141,33 @@ const HomeScreen = ({ navigation }) => {
     return () => unsubscribe();
   }, []);
 
-  // Subscribe to all active presence docs (checkedOutAt == null) in real time.
+  // Subscribe to all active presence docs in real time.
+  // Uses the same two-layer validation as subscribeToGymPresences in presenceService:
+  //   1. Firestore query filters by status == 'active' (excludes EXPIRED and CHECKED_OUT docs)
+  //   2. Client-side guard filters out docs where expiresAt is in the past
+  //      (handles the window before background cleanup fires on stale sessions)
   // Groups results by gymId so each Live Run card can show up to 3 player avatars.
   // userAvatar and userName are denormalized onto presence docs at check-in time,
   // so no additional user-doc reads are needed here.
   useEffect(() => {
     const q = query(
       collection(db, 'presence'),
-      where('checkedOutAt', '==', null),
+      where('status', '==', PRESENCE_STATUS.ACTIVE),
       limit(100)
     );
     const unsubscribe = onSnapshot(
       q,
       (snap) => {
+        const now = new Date();
         const map = {};
         snap.docs.forEach((d) => {
           const data = d.data();
           if (!data.gymId) return;
+          // Exclude sessions whose expiresAt has passed — same logic as
+          // subscribeToGymPresences. Prevents stale sessions from appearing
+          // on the Home screen when background cleanup hasn't fired yet.
+          const expiresAt = data.expiresAt?.toDate?.();
+          if (expiresAt && expiresAt < now) return;
           if (!map[data.gymId]) map[data.gymId] = [];
           map[data.gymId].push({
             odId: data.odId,
