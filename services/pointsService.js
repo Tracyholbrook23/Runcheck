@@ -60,6 +60,7 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
 
       await updateDoc(userRef, {
         totalPoints:                    increment(points),
+        weeklyPoints:                   increment(points),
         'pointsAwarded.followedGyms':   arrayUnion(gymId),
       });
     } else {
@@ -70,6 +71,7 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
 
       await updateDoc(userRef, {
         totalPoints:                    increment(-points),
+        weeklyPoints:                   increment(-points),
         'pointsAwarded.followedGyms':   arrayRemove(gymId),
       });
     }
@@ -119,7 +121,8 @@ export const awardPoints = async (uid, action, presenceId = null) => {
         }
 
         transaction.update(userRef, {
-          totalPoints: increment(points),
+          totalPoints:  increment(points),
+          weeklyPoints: increment(points),
           [`pointsAwarded.checkins.${presenceId}`]: true,
         });
 
@@ -141,12 +144,13 @@ export const awardPoints = async (uid, action, presenceId = null) => {
         return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
       }
       await updateDoc(userRef, {
-        totalPoints: increment(points),
+        totalPoints:  increment(points),
+        weeklyPoints: increment(points),
         profileCompletionAwarded: true,
       });
     } else {
       // All other actions — unconditional increment
-      await updateDoc(userRef, { totalPoints: increment(points) });
+      await updateDoc(userRef, { totalPoints: increment(points), weeklyPoints: increment(points) });
     }
 
     const newTotal = currentTotal + points;

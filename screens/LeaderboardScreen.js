@@ -188,11 +188,14 @@ export default function LeaderboardScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  const [users,   setUsers]   = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [activeTab,      setActiveTab]      = useState('allTime');
+  const [allTimeUsers,   setAllTimeUsers]   = useState([]);
+  const [allTimeLoading, setAllTimeLoading] = useState(true);
+  const [weeklyUsers,    setWeeklyUsers]    = useState([]);
+  const [weeklyLoading,  setWeeklyLoading]  = useState(true);
   const currentUid = auth.currentUser?.uid;
 
-  // Subscribe to top-20 users by totalPoints, live
+  // Subscribe to top-20 users by totalPoints — All Time tab
   useEffect(() => {
     const q = query(
       collection(db, 'users'),
@@ -202,25 +205,52 @@ export default function LeaderboardScreen({ navigation }) {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-        setLoading(false);
+        setAllTimeUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setAllTimeLoading(false);
       },
       (err) => {
-        console.error('Leaderboard snapshot error:', err);
-        setLoading(false);
+        console.error('Leaderboard allTime snapshot error:', err);
+        setAllTimeLoading(false);
       }
     );
     return unsub;
   }, []);
 
-  // Current user's stats from the live list
-  const currentUserEntry = users.find((u) => u.id === currentUid);
+  // Subscribe to top-20 users by weeklyPoints — This Week tab.
+  // Firestore only returns docs where weeklyPoints exists, so this is
+  // naturally empty until the first point is awarded after Phase 2B ships.
+  useEffect(() => {
+    const q = query(
+      collection(db, 'users'),
+      orderBy('weeklyPoints', 'desc'),
+      limit(20)
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setWeeklyUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setWeeklyLoading(false);
+      },
+      (err) => {
+        console.error('Leaderboard weekly snapshot error:', err);
+        setWeeklyLoading(false);
+      }
+    );
+    return unsub;
+  }, []);
+
+  // My Rank card always uses all-time data — rank is permanent, not weekly
+  const currentUserEntry = allTimeUsers.find((u) => u.id === currentUid);
   const currentPoints    = currentUserEntry?.totalPoints || 0;
   const currentRank      = getUserRank(currentPoints);
   const progress         = getProgressToNextRank(currentPoints);
   const nextRankEntry    = RANKS[RANKS.indexOf(currentRank) + 1];
   const ptsToNext        = currentRank.nextRankAt ? currentRank.nextRankAt - currentPoints : 0;
-  const myPosition       = users.findIndex((u) => u.id === currentUid) + 1;
+  const myPosition       = allTimeUsers.findIndex((u) => u.id === currentUid) + 1;
+
+  // Active list driven by tab selection
+  const displayUsers   = activeTab === 'allTime' ? allTimeUsers   : weeklyUsers;
+  const displayLoading = activeTab === 'allTime' ? allTimeLoading : weeklyLoading;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -351,24 +381,43 @@ export default function LeaderboardScreen({ navigation }) {
         </View>
 
         {/* ── Leaderboard list ─────────────────────────────────────── */}
-        {/* Phase 2B: replace this banner with the All Time / This Week toggle */}
-        <View style={styles.weeklyBanner}>
-          <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
-          <Text style={styles.weeklyBannerText}>WEEKLY LEADERBOARD · COMING SOON</Text>
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'allTime' && styles.tabPillActive]}
+            onPress={() => setActiveTab('allTime')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'allTime' && styles.tabPillTextActive]}>
+              All Time
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'thisWeek' && styles.tabPillActive]}
+            onPress={() => setActiveTab('thisWeek')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'thisWeek' && styles.tabPillTextActive]}>
+              This Week
+            </Text>
+          </TouchableOpacity>
         </View>
         <Text style={styles.sectionTitle}>Top Players</Text>
 
-        {loading ? (
+        {displayLoading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : users.length === 0 ? (
+        ) : displayUsers.length === 0 ? (
           <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>No rankings yet. Be the first to earn points!</Text>
+            <Text style={styles.emptyText}>
+              {activeTab === 'allTime'
+                ? 'No rankings yet. Be the first to earn points!'
+                : 'No weekly scores yet. Check back after your next run!'}
+            </Text>
           </View>
         ) : (
           <View style={styles.listCard}>
-            {users.map((user, index) => {
+            {displayUsers.map((user, index) => {
               const position = index + 1;
               const isMe = user.id === currentUid;
               const rank = getUserRank(user.totalPoints || 0);
@@ -389,7 +438,7 @@ export default function LeaderboardScreen({ navigation }) {
                   style={[
                     styles.row,
                     isMe && styles.rowHighlight,
-                    index < users.length - 1 && styles.rowBorder,
+                    index < displayUsers.length - 1 && styles.rowBorder,
                   ]}
                 >
                   {/* Rank position — Ionicons trophy (colored) for top 3, number otherwise */}
@@ -432,9 +481,12 @@ export default function LeaderboardScreen({ navigation }) {
                     <RankBadgePill rank={rank} small />
                   </View>
 
-                  {/* Point total */}
+                  {/* Point total — weekly tab shows weeklyPoints; rank color always from all-time totalPoints */}
                   <Text style={[styles.pts, { color: rank.color }]}>
-                    {(user.totalPoints || 0).toLocaleString()}
+                    {(activeTab === 'allTime'
+                      ? user.totalPoints  || 0
+                      : user.weeklyPoints || 0
+                    ).toLocaleString()}
                   </Text>
 
                   {/* Tap affordance — only shown for other players */}
@@ -824,27 +876,32 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
   },
 
-  // ── Weekly leaderboard teaser banner ──────────────────────────────────────
-  // Phase 2B: remove this and replace with the All Time / This Week toggle
-  weeklyBanner: {
+  // ── All Time / This Week tab toggle ───────────────────────────────────────
+  tabRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'center',
-    gap: SPACING.xs,
-    backgroundColor: colors.surface,
-    borderRadius: RADIUS.full,
-    paddingVertical: SPACING.xs + 2,
-    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
     marginBottom: SPACING.sm,
+  },
+  tabPill: {
+    flex: 1,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    alignItems: 'center',
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  weeklyBannerText: {
-    fontSize: FONT_SIZES.xs,
+  tabPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  tabPillText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textMuted,
-    fontWeight: FONT_WEIGHTS.medium,
-    letterSpacing: 0.6,
+  },
+  tabPillTextActive: {
+    color: '#FFFFFF',
   },
 
   // ── Misc ──────────────────────────────────────────────────────────────────
