@@ -264,11 +264,20 @@ export default function LeaderboardScreen({ navigation }) {
               ]}
             />
           </View>
-          <Text style={styles.progressLabel}>
-            {currentRank.nextRankAt
-              ? `${ptsToNext} pts to ${nextRankEntry?.name ?? ''}`
-              : 'You\'ve reached the top rank!'}
-          </Text>
+          {currentRank.nextRankAt ? (
+            <View style={styles.nextUnlockWrap}>
+              <Text style={[styles.nextUnlockLabel, { color: nextRankEntry?.color }]}>
+                {nextRankEntry?.icon}  {nextRankEntry?.name} · {ptsToNext} pts away
+              </Text>
+              <Text style={styles.nextUnlockDesc}>
+                {RANK_PERKS[nextRankEntry?.name ?? '']}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.progressLabel}>
+              {"You've reached the top tier. RunCheck's most trusted hooper."}
+            </Text>
+          )}
         </View>
 
         {/* ── Why Rank Matters ─────────────────────────────────────── */}
@@ -300,7 +309,53 @@ export default function LeaderboardScreen({ navigation }) {
           })}
         </View>
 
+        {/* ── Rewards & Recognition ────────────────────────────────── */}
+        <Text style={styles.sectionTitle}>Rewards & Recognition</Text>
+        <View style={styles.listCard}>
+          {[
+            {
+              icon: 'trophy-outline',
+              color: '#FFD700',
+              label: 'Weekly Winner',
+              desc: 'Top hooper of the week earns recognition across the community.',
+            },
+            {
+              icon: 'megaphone-outline',
+              color: '#5B8FF9',
+              label: 'Player Spotlight',
+              desc: "Winner gets featured on RunCheck's social channels.",
+            },
+            {
+              icon: 'lock-open-outline',
+              color: '#52C41A',
+              label: 'Exclusive Access',
+              desc: 'Rank milestones unlock special app perks for top players.',
+            },
+          ].map((item, index, arr) => (
+            <View
+              key={item.label}
+              style={[styles.rewardRow, index < arr.length - 1 && styles.rowBorder]}
+            >
+              <View style={[styles.rewardIconCircle, { backgroundColor: item.color + '20' }]}>
+                <Ionicons name={item.icon} size={17} color={item.color} />
+              </View>
+              <View style={styles.actionInfo}>
+                <Text style={styles.actionLabel}>{item.label}</Text>
+                <Text style={styles.actionNote}>{item.desc}</Text>
+              </View>
+              <View style={styles.comingSoonPill}>
+                <Text style={styles.comingSoonText}>Coming Soon</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
         {/* ── Leaderboard list ─────────────────────────────────────── */}
+        {/* Phase 2B: replace this banner with the All Time / This Week toggle */}
+        <View style={styles.weeklyBanner}>
+          <Ionicons name="calendar-outline" size={13} color={colors.textMuted} />
+          <Text style={styles.weeklyBannerText}>WEEKLY LEADERBOARD · COMING SOON</Text>
+        </View>
         <Text style={styles.sectionTitle}>Top Players</Text>
 
         {loading ? (
@@ -721,6 +776,75 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   currentBadgeText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ── Next Unlock hint — inside My Rank card ────────────────────────────────
+  nextUnlockWrap: {
+    marginTop: SPACING.xs,
+    gap: 3,
+    alignItems: 'center',
+  },
+  nextUnlockLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    textAlign: 'center',
+  },
+  nextUnlockDesc: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    textAlign: 'center',
+  },
+
+  // ── Rewards & Recognition rows ────────────────────────────────────────────
+  rewardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 3,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  rewardIconCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  comingSoonPill: {
+    backgroundColor: colors.textMuted + '20',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    flexShrink: 0,
+  },
+  comingSoonText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── Weekly leaderboard teaser banner ──────────────────────────────────────
+  // Phase 2B: remove this and replace with the All Time / This Week toggle
+  weeklyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    gap: SPACING.xs,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.full,
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  weeklyBannerText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    fontWeight: FONT_WEIGHTS.medium,
+    letterSpacing: 0.6,
   },
 
   // ── Misc ──────────────────────────────────────────────────────────────────
