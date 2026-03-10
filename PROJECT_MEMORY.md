@@ -128,7 +128,9 @@ const getRunEnergyLabel = (count) => {
 | `App.js` | Registered PremiumScreen in ProfileStack |
 | `screens/CheckInScreen.js` | Replaced gym-picker form with status screen; removed DropDownPicker |
 | `screens/ViewRunsScreen.js` | Fixed player counts (liveCountMap subscription); run status labels; gym search bar |
-| `screens/HomeScreen.js` | Live Run card gym photo backgrounds + overlay + city label; removed top LIVE banner |
+| `screens/HomeScreen.js` | Live Run card gym photo backgrounds + overlay + city label; removed top LIVE banner; fixed stale session bug (presence query now uses `PRESENCE_STATUS.ACTIVE` constant + client-side `expiresAt > now` filter, matching `subscribeToGymPresences` logic; added `PRESENCE_STATUS` import from `services/models`) |
+| `screens/LeaderboardScreen.js` | Leaderboard rows now tappable (`TouchableOpacity`, `disabled` on own row, chevron affordance for others); added `RANK_PERKS` display-only copy object; added "Why Rank Matters" card (4-tier list with icon, color, description, "You" badge on current tier); Rank Tiers section now shows `rank.icon` emoji instead of small colored dot; new styles: `tierIcon`, `perksRow`, `perksInfo`, `perksDesc`, `currentBadge`, `currentBadgeText` |
+| `App.js` | Added `UserProfile` screen to `ProfileStack` so leaderboard row taps navigate correctly from the Profile tab entry point |
 
 ## Debug Logs (intentionally left in, remove after confirming)
 Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console logs:
@@ -154,3 +156,30 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 ## How to Give Claude Context at Start of Each Session
 Tell Claude: "Read PROJECT_MEMORY.md in my Runcheck folder before we start."
 Or just open a new Cowork session — Claude will find and read this file automatically.
+
+## Weekly Leaderboard System
+RunCheck includes a weekly competition system alongside the permanent leaderboard.
+Key design decisions:
+- User documents store both `totalPoints` (all-time) and `weeklyPoints`.
+- All point-awarding logic increments both values simultaneously in `pointsService.js`.
+- The leaderboard UI supports two views: **All Time** and **This Week**.
+- Player rank tiers always derive from `totalPoints`.
+- The weekly leaderboard only changes the ordering and displayed points.
+
+Weekly winners are stored in:
+weeklyWinners/{YYYY-MM-DD}
+Document structure:
+{ uid, name, photoURL, weeklyPoints, weekOf, recordedAt}
+
+A reset script (`scripts/weeklyReset.js`) records the winner and clears `weeklyPoints` for the next competition cycle.
+
+## Instagram Integration (Home Screen)
+RunCheck includes Instagram entry points to connect the app with the community page.
+Key elements:
+- `INSTAGRAM_URL` constant defined in `HomeScreen.js`
+- Header icon order: **Instagram → Trophy → Profile**
+- Instagram icon uses `Ionicons` (`logo-instagram`)
+- A community card is placed between the **Recent Activity feed** and the **footer tagline**
+
+Both entry points open the RunCheck Instagram page using:
+Linking.openURL(INSTAGRAM_URL)

@@ -166,10 +166,12 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Current user UID — stable for the lifetime of the screen
   const uid = auth.currentUser?.uid;
 
-  // Presence hook — provides checkIn() and checkingIn loading flag for the
-  // one-tap "Check In Here" button.  Business logic lives in presenceService;
-  // we never duplicate it here.
-  const { checkIn, checkingIn } = usePresence();
+  // Presence hook — provides checkIn(), checkingIn, and the live presence doc.
+  // `presence` is used here to derive the presenceId (the compound session key
+  // `{uid}_{gymId}`) which is passed to createClipSession so the Cloud Function
+  // can enforce "one clip per user per session" rather than per-gym-per-window.
+  // Business logic lives in presenceService; we never duplicate it here.
+  const { checkIn, checkingIn, presence } = usePresence();
 
   /**
    * handleCheckInHere — One-tap check-in directly into the gym being viewed.
@@ -239,6 +241,25 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Derived — true if the current user already has a review for this gym.
   // Recomputed whenever the live reviews snapshot updates.
   const hasReviewed = !!uid && reviews.some((r) => r.userId === uid);
+
+  // Derived — true if the current user already has a clip for their active
+  // presence session.  A "session" is identified by presence.id, which is
+  // the compound key `{uid}_{gymId}` written by presenceService.checkIn().
+  //
+  // Matching on both uploaderUid AND presenceId means:
+  //   • A different user posting at the same gym is never blocked.
+  //   • The same user checking back in for a NEW session gets a fresh slot,
+  //     even if their earlier clip is still within its 48-hour expiry window.
+  //
+  // Note: presenceId is stored on gymClips docs by the createClipSession /
+  // finalizeClipUpload Cloud Functions (see backend change spec below).
+  // Until the backend is deployed this will always be false, which is safe —
+  // the server-side check is the authoritative guard.
+  const hasAlreadyPostedClip =
+    !!uid &&
+    !!presence?.id &&
+    Array.isArray(gymClips) &&
+    gymClips.some((c) => c.uploaderUid === uid && c.presenceId === presence.id);
 
   // Check-in gate — true once we confirm the user has ever checked in here.
   // A one-time query is sufficient; presence records are never deleted.
@@ -575,7 +596,13 @@ export default function RunDetailsScreen({ route, navigation }) {
       setPostingClip(true);
       try {
         const fn = httpsCallable(getFunctions(), 'createClipSession');
-        const res = await fn({ gymId });
+        // presenceId ties this clip to the user's current check-in session
+        // (compound key `{uid}_{gymId}`).  The Cloud Function stores it on the
+        // gymClips doc so the duplicate check can be scoped per session rather
+        // than per gym.  Passing null is safe — the function falls back to the
+        // gymId-only check if presenceId is absent.
+        const presenceId = presence?.id ?? null;
+        const res = await fn({ gymId, presenceId });
         navigation.navigate('RecordClipScreen', { clipSession: res.data, gymId });
       } catch (err) {
         Alert.alert(
@@ -630,7 +657,9 @@ export default function RunDetailsScreen({ route, navigation }) {
       setPostingClip(true);
       try {
         const fn = httpsCallable(getFunctions(), 'createClipSession');
-        const res = await fn({ gymId });
+        // Same presenceId handoff as Path A — see comment there.
+        const presenceId = presence?.id ?? null;
+        const res = await fn({ gymId, presenceId });
         navigation.navigate('TrimClipScreen', {
           clipSession: res.data,
           sourceVideoUri: asset.uri,
@@ -1102,17 +1131,22 @@ export default function RunDetailsScreen({ route, navigation }) {
               contentContainerStyle={clipPlayerStyles.storiesRow}
             >
               <TouchableOpacity
-                style={[clipPlayerStyles.storiesPostTile, postingClip && { opacity: 0.6 }]}
+                style={[
+                  clipPlayerStyles.storiesPostTile,
+                  (postingClip || hasAlreadyPostedClip) && { opacity: 0.5 },
+                ]}
                 onPress={handlePostClip}
-                disabled={postingClip || !gymId}
+                disabled={postingClip || hasAlreadyPostedClip || !gymId}
               >
                 {postingClip ? (
                   <ActivityIndicator color="#FF7A45" size="small" />
+                ) : hasAlreadyPostedClip ? (
+                  <Ionicons name="checkmark-circle-outline" size={30} color="#6B7280" />
                 ) : (
                   <Ionicons name="add-circle-outline" size={30} color="#FF7A45" />
                 )}
                 <Text style={clipPlayerStyles.storiesPostLabel}>
-                  {postingClip ? 'Starting…' : 'Post'}
+                  {postingClip ? 'Starting…' : hasAlreadyPostedClip ? 'Posted' : 'Post'}
                 </Text>
               </TouchableOpacity>
               {[1, 2, 3].map((i) => (
@@ -1128,17 +1162,22 @@ export default function RunDetailsScreen({ route, navigation }) {
               contentContainerStyle={clipPlayerStyles.storiesRow}
               ListHeaderComponent={
                 <TouchableOpacity
-                  style={[clipPlayerStyles.storiesPostTile, postingClip && { opacity: 0.6 }]}
+                  style={[
+                    clipPlayerStyles.storiesPostTile,
+                    (postingClip || hasAlreadyPostedClip) && { opacity: 0.5 },
+                  ]}
                   onPress={handlePostClip}
-                  disabled={postingClip || !gymId}
+                  disabled={postingClip || hasAlreadyPostedClip || !gymId}
                 >
                   {postingClip ? (
                     <ActivityIndicator color="#FF7A45" size="small" />
+                  ) : hasAlreadyPostedClip ? (
+                    <Ionicons name="checkmark-circle-outline" size={30} color="#6B7280" />
                   ) : (
                     <Ionicons name="add-circle-outline" size={30} color="#FF7A45" />
                   )}
                   <Text style={clipPlayerStyles.storiesPostLabel}>
-                    {postingClip ? 'Starting…' : 'Post'}
+                    {postingClip ? 'Starting…' : hasAlreadyPostedClip ? 'Posted' : 'Post'}
                   </Text>
                 </TouchableOpacity>
               }
