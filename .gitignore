@@ -46,3 +46,4 @@ node_modules/
 # Test coverage
 coverage/
 serviceAccountKey.json
+node_modules_old/
