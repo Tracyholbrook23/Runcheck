@@ -43,6 +43,7 @@ import {
   ImageBackground,
   Image,
   Animated,
+  Linking,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,6 +54,9 @@ import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
 import { PRESENCE_STATUS } from '../services/models';
+
+// Instagram community link — used by both the header icon and the footer card.
+const INSTAGRAM_URL = 'https://www.instagram.com/run.check?igsh=dWdieWZteXlvd21k&utm_source=qr';
 
 /**
  * BlinkingDot — A small green dot that pulses its opacity when `active` is
@@ -469,6 +473,12 @@ const HomeScreen = ({ navigation }) => {
           <View style={styles.headerIcons}>
             <TouchableOpacity
               style={styles.headerIcon}
+              onPress={() => Linking.openURL(INSTAGRAM_URL)}
+            >
+              <Ionicons name="logo-instagram" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerIcon}
               onPress={() => navigation.navigate('Leaderboard')}
             >
               <Ionicons name="trophy-outline" size={24} color="#FFFFFF" />
@@ -756,6 +766,26 @@ const HomeScreen = ({ navigation }) => {
             )}
           </View>
 
+          {/* Instagram community card */}
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => Linking.openURL(INSTAGRAM_URL)}
+            style={styles.igCardWrapper}
+          >
+            <BlurView intensity={40} tint="dark" style={styles.igCard}>
+              <View style={styles.igIconCircle}>
+                <Ionicons name="logo-instagram" size={22} color="#F97316" />
+              </View>
+              <View style={styles.igCardInfo}>
+                <Text style={styles.igCardTitle}>Join the RunCheck community</Text>
+                <Text style={styles.igCardSub}>
+                  Follow us on Instagram for clips, updates, and featured hoopers
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.4)" />
+            </BlurView>
+          </TouchableOpacity>
+
           {/* Footer tagline */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Built for hoopers. Powered by community.</Text>
@@ -953,6 +983,44 @@ actionCard: {
     fontWeight: FONT_WEIGHTS.bold,
     letterSpacing: 0.3,
   },
+  // Instagram community card
+  igCardWrapper: {
+    marginTop: SPACING.lg,
+  },
+  igCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.30)',
+    gap: SPACING.sm,
+  },
+  igIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(249,115,22,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  igCardInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  igCardTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    letterSpacing: -0.1,
+  },
+  igCardSub: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 16,
+  },
+
   footer: {
     paddingVertical: SPACING.xxxl,
     alignItems: 'center',
