@@ -265,8 +265,49 @@ export default function RunDetailsScreen({ route, navigation }) {
   // A one-time query is sufficient; presence records are never deleted.
   const [hasCheckedIn, setHasCheckedIn] = useState(false);
 
+  // ── ScrollView ref + clips section Y offset (for scrollToClips nav param) ──
+  const scrollViewRef  = useRef(null);
+  const clipsYRef      = useRef(0);
+
+  // Listen for scrollToClips param (set by TrimClipScreen after a successful post)
+  // and scroll the view to the clips section automatically.
+  useEffect(() => {
+    if (!route.params?.scrollToClips) return;
+    const timer = setTimeout(() => {
+      scrollViewRef.current?.scrollTo({ y: clipsYRef.current, animated: true });
+    }, 350); // small delay so the screen has settled after navigation
+    // Clear the param so it doesn't re-trigger on subsequent focus events
+    navigation.setParams({ scrollToClips: undefined });
+    return () => clearTimeout(timer);
+  }, [route.params?.scrollToClips]);
+
   // Clip posting — tracks in-flight createClipSession calls
   const [postingClip, setPostingClip] = useState(false);
+
+  // Bottom sheet — clip source picker
+  const [clipSheetVisible, setClipSheetVisible] = useState(false);
+  const clipSheetAnim = useRef(new Animated.Value(0)).current;
+
+  const openClipSheet = () => {
+    setClipSheetVisible(true);
+    Animated.spring(clipSheetAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      damping: 20,
+      stiffness: 180,
+    }).start();
+  };
+
+  const closeClipSheet = (callback) => {
+    Animated.timing(clipSheetAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setClipSheetVisible(false);
+      if (typeof callback === 'function') callback();
+    });
+  };
 
   // Gym Clips feed
   const [gymClips, setGymClips] = useState([]);
@@ -567,56 +608,36 @@ export default function RunDetailsScreen({ route, navigation }) {
     );
   };
 
+  // Maximum clip length enforced on the library-upload path (recording is
+  // capped natively inside RecordClipScreen at the same value).
+  const MAX_CLIP_DURATION_SEC = 30;
+
   /**
-   * handlePostClip — Lets the user choose a clip source, validates the video,
-   * then reserves a clip session only after validation passes.
-   *
-   * Steps:
-   *   1. Show an Alert: "Record Clip" | "Upload from Phone" | "Cancel".
-   *   2a. Record Clip  → createClipSession → navigate to RecordClipScreen.
-   *       RecordClipScreen handles camera/mic permissions and 10 s auto-stop.
-   *   2b. Upload       → open library picker; enforce ≤10 s duration;
-   *       createClipSession only after validation passes → TrimClipScreen.
-   *   3.  Cancel / picker dismissed / duration fail → no session reserved,
-   *       no cleanup needed.
+   * goToRecorder — Path A: in-app recording.
+   * No session is reserved here. presenceId is passed through RecordClipScreen →
+   * TrimClipScreen so that createClipSession is only called when the user taps
+   * Post Clip. Backing out at any earlier point is always safe.
+   * Called by the bottom sheet "Record Clip" option.
    */
-  const handlePostClip = async () => {
-    if (!gymId) {
-      Alert.alert('Error', 'No gym selected. Please try again.');
-      return;
-    }
+  const goToRecorder = () => {
+    // presenceId forwarded through the recording flow; session created only on Post Clip tap.
+    // gymName passed so RecordClipScreen can display it in the header.
+    const presenceId   = presence?.id ?? null;
+    const displayName  = gym?.name || gymName;
+    closeClipSheet(() => {
+      navigation.navigate('RecordClipScreen', { gymId, presenceId, gymName: displayName });
+    });
+  };
 
-    // Maximum clip length enforced on the upload path (recording is capped
-    // natively inside RecordClipScreen).
-    const MAX_CLIP_DURATION_SEC = 10;
-
-    // ── Path A: in-app recording ──────────────────────────────────────────
-    // Reserve the session here because RecordClipScreen needs it immediately.
-    const goToRecorder = async () => {
-      setPostingClip(true);
-      try {
-        const fn = httpsCallable(getFunctions(), 'createClipSession');
-        // presenceId ties this clip to the user's current check-in session
-        // (compound key `{uid}_{gymId}`).  The Cloud Function stores it on the
-        // gymClips doc so the duplicate check can be scoped per session rather
-        // than per gym.  Passing null is safe — the function falls back to the
-        // gymId-only check if presenceId is absent.
-        const presenceId = presence?.id ?? null;
-        const res = await fn({ gymId, presenceId });
-        navigation.navigate('RecordClipScreen', { clipSession: res.data, gymId });
-      } catch (err) {
-        Alert.alert(
-          'Could not start clip',
-          err?.message || 'Something went wrong. Please try again.'
-        );
-      } finally {
-        setPostingClip(false);
-      }
-    };
-
-    // ── Path B: upload an existing video from the photo library ──────────
-    // Session is reserved AFTER duration validation to avoid ghost sessions.
-    const uploadFromLibrary = async () => {
+  /**
+   * uploadFromLibrary — Path B: upload an existing video from the photo library.
+   * Validates duration locally, then navigates to TrimClipScreen.
+   * Session creation (createClipSession) is deferred to TrimClipScreen.handlePostClip
+   * so backing out of the preview never consumes a clip slot.
+   * Called by the bottom sheet "Upload from Library" option.
+   */
+  const uploadFromLibrary = async () => {
+    closeClipSheet(async () => {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       console.log('[clips] photo library permission status:', status);
       // 'limited' = iOS 14+ partial access — the picker still works, so allow it.
@@ -653,38 +674,30 @@ export default function RunDetailsScreen({ route, navigation }) {
         return;
       }
 
-      // ── Validation passed — reserve session now ───────────────────────
-      setPostingClip(true);
-      try {
-        const fn = httpsCallable(getFunctions(), 'createClipSession');
-        // Same presenceId handoff as Path A — see comment there.
-        const presenceId = presence?.id ?? null;
-        const res = await fn({ gymId, presenceId });
-        navigation.navigate('TrimClipScreen', {
-          clipSession: res.data,
-          sourceVideoUri: asset.uri,
-          gymId,
-        });
-      } catch (err) {
-        Alert.alert(
-          'Could not start clip',
-          err?.message || 'Something went wrong. Please try again.'
-        );
-      } finally {
-        setPostingClip(false);
-      }
-    };
+      // ── Validation passed — navigate to preview; session reserved on Post Clip tap ──
+      // No createClipSession here. TrimClipScreen.handlePostClip creates the session
+      // only when the user explicitly taps Post Clip, so backing out here is always safe.
+      const presenceId  = presence?.id ?? null;
+      const displayName = gym?.name || gymName;
+      navigation.navigate('TrimClipScreen', {
+        sourceVideoUri: asset.uri,
+        gymId,
+        gymName: displayName,
+        presenceId,
+      });
+    });
+  };
 
-    // ── Present the choice ────────────────────────────────────────────────
-    Alert.alert(
-      'Post a Clip',
-      'Clips must be 10 seconds or less.',
-      [
-        { text: 'Record Clip',       onPress: goToRecorder      },
-        { text: 'Upload from Phone', onPress: uploadFromLibrary },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+  /**
+   * handlePostClip — Opens the clip source picker bottom sheet.
+   * Session creation and upload logic lives entirely in TrimClipScreen.handlePostClip.
+   */
+  const handlePostClip = () => {
+    if (!gymId) {
+      Alert.alert('Error', 'No gym selected. Please try again.');
+      return;
+    }
+    openClipSheet();
   };
 
   /**
@@ -945,7 +958,7 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView style={styles.container}>
+      <ScrollView ref={scrollViewRef} style={styles.container}>
         {/* Hero image header with an absolute-positioned back button */}
         <View style={styles.heroContainer}>
           <Image
@@ -1116,7 +1129,10 @@ export default function RunDetailsScreen({ route, navigation }) {
         </View>
 
         {/* Clips — Stories-style horizontal row */}
-        <View style={styles.section}>
+        <View
+          style={styles.section}
+          onLayout={(e) => { clipsYRef.current = e.nativeEvent.layout.y; }}
+        >
           {/* Section header */}
           <View style={clipPlayerStyles.storiesHeaderRow}>
             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Clips</Text>
@@ -1385,6 +1401,95 @@ export default function RunDetailsScreen({ route, navigation }) {
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* ── Clip Source Bottom Sheet ─────────────────────────────────────── */}
+      <Modal
+        visible={clipSheetVisible}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={() => closeClipSheet()}
+      >
+        {/* Scrim — tap outside to dismiss */}
+        <TouchableOpacity
+          style={clipSheetStyles.scrim}
+          activeOpacity={1}
+          onPress={() => closeClipSheet()}
+        >
+          {/* Sheet panel — block touch propagation so tapping inside doesn't close */}
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <Animated.View
+              style={[
+                clipSheetStyles.sheet,
+                {
+                  transform: [{
+                    translateY: clipSheetAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [300, 0],
+                    }),
+                  }],
+                  opacity: clipSheetAnim.interpolate({
+                    inputRange: [0, 0.5, 1],
+                    outputRange: [0, 1, 1],
+                  }),
+                },
+              ]}
+            >
+              {/* Drag handle */}
+              <View style={clipSheetStyles.handle} />
+
+              <Text style={clipSheetStyles.sheetTitle}>Post a Clip</Text>
+              <Text style={clipSheetStyles.sheetSubtitle}>
+                Clips must be 10 seconds or less
+              </Text>
+
+              {/* Record option */}
+              <TouchableOpacity
+                style={clipSheetStyles.option}
+                onPress={goToRecorder}
+                activeOpacity={0.7}
+              >
+                <View style={[clipSheetStyles.optionIcon, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="videocam" size={22} color="#2563EB" />
+                </View>
+                <View style={clipSheetStyles.optionText}>
+                  <Text style={clipSheetStyles.optionLabel}>Record Clip</Text>
+                  <Text style={clipSheetStyles.optionSub}>Use your camera</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              {/* Divider */}
+              <View style={clipSheetStyles.divider} />
+
+              {/* Library option */}
+              <TouchableOpacity
+                style={clipSheetStyles.option}
+                onPress={uploadFromLibrary}
+                activeOpacity={0.7}
+              >
+                <View style={[clipSheetStyles.optionIcon, { backgroundColor: '#F5F3FF' }]}>
+                  <Ionicons name="images" size={22} color="#7C3AED" />
+                </View>
+                <View style={clipSheetStyles.optionText}>
+                  <Text style={clipSheetStyles.optionLabel}>Upload from Library</Text>
+                  <Text style={clipSheetStyles.optionSub}>Choose an existing video</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#D1D5DB" />
+              </TouchableOpacity>
+
+              {/* Cancel button */}
+              <TouchableOpacity
+                style={clipSheetStyles.cancelButton}
+                onPress={() => closeClipSheet()}
+                activeOpacity={0.7}
+              >
+                <Text style={clipSheetStyles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1572,6 +1677,85 @@ function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation,
     </TouchableOpacity>
   );
 }
+
+// ─── Clip Source Bottom Sheet styles ──────────────────────────────────────────
+const clipSheetStyles = StyleSheet.create({
+  scrim: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    paddingTop: 12,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E7EB',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
+  sheetTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  sheetSubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginBottom: 24,
+  },
+  option: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  optionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  optionText: {
+    flex: 1,
+  },
+  optionLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 2,
+  },
+  optionSub: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#F3F4F6',
+    marginLeft: 58,
+  },
+  cancelButton: {
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+  },
+});
 
 const clipPlayerStyles = StyleSheet.create({
   // ── ClipCard ──────────────────────────────────────────────────────────────

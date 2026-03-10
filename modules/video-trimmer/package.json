@@ -1,0 +1,10 @@
+{
+  "name": "video-trimmer",
+  "version": "1.0.0",
+  "description": "Local native module: on-device video trimming via AVFoundation (iOS) and Media3 Transformer (Android)",
+  "main": "src/index.ts",
+  "scripts": {},
+  "peerDependencies": {
+    "expo-modules-core": "*"
+  }
+}
