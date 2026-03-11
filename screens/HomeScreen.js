@@ -497,10 +497,16 @@ const HomeScreen = ({ navigation }) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Welcome hero text */}
-          <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeTitle}>Find Your{'\n'}Next Run</Text>
-            <Text style={styles.welcomeSubtitle}>Join a pickup run near you</Text>
+          {/* Welcome hero text — copy adapts to checked-in state */}
+          <View style={[styles.welcomeSection, isCheckedIn && styles.welcomeSectionActive]}>
+            <Text style={styles.welcomeTitle}>
+              {isCheckedIn ? 'Run in\nProgress' : 'Find Your\nNext Run'}
+            </Text>
+            <Text style={styles.welcomeSubtitle}>
+              {isCheckedIn
+                ? presence?.gymName || 'Session in progress'
+                : 'Join a pickup run near you'}
+            </Text>
           </View>
 
           {/*
@@ -521,35 +527,50 @@ const HomeScreen = ({ navigation }) => {
               </View>
               <Text style={styles.presenceGym}>{presence.gymName}</Text>
               <Text style={styles.presenceTime}>Expires in {getTimeRemaining()}</Text>
-              <TouchableOpacity
-                style={styles.checkOutButton}
-                onPress={handleCheckOut}
-                disabled={checkingOut}
-              >
-                {checkingOut ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.checkOutText}>Check Out</Text>
+              <View style={styles.presenceActions}>
+                {presence?.gymId && (
+                  <TouchableOpacity
+                    style={styles.viewDetailsButton}
+                    onPress={() =>
+                      navigation.getParent()?.navigate('Runs', {
+                        screen: 'RunDetails',
+                        params: { gymId: presence.gymId, gymName: presence.gymName },
+                      })
+                    }
+                  >
+                    <Text style={styles.viewDetailsText}>View Details</Text>
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.checkOutButton}
+                  onPress={handleCheckOut}
+                  disabled={checkingOut}
+                >
+                  {checkingOut ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.checkOutText}>Check Out</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </BlurView>
           ) : null}
 
-          {/* Quick Actions — Check In (disabled when already checked in), Find Runs, Plan */}
+          {/* Quick Actions — Check In card hidden when already checked in to avoid
+              redundancy with the presence card above. Find Runs + Plan always visible. */}
           <View style={styles.actionsSection}>
-            <TouchableOpacity
-              onPress={() => goToTab('CheckIn')}
-              disabled={isCheckedIn}
-              activeOpacity={0.8}
-            >
-              <BlurView intensity={60} tint="dark" style={styles.actionCard}>
-                <Ionicons name="location" size={26} color="#FFFFFF" />
-                <Text style={styles.actionCardTitle}>
-                  {isCheckedIn ? 'Already Checked In' : 'Check Into a Run'}
-                </Text>
-                <Text style={styles.actionCardSub}>Find courts near you</Text>
-              </BlurView>
-            </TouchableOpacity>
+            {!isCheckedIn && (
+              <TouchableOpacity
+                onPress={() => goToTab('CheckIn')}
+                activeOpacity={0.8}
+              >
+                <BlurView intensity={60} tint="dark" style={styles.actionCard}>
+                  <Ionicons name="location" size={26} color="#FFFFFF" />
+                  <Text style={styles.actionCardTitle}>Check Into a Run</Text>
+                  <Text style={styles.actionCardSub}>Find courts near you</Text>
+                </BlurView>
+              </TouchableOpacity>
+            )}
 
             <View style={styles.actionRow}>
               <TouchableOpacity
@@ -855,6 +876,10 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginBottom: SPACING.lg,
     marginTop: SPACING.xs,
   },
+  // Tighter bottom gap when the presence card follows immediately below
+  welcomeSectionActive: {
+    marginBottom: SPACING.sm,
+  },
   welcomeTitle: {
     fontSize: FONT_SIZES.hero,
     fontWeight: FONT_WEIGHTS.extraBold,
@@ -906,6 +931,24 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: 'rgba(255,255,255,0.75)',
     marginBottom: SPACING.md,
+  },
+  // Row that holds "View Details" + "Check Out" side by side
+  presenceActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  viewDetailsButton: {
+    borderRadius: RADIUS.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  viewDetailsText: {
+    color: '#FFFFFF',
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   checkOutButton: {
     backgroundColor: colors.danger,
