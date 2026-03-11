@@ -114,6 +114,12 @@ export default function TrimClipScreen({ route, navigation }) {
   // ── Upload progress (0-100, shown during UPLOADING state) ─────────────────
   const [uploadProgress, setUploadProgress] = useState(0);
 
+  // ── Playback progress (0-1, updated on every status tick) ─────────────────
+  // Represents position within the active preview range:
+  //   • trim mode  → fraction through [trimStart, trimEnd]
+  //   • short clip → fraction through the full video duration
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+
   // ── Double-upload guard ────────────────────────────────────────────────────
   // Set to true the moment handlePostClip begins; cleared only on error so the
   // user can retry. Never cleared on success — navigation takes the user away.
@@ -142,6 +148,22 @@ export default function TrimClipScreen({ route, navigation }) {
     }
 
     setIsPlaying(status.isPlaying);
+
+    // Update playback progress bar
+    if (status.positionMillis != null) {
+      if (videoDurationRef.current > MAX_CLIP_DURATION_SEC) {
+        // Trim mode: express position as a fraction of the selected range so the
+        // bar fills from 0 → 1 and snaps back to 0 when the loop resets.
+        const rangeDur = trimEndRef.current - trimStartRef.current;
+        const progress = rangeDur > 0
+          ? Math.max(0, Math.min(1, (status.positionMillis / 1000 - trimStartRef.current) / rangeDur))
+          : 0;
+        setPlaybackProgress(progress);
+      } else if (status.durationMillis > 0) {
+        // Short clip: express position as a fraction of the full video duration.
+        setPlaybackProgress(Math.max(0, Math.min(1, status.positionMillis / status.durationMillis)));
+      }
+    }
 
     // Loop within the selected trim range while previewing
     if (
@@ -565,6 +587,14 @@ export default function TrimClipScreen({ route, navigation }) {
         {/* Bottom panel: trim bar (if needed) + Post Clip button */}
         <View style={styles.bottomPanel} pointerEvents="auto">
 
+          {/* ── Playback progress — thin scrubber at the top of the panel.
+               Hidden during upload states (upload progress bar takes over). ── */}
+          {videoReady && !isLoading && (
+            <View style={styles.playbackBarTrack}>
+              <View style={[styles.playbackBarFill, { width: `${playbackProgress * 100}%` }]} />
+            </View>
+          )}
+
           {/* ── Trim bar — only shown when source video > 10 seconds ── */}
           {needsTrim && (
             <View style={styles.trimWrapper}>
@@ -859,6 +889,20 @@ const styles = StyleSheet.create({
     color: '#FF7A45',
     fontSize: 12,
     fontWeight: '700',
+  },
+
+  // ── Playback progress ──
+  playbackBarTrack: {
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    marginBottom: 14,
+    overflow: 'hidden',
+  },
+  playbackBarFill: {
+    height: '100%',
+    backgroundColor: '#FF7A45',
+    borderRadius: 1,
   },
 
   // ── Upload progress ──
