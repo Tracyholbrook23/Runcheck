@@ -191,8 +191,11 @@ export default function TrimClipScreen({ route, navigation }) {
         if (barWidthRef.current <= 0 || videoDurationRef.current <= 0) return;
         const secPerPx = videoDurationRef.current / barWidthRef.current;
         const raw      = leftGrant.current.start + (g.moveX - leftGrant.current.x) * secPerPx;
-        // Clamp: 0 ≤ newStart ≤ trimEnd - 0.5s (enforce minimum 0.5 s selection)
-        const newStart = Math.max(0, Math.min(raw, trimEndRef.current - 0.5));
+        // Clamp: max(0, trimEnd-10s) ≤ newStart ≤ trimEnd - 0.5s
+        // The lower bound of (trimEnd - MAX_CLIP_DURATION_SEC) is the missing constraint
+        // that prevented the left handle from expanding the selection past 10 seconds.
+        const minStart = Math.max(0, trimEndRef.current - MAX_CLIP_DURATION_SEC);
+        const newStart = Math.max(minStart, Math.min(raw, trimEndRef.current - 0.5));
         trimStartRef.current = newStart;
         setTrimStart(newStart);
       },
