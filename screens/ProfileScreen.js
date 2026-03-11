@@ -75,6 +75,54 @@ import { getUserRank, getProgressToNextRank, RANKS } from '../utils/badges';
 import { awardPoints } from '../services/pointsService';
 
 /**
+ * AnimatedCourtBadge — Pulsing green dot + player count for a My Courts row.
+ *
+ * Renders nothing when `count` is zero so the row stays clean.
+ * When players are present the dot opacity loops 1.0 → 0.3 → 1.0 every ~700 ms,
+ * giving a subtle "live" heartbeat without being distracting.
+ *
+ * @param {{ count: number, colors: object }} props
+ */
+function AnimatedCourtBadge({ count, colors }) {
+  const dotOpacity = useRef(new Animated.Value(1)).current;
+  const isActive = count > 0;
+
+  useEffect(() => {
+    if (isActive) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotOpacity, { toValue: 0.3, duration: 700, useNativeDriver: true }),
+          Animated.timing(dotOpacity, { toValue: 1.0, duration: 700, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    } else {
+      dotOpacity.setValue(1);
+    }
+  }, [isActive]);
+
+  if (!isActive) return null;
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+      <Animated.View
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: colors.success,
+          opacity: dotOpacity,
+        }}
+      />
+      <Text style={{ fontSize: FONT_SIZES.small, fontWeight: FONT_WEIGHTS.bold, color: colors.success }}>
+        {count}
+      </Text>
+    </View>
+  );
+}
+
+/**
  * ProfileScreen — Authenticated user profile dashboard.
  *
  * @param {object} props
@@ -643,11 +691,8 @@ export default function ProfileScreen({ navigation }) {
                   <Text style={styles.courtName} numberOfLines={1}>{gym.name}</Text>
                   <Text style={styles.courtMeta}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
                 </View>
-                {/* Live player count badge with a green dot indicator */}
-                <View style={styles.courtBadge}>
-                  <View style={styles.courtDot} />
-                  <Text style={styles.courtCount}>{liveCountMap[gym.id] ?? 0}</Text>
-                </View>
+                {/* Live player count badge — only rendered when players are present */}
+                <AnimatedCourtBadge count={liveCountMap[gym.id] ?? 0} colors={colors} />
               </TouchableOpacity>
             ))
           ) : (
@@ -1236,22 +1281,9 @@ const getStyles = (colors, isDark) =>
       color: colors.textMuted,
       marginTop: 2,
     },
-    courtBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-    },
-    courtDot: {
-      width: 7,
-      height: 7,
-      borderRadius: 4,
-      backgroundColor: colors.success,
-    },
-    courtCount: {
-      fontSize: FONT_SIZES.small,
-      fontWeight: FONT_WEIGHTS.bold,
-      color: colors.success,
-    },
+    // courtBadge / courtDot / courtCount styles removed — badge is now rendered
+    // by the AnimatedCourtBadge component with inline styles so it can own its
+    // own animated Animated.View opacity.
     courtsEmpty: {
       alignItems: 'center',
       paddingVertical: SPACING.lg,
