@@ -279,10 +279,10 @@ export default function TrimClipScreen({ route, navigation }) {
 
   // ── Button label driven by upload/processing state ────────────────────────
   const buttonLabel = () => {
-    if (uploadState === TRIMMING)   return 'Trimming…';
-    if (uploadState === CREATING)   return 'Starting…';
+    if (uploadState === TRIMMING)   return 'Trimming clip…';
+    if (uploadState === CREATING)   return 'Preparing…';
     if (uploadState === UPLOADING)  return 'Uploading…';
-    if (uploadState === FINALIZING) return 'Finalizing…';
+    if (uploadState === FINALIZING) return 'Finishing up…';
     return 'Post Clip';
   };
 
@@ -515,7 +515,9 @@ export default function TrimClipScreen({ route, navigation }) {
       {/* ── Play icon shown when paused ── */}
       {!isPlaying && videoReady && (
         <View style={styles.pausedIndicator} pointerEvents="none">
-          <Ionicons name="play-circle" size={68} color="rgba(255,255,255,0.85)" />
+          <View style={styles.playBadge}>
+            <Ionicons name="play-circle" size={72} color="#fff" />
+          </View>
         </View>
       )}
 
@@ -541,7 +543,9 @@ export default function TrimClipScreen({ route, navigation }) {
             {gymName ? (
               <Text style={styles.gymNameText} numberOfLines={1}>{gymName}</Text>
             ) : null}
-            <Text style={styles.previewLabel}>Preview</Text>
+            <Text style={styles.previewLabel}>
+              {needsTrim ? 'Trim your clip' : 'Ready to post'}
+            </Text>
           </View>
 
           <TouchableOpacity
@@ -719,6 +723,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // Dark circle behind the play icon so it reads clearly on any video frame.
+  playBadge: {
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderRadius: 44,
+    padding: 4,
+  },
 
   overlay: {
     flex: 1,
@@ -765,7 +775,7 @@ const styles = StyleSheet.create({
   // ── Bottom panel ──
   bottomPanel: {
     backgroundColor: 'rgba(0,0,0,0.60)',
-    paddingTop: 16,
+    paddingTop: 20,
     paddingBottom: 20,
     paddingHorizontal: 20,
     borderTopLeftRadius: 20,
@@ -774,7 +784,7 @@ const styles = StyleSheet.create({
 
   // ── Trim bar ──
   trimWrapper: {
-    marginBottom: 16,
+    marginBottom: 18,
   },
   trimHint: {
     color: 'rgba(255,255,255,0.55)',
