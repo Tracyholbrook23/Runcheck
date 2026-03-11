@@ -504,7 +504,7 @@ const HomeScreen = ({ navigation }) => {
           {/* Welcome hero text — copy adapts to checked-in state */}
           <View style={[styles.welcomeSection, isCheckedIn && styles.welcomeSectionActive]}>
             <Text style={styles.welcomeTitle}>
-              {isCheckedIn ? 'Run in\nProgress' : 'Find Your\nNext Run'}
+              {isCheckedIn ? 'Run in Progress' : 'Find Your\nNext Run'}
             </Text>
             <Text style={styles.welcomeSubtitle}>
               {isCheckedIn
@@ -892,7 +892,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   // Tighter bottom gap when the presence card follows immediately below
   welcomeSectionActive: {
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
   welcomeTitle: {
     fontSize: FONT_SIZES.hero,
