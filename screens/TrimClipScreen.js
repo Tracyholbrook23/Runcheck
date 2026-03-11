@@ -42,7 +42,7 @@ import {
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
-import { getStorage, ref, uploadBytes } from 'firebase/storage';
+import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { trimVideo } from 'video-trimmer';
 
@@ -110,6 +110,14 @@ export default function TrimClipScreen({ route, navigation }) {
   // ── Upload state ──────────────────────────────────────────────────────────
   const [uploadState, setUploadState] = useState(IDLE);
   const isLoading = uploadState !== IDLE;
+
+  // ── Upload progress (0-100, shown during UPLOADING state) ─────────────────
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+  // ── Double-upload guard ────────────────────────────────────────────────────
+  // Set to true the moment handlePostClip begins; cleared only on error so the
+  // user can retry. Never cleared on success — navigation takes the user away.
+  const postingRef = useRef(false);
 
   // ── Video status callback ─────────────────────────────────────────────────
   // Called periodically by expo-av; handles first-load setup and trim-range
@@ -284,6 +292,13 @@ export default function TrimClipScreen({ route, navigation }) {
   //   4b. finalizeClipUpload
   //   5. Navigate back to RunDetails
   const handlePostClip = async () => {
+    // ── Double-upload guard ────────────────────────────────────────────────
+    // Catches rapid double-taps that fire before React re-renders the disabled
+    // state.  postingRef is never reset on the success path; navigation handles
+    // the screen exit.
+    if (postingRef.current) return;
+    postingRef.current = true;
+
     console.log('[clips] ── handlePostClip called ──────────────────────────');
     console.log('[clips] sourceVideoUri   :', sourceVideoUri);
     console.log('[clips] gymId            :', gymId);
@@ -298,11 +313,13 @@ export default function TrimClipScreen({ route, navigation }) {
     // ── 1. Validate local params before hitting the network ─────────────────
     if (!sourceVideoUri) {
       console.warn('[clips] VALIDATION FAILED — sourceVideoUri is missing');
+      postingRef.current = false;
       Alert.alert('Missing video', 'No video found. Please go back and try again.');
       return;
     }
     if (!gymId || typeof gymId !== 'string' || gymId.trim() === '') {
       console.warn('[clips] VALIDATION FAILED — gymId is missing or empty:', gymId);
+      postingRef.current = false;
       Alert.alert('Missing gym', 'Gym ID is missing. Please go back and try again.');
       return;
     }
@@ -324,6 +341,7 @@ export default function TrimClipScreen({ route, navigation }) {
         console.log('[clips] trimVideo complete ✓ — uri:', uploadUri, '| duration:', durationSec.toFixed(2), 's');
       } catch (trimErr) {
         console.error('[clips] TRIM ERROR ✗ —', serializeError(trimErr));
+        postingRef.current = false;
         setUploadState(IDLE);
         Alert.alert(
           'Trim failed',
@@ -352,6 +370,7 @@ export default function TrimClipScreen({ route, navigation }) {
       }
     } catch (sessionErr) {
       console.error('[clips] CREATE SESSION ERROR ✗ —', serializeError(sessionErr));
+      postingRef.current = false;
       setUploadState(IDLE);
       Alert.alert(
         'Could not start clip',
@@ -365,6 +384,7 @@ export default function TrimClipScreen({ route, navigation }) {
 
     // ── 4a. Upload to Firebase Storage ──────────────────────────────────────
     setUploadState(UPLOADING);
+    setUploadProgress(0);
 
     try {
       const storage = getStorage();
@@ -376,10 +396,24 @@ export default function TrimClipScreen({ route, navigation }) {
       const blob = await response.blob();
       console.log('[clips] blob size (bytes):', blob.size, '| type:', blob.type);
 
-      await uploadBytes(fileRef, blob, { contentType: 'video/mp4' });
+      // uploadBytesResumable exposes progress events; wrap in a Promise so the
+      // rest of the async flow (finalize → navigate) stays linear.
+      await new Promise((resolve, reject) => {
+        const task = uploadBytesResumable(fileRef, blob, { contentType: 'video/mp4' });
+        task.on(
+          'state_changed',
+          (snapshot) => {
+            const pct = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+            setUploadProgress(pct);
+          },
+          (err) => reject(err),
+          () => resolve(),
+        );
+      });
       console.log('[clips] upload ✓');
     } catch (uploadErr) {
       console.error('[clips] UPLOAD ERROR ✗ —', serializeError(uploadErr));
+      postingRef.current = false;
       setUploadState(IDLE);
       Alert.alert(
         'Upload failed',
@@ -400,6 +434,7 @@ export default function TrimClipScreen({ route, navigation }) {
       console.log('[clips] finalize ✓ —', JSON.stringify(result?.data, null, 2));
     } catch (finalizeErr) {
       console.error('[clips] FINALIZE ERROR ✗ —', serializeError(finalizeErr));
+      postingRef.current = false;
       setUploadState(IDLE);
       Alert.alert(
         'Finalize failed',
@@ -409,8 +444,9 @@ export default function TrimClipScreen({ route, navigation }) {
     }
 
     // ── 5. Full success ──────────────────────────────────────────────────────
+    // Do NOT reset uploadState or postingRef here — navigation removes the
+    // screen, so there is nothing to re-enable and no risk of a second tap.
     console.log('[clips] ── post clip complete ✓ ────────────────────────────');
-    setUploadState(IDLE);
 
     Alert.alert('Posted! 🎉', 'Your clip has been posted.', [
       {
@@ -447,6 +483,9 @@ export default function TrimClipScreen({ route, navigation }) {
   // Width of the transparent center drag target that sits between the two handles.
   // Hidden when the selection is too narrow to fit (e.g. user shortened below 2× HANDLE_W).
   const centerWidth = Math.max(0, endPx - startPx - HANDLE_W);
+
+  // Width of the unselected region to the right of the selection window.
+  const dimRightWidth = Math.max(0, barWidth - endPx);
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -540,6 +579,22 @@ export default function TrimClipScreen({ route, navigation }) {
 
                 {barWidth > 0 && (
                   <>
+                    {/* Dim overlay — left of selection */}
+                    {startPx > 0 && (
+                      <View
+                        style={[styles.dimOverlay, { left: 0, width: startPx }]}
+                        pointerEvents="none"
+                      />
+                    )}
+
+                    {/* Dim overlay — right of selection */}
+                    {dimRightWidth > 0 && (
+                      <View
+                        style={[styles.dimOverlay, { left: endPx, width: dimRightWidth }]}
+                        pointerEvents="none"
+                      />
+                    )}
+
                     {/* Orange selection region (visual only — touches pass through) */}
                     <View
                       style={[styles.selection, {
@@ -589,6 +644,16 @@ export default function TrimClipScreen({ route, navigation }) {
                 </Text>
                 <Text style={styles.timeLabel}>{formatSec(trimEnd)}</Text>
               </View>
+            </View>
+          )}
+
+          {/* ── Upload progress bar — visible only while uploading ── */}
+          {uploadState === UPLOADING && (
+            <View style={styles.progressWrapper}>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+              </View>
+              <Text style={styles.progressLabel}>{uploadProgress}%</Text>
             </View>
           )}
 
@@ -721,16 +786,25 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   trackBg: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    height: 32,            // taller base so dim overlays have visual weight
+    borderRadius: 6,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  // Shade applied over the unselected portion of the trim rail.
+  // pointerEvents="none" — never intercepts touches.
+  dimOverlay: {
+    position: 'absolute',
+    top: 6,                // (44 - 32) / 2 = 6 — aligns with the selection height
+    height: 32,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.50)',
   },
   selection: {
     position: 'absolute',
     top: 6,                // (44 - 32) / 2 = 6 — vertically centres the 32-px region
     height: 32,
     borderRadius: 6,
-    backgroundColor: 'rgba(255,122,69,0.25)',
+    backgroundColor: 'rgba(255,122,69,0.35)',
     borderWidth: 2,
     borderColor: '#FF7A45',
   },
@@ -772,6 +846,28 @@ const styles = StyleSheet.create({
     color: '#FF7A45',
     fontSize: 12,
     fontWeight: '700',
+  },
+
+  // ── Upload progress ──
+  progressWrapper: {
+    marginBottom: 12,
+  },
+  progressTrack: {
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 2,
+    backgroundColor: '#FF7A45',
+  },
+  progressLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 5,
   },
 
   // ── Post button ──
