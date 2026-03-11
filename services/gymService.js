@@ -60,6 +60,8 @@ export const seedGyms = async () => {
       type: GYM_TYPE.INDOOR,
       accessType: 'paid',
       notes: '57,000 sq ft facility with indoor basketball court, pool, and recovery lounge',
+      // No imageUrl — this gym uses a bundled local asset (assets/cowboyfitgym.png)
+      // resolved via GYM_LOCAL_IMAGES in HomeScreen.js instead of a remote URL.
       location: {
         latitude: 30.4692,
         longitude: -97.5963,
@@ -155,7 +157,16 @@ export const seedGyms = async () => {
       });
       console.log(`Created gym: ${gym.name}`);
     } else {
-      console.log(`Skipped existing gym: ${gym.name}`);
+      // Patch imageUrl onto existing documents that were seeded before this
+      // field was added. Only writes when the field is currently absent so it
+      // never clobbers a URL that was set intentionally through the app.
+      const existingData = existingGym.data();
+      if (!existingData.imageUrl && gym.imageUrl) {
+        await updateDoc(gymRef, { imageUrl: gym.imageUrl });
+        console.log(`Patched imageUrl for existing gym: ${gym.name}`);
+      } else {
+        console.log(`Skipped existing gym: ${gym.name}`);
+      }
     }
   }
 

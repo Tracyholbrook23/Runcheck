@@ -109,6 +109,7 @@ const getRunEnergyLabel = (count) => {
 - Live Runs section on HomeScreen: real-time cards with avatars, player count, energy label, empty state; gym photo background (opacity 0.30) + dark overlay; city label from `gym.city`; top LIVE banner removed (was redundant)
 - RunDetailsScreen: Now Playing list deduped by odId; playerCount matches row count
 - PresenceList navigation fixed (nested navigator path)
+- Clip posting: record (≤30s) or pick from library → trim UI (≤10s) → on-device trim → upload → feed playback; `createClipSession` called only at post time; `video-trimmer` native module handles trimming (iOS: AVFoundation, Android: Media3)
 - RunCheck Premium: UI-only teaser card on ProfileScreen (below Current Status, above Settings) → PremiumScreen with 5 feature cards ($4.99/mo · $29.99/yr) + Alert-based CTA; zero billing logic
 - Check In tab: repurposed as session status screen (see Navigation Structure); gym picker removed
 - Find a Run (ViewRunsScreen): gym search bar with local-only filter against name + address; input sanitized (strip non-`[a-zA-Z0-9 '.-&]`, max 50 chars)
@@ -119,6 +120,16 @@ const getRunEnergyLabel = (count) => {
 | `components/PresenceList.js` | Fixed nested nav: `navigate('Home', { screen: 'UserProfile', params })` |
 | `screens/HomeScreen.js` | Energy labels, totalActive from livePresenceMap, empty state with Check In button, per-card dedup + guard, debug logs |
 | `screens/RunDetailsScreen.js` | Removed fake data (fakePlayers etc.), added uniqueActivePresences useMemo, playerCount from unique count, debug logs |
+
+## Files Modified Recently (2026-03-10 session)
+| File | What changed |
+|---|---|
+| `screens/TrimClipScreen.js` | Full rewrite: trim UI (3 PanResponders), TRIMMING upload state, on-device trim before upload, real `durationSec` passed to finalize |
+| `screens/RunDetailsScreen.js` | `uploadFromLibrary` no longer calls `createClipSession`; navigates directly to TrimClipScreen with `presenceId` |
+| `screens/RecordClipScreen.js` | Removed stale `loadingLibrary` references; re-added `ActivityIndicator` import |
+| `modules/video-trimmer/` | New local Expo native module: iOS (AVFoundation) + Android (Media3 Transformer) |
+| `modules/video-trimmer/ios/VideoTrimmer.podspec` | New — required for CocoaPods autolinking |
+| `package.json` | Added `"video-trimmer": "file:./modules/video-trimmer"` dependency |
 
 ## Files Modified Recently (2026-03-09 session)
 | File | What changed |
@@ -172,6 +183,57 @@ Document structure:
 { uid, name, photoURL, weeklyPoints, weekOf, recordedAt}
 
 A reset script (`scripts/weeklyReset.js`) records the winner and clears `weeklyPoints` for the next competition cycle.
+
+## Clips Feature
+
+### Clip flow
+```
+RunDetailsScreen
+  └─ "Post Clip" bottom sheet
+       ├─ Record  → RecordClipScreen → TrimClipScreen
+       └─ Upload  → TrimClipScreen
+```
+
+### Session timing — critical rule
+`createClipSession` (Cloud Function) is called **only inside `TrimClipScreen.handlePostClip`**, after the user taps Post and after on-device trimming completes. It is never called during recording or library selection. Backing out of the preview/trim screen never reserves a backend slot or consumes a weekly limit.
+
+Upload state machine: `IDLE → TRIMMING → CREATING → UPLOADING → FINALIZING`
+
+### Duration constraints
+| Stage | Limit |
+|---|---|
+| Recording (RecordClipScreen) | Max 30 seconds |
+| Posted clip | Max 10 seconds |
+
+If the source video is > 10 s, `TrimClipScreen` shows a trim UI and performs on-device trimming before upload. The trimmed file is what gets uploaded to Firebase Storage.
+
+### On-device trimming — `video-trimmer` local Expo module
+A local Expo native module at `modules/video-trimmer/` handles all trimming (no ffmpeg-kit, which is archived).
+
+```
+modules/video-trimmer/
+├── package.json                   # name: "video-trimmer"
+├── expo-module.config.json        # registers VideoTrimmerModule (iOS + Android)
+├── src/index.ts                   # JS API: trimVideo(uri, startSec, endSec): Promise<string>
+├── ios/
+│   ├── VideoTrimmerModule.swift   # AVFoundation — AVAssetExportSession
+│   └── VideoTrimmer.podspec       # ← required for CocoaPods autolinking (see below)
+└── android/
+    ├── build.gradle               # androidx.media3:media3-transformer:1.4.1
+    └── src/.../VideoTrimmerModule.kt  # Media3 Transformer
+```
+
+**Autolinking rule:** `expo-modules-autolinking` searches one level deep inside subdirectories of the module root — not the root itself. The podspec **must** be at `ios/VideoTrimmer.podspec`. Without it the module is silently skipped: absent from `Podfile.lock` and `ExpoModulesProvider.swift`, unregistered at runtime. After any change to the module, run `cd ios && pod install && cd ..` then rebuild.
+
+### Trim UI (TrimClipScreen)
+Three interaction zones on the timeline bar:
+- **Left handle** — moves `trimStart` only (resize from left)
+- **Right handle** — moves `trimEnd` only (resize from right; capped at `trimStart + 10s`)
+- **Center region** — moves both together (slides the window, preserves duration)
+
+Implemented with three `PanResponder` instances. State is mirrored into refs so callbacks always read fresh values without stale closures.
+
+---
 
 ## Instagram Integration (Home Screen)
 RunCheck includes Instagram entry points to connect the app with the community page.
