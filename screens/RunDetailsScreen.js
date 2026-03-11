@@ -977,7 +977,14 @@ export default function RunDetailsScreen({ route, navigation }) {
             style={styles.heroImage}
             resizeMode="cover"
           />
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() =>
+              navigation.canGoBack()
+                ? navigation.goBack()
+                : navigation.navigate('Runs')
+            }
+          >
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
