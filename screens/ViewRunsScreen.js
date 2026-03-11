@@ -48,6 +48,7 @@ import {
   limit,
 } from 'firebase/firestore';
 import { handleFollowPoints } from '../services/pointsService';
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 /**
  * ViewRunsScreen — Gym discovery list screen.
@@ -330,9 +331,11 @@ export default function ViewRunsScreen({ navigation }) {
                 >
                   <Image
                     source={
-                      gym.imageUrl
+                      GYM_LOCAL_IMAGES[gym.id]
+                        ? GYM_LOCAL_IMAGES[gym.id]
+                        : gym.imageUrl
                         ? { uri: gym.imageUrl }
-                        : require('../assets/basketball-court.png')
+                        : require('../assets/images/court-bg.jpg')
                     }
                     style={styles.thumbnail}
                   />

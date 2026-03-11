@@ -54,6 +54,7 @@ import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
 import { PRESENCE_STATUS } from '../services/models';
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 // Instagram community link — used by both the header icon and the footer card.
 const INSTAGRAM_URL = 'https://www.instagram.com/run.check?igsh=dWdieWZteXlvd21k&utm_source=qr';
@@ -670,12 +671,16 @@ const HomeScreen = ({ navigation }) => {
                     }
                   >
                     <View style={styles.liveRunCard}>
-                      {/* Gym image — faded background layer */}
+                      {/* Gym image — faded background layer.
+                          Priority: local bundled asset (GYM_LOCAL_IMAGES) →
+                          remote imageUrl from Firestore → generic fallback. */}
                       <Image
                         source={
-                          gym.imageUrl
+                          GYM_LOCAL_IMAGES[gym.id]
+                            ? GYM_LOCAL_IMAGES[gym.id]
+                            : gym.imageUrl
                             ? { uri: gym.imageUrl }
-                            : require('../assets/basketball-court.png')
+                            : require('../assets/images/court-bg.jpg')
                         }
                         style={styles.liveRunBgImage}
                         resizeMode="cover"

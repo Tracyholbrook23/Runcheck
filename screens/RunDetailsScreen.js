@@ -51,9 +51,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { PresenceList, Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
-
-const courtImage = require('../assets/basketball-court.png');
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { useTheme } from '../contexts';
+
+const courtImage = require('../assets/images/court-bg.jpg');
 import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -966,7 +967,13 @@ export default function RunDetailsScreen({ route, navigation }) {
         {/* Hero image header with an absolute-positioned back button */}
         <View style={styles.heroContainer}>
           <Image
-            source={(gym?.imageUrl || paramImageUrl) ? { uri: gym?.imageUrl || paramImageUrl } : courtImage}
+            source={
+              GYM_LOCAL_IMAGES[gymId]
+                ? GYM_LOCAL_IMAGES[gymId]
+                : (gym?.imageUrl || paramImageUrl)
+                ? { uri: gym?.imageUrl || paramImageUrl }
+                : courtImage
+            }
             style={styles.heroImage}
             resizeMode="cover"
           />
