@@ -1136,7 +1136,11 @@ export default function RunDetailsScreen({ route, navigation }) {
           {/* Section header */}
           <View style={clipPlayerStyles.storiesHeaderRow}>
             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Clips</Text>
-            <Text style={clipPlayerStyles.storiesSubtitle}>Live moments from this gym</Text>
+            {!clipsLoading && gymClips.length > 0 && (
+              <View style={clipPlayerStyles.clipCountBadge}>
+                <Text style={clipPlayerStyles.clipCountText}>{gymClips.length}</Text>
+              </View>
+            )}
           </View>
 
           {clipsLoading ? (
@@ -1627,8 +1631,8 @@ function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation,
       <View style={clipPlayerStyles.gridPlayOverlay}>
         <Ionicons
           name={videoUrl ? 'play-circle' : 'hourglass-outline'}
-          size={28}
-          color="rgba(255,255,255,0.88)"
+          size={32}
+          color="rgba(255,255,255,0.95)"
         />
       </View>
 
@@ -1661,7 +1665,7 @@ function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation,
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         activeOpacity={0.7}
       >
-        <Ionicons name={liked ? 'heart' : 'heart-outline'} size={10} color={liked ? '#FF6B35' : '#ccc'} />
+        <Ionicons name={liked ? 'heart' : 'heart-outline'} size={12} color={liked ? '#FF6B35' : '#ccc'} />
         <Text style={[clipPlayerStyles.tileLikesPillText, liked && clipPlayerStyles.tileLikesPillTextActive]}>
           {likesCount}
         </Text>
@@ -1899,12 +1903,24 @@ const clipPlayerStyles = StyleSheet.create({
 
   // ── Stories-style horizontal clips row ────────────────────────────────────
   storiesHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: SPACING.sm,
   },
-  storiesSubtitle: {
+  // Small orange pill showing the live clip count next to the section title.
+  clipCountBadge: {
+    backgroundColor: 'rgba(255,122,69,0.18)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,122,69,0.35)',
+  },
+  clipCountText: {
+    color: '#FF7A45',
     fontSize: FONT_SIZES.xs,
-    color: '#888',
-    marginTop: 2,
+    fontWeight: FONT_WEIGHTS.bold,
   },
   // Shared horizontal scroll container for both loaded and skeleton states.
   storiesRow: {
@@ -1937,14 +1953,16 @@ const clipPlayerStyles = StyleSheet.create({
     height: 160,
     flex: 0,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',  // subtle card edge
     // overflow:'hidden' is inherited from gridTile — all overlays stay inside
   },
   // ── Tile overlay internals ─────────────────────────────────────────────────
   // Dark scrim covering the bottom portion of the thumbnail for text legibility.
   tileScrim: {
     ...StyleSheet.absoluteFillObject,
-    top: '45%',
-    backgroundColor: 'rgba(0,0,0,0.52)',
+    top: '55%',                   // starts lower → play icon area stays clean
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
   },
@@ -1986,12 +2004,12 @@ const clipPlayerStyles = StyleSheet.create({
   },
   tileName: {
     color: '#fff',
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '600',
   },
   tileTimeAgo: {
     color: 'rgba(255,255,255,0.6)',
-    fontSize: 9,
+    fontSize: 10,
   },
   // Top-right likes pill
   tileLikesPill: {
