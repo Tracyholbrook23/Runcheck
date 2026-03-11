@@ -330,6 +330,10 @@ const HomeScreen = ({ navigation }) => {
   // Sum of all per-gym real-time counts — shown in the LIVE banner.
   const totalActive = Object.values(liveCountMap).reduce((s, n) => s + n, 0);
 
+  // Live player count for the gym the current user is checked into.
+  // Reuses liveCountMap — no extra query needed.
+  const checkedInCount = isCheckedIn ? (liveCountMap[presence?.gymId] || 0) : 0;
+
   // TEMP debug — remove once counts confirmed correct
   if (__DEV__ && totalActive > 0) {
     const topId = Object.entries(liveCountMap).sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -526,6 +530,16 @@ const HomeScreen = ({ navigation }) => {
                 <Text style={styles.presenceLabel}>YOU'RE CHECKED IN</Text>
               </View>
               <Text style={styles.presenceGym}>{presence.gymName}</Text>
+              {checkedInCount > 0 && (
+                <View style={styles.presenceLiveRow}>
+                  <Text style={[styles.presenceLiveLabel, { color: getRunEnergyLabel(checkedInCount).color }]}>
+                    {getRunEnergyLabel(checkedInCount).label}
+                  </Text>
+                  <Text style={styles.presenceLiveCount}>
+                    {checkedInCount} {checkedInCount === 1 ? 'player' : 'players'} here now
+                  </Text>
+                </View>
+              )}
               <Text style={styles.presenceTime}>Expires in {getTimeRemaining()}</Text>
               <View style={styles.presenceActions}>
                 {presence?.gymId && (
@@ -931,6 +945,21 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: 'rgba(255,255,255,0.75)',
     marginBottom: SPACING.md,
+  },
+  // Live energy + player count block inside the checked-in card
+  presenceLiveRow: {
+    alignItems: 'center',
+    gap: 2,
+    marginBottom: SPACING.xs,
+  },
+  presenceLiveLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 0.2,
+  },
+  presenceLiveCount: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.65)',
   },
   // Row that holds "View Details" + "Check Out" side by side
   presenceActions: {
