@@ -49,11 +49,10 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { usePresence, useGyms } from '../hooks';
+import { usePresence, useGyms, useLivePresenceMap } from '../hooks';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
-import { PRESENCE_STATUS } from '../services/models';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 // Instagram community link — used by both the header icon and the footer card.
@@ -129,10 +128,9 @@ const HomeScreen = ({ navigation }) => {
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
 
-  // Map of gymId → array of active presence entries (userName, userAvatar).
-  // Populated by a real-time subscription to presence docs with checkedOutAt == null.
-  // Used to render player avatar stacks on each Live Run card.
-  const [livePresenceMap, setLivePresenceMap] = useState({});
+  // Canonical app-wide presence map — single source of truth for all live counts.
+  // Replaces the previous inline onSnapshot subscription on this screen.
+  const { presenceMap: livePresenceMap, countMap: liveCountMap } = useLivePresenceMap();
 
   // Subscribe to the current user's friends list in real time.
   useEffect(() => {
@@ -142,48 +140,6 @@ const HomeScreen = ({ navigation }) => {
       doc(db, 'users', currentUid),
       (snap) => { setFriendIds(snap.exists() ? (snap.data().friends ?? []) : []); },
       () => { setFriendIds([]); }
-    );
-    return () => unsubscribe();
-  }, []);
-
-  // Subscribe to all active presence docs in real time.
-  // Uses the same two-layer validation as subscribeToGymPresences in presenceService:
-  //   1. Firestore query filters by status == 'active' (excludes EXPIRED and CHECKED_OUT docs)
-  //   2. Client-side guard filters out docs where expiresAt is in the past
-  //      (handles the window before background cleanup fires on stale sessions)
-  // Groups results by gymId so each Live Run card can show up to 3 player avatars.
-  // userAvatar and userName are denormalized onto presence docs at check-in time,
-  // so no additional user-doc reads are needed here.
-  useEffect(() => {
-    const q = query(
-      collection(db, 'presence'),
-      where('status', '==', PRESENCE_STATUS.ACTIVE),
-      limit(100)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const now = new Date();
-        const map = {};
-        snap.docs.forEach((d) => {
-          const data = d.data();
-          if (!data.gymId) return;
-          // Exclude sessions whose expiresAt has passed — same logic as
-          // subscribeToGymPresences. Prevents stale sessions from appearing
-          // on the Home screen when background cleanup hasn't fired yet.
-          const expiresAt = data.expiresAt?.toDate?.();
-          if (expiresAt && expiresAt < now) return;
-          if (!map[data.gymId]) map[data.gymId] = [];
-          map[data.gymId].push({
-            odId: data.odId,
-            userName: data.userName || null,
-            userAvatar: data.userAvatar || null,
-            checkedInAt: data.checkedInAt || null,
-          });
-        });
-        setLivePresenceMap(map);
-      },
-      () => setLivePresenceMap({})
     );
     return () => unsubscribe();
   }, []);
@@ -310,22 +266,6 @@ const HomeScreen = ({ navigation }) => {
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
-
-  // Per-gym deduped active count — the single source of truth for every LIVE
-  // number shown on this screen.  Replaces gym.currentPresenceCount everywhere
-  // in the LIVE section; that field is a stale denormalized counter and must
-  // NOT be used for display (see PROJECT_MEMORY "Known Issues").
-  // Keys: gymId  Values: unique active player count (deduped by odId)
-  const liveCountMap = {};
-  Object.entries(livePresenceMap).forEach(([gymId, players]) => {
-    const seen = new Set();
-    liveCountMap[gymId] = players.filter((p) => {
-      const uid = p.odId;
-      if (!uid || seen.has(uid)) return false;
-      seen.add(uid);
-      return true;
-    }).length;
-  });
 
   // Sum of all per-gym real-time counts — shown in the LIVE banner.
   const totalActive = Object.values(liveCountMap).reduce((s, n) => s + n, 0);

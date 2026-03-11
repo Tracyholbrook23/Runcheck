@@ -50,7 +50,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile } from '../hooks';
+import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -92,6 +92,8 @@ export default function ProfileScreen({ navigation }) {
   const { isCheckedIn, presence } = usePresence();
   const { gyms } = useGyms();
   const { followedGyms, profile: liveProfile } = useProfile();
+  // Real-time player counts — same canonical source used by HomeScreen and ViewRunsScreen.
+  const { countMap: liveCountMap } = useLivePresenceMap();
   const [profile, setProfile] = useState(null);
 
   // Derive the list of followed gym objects from the full gyms array.
@@ -619,8 +621,15 @@ export default function ProfileScreen({ navigation }) {
           <Text style={styles.cardTitle}>My Courts</Text>
           {followedGymsList.length > 0 ? (
             followedGymsList.map((gym, index) => (
-              <View
+              <TouchableOpacity
                 key={gym.id}
+                activeOpacity={0.7}
+                onPress={() =>
+                  navigation.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: { gymId: gym.id, gymName: gym.name },
+                  })
+                }
                 style={[
                   styles.courtRow,
                   // Bottom border between items, but not after the last one
@@ -637,9 +646,9 @@ export default function ProfileScreen({ navigation }) {
                 {/* Live player count badge with a green dot indicator */}
                 <View style={styles.courtBadge}>
                   <View style={styles.courtDot} />
-                  <Text style={styles.courtCount}>{gym.currentPresenceCount || 0}</Text>
+                  <Text style={styles.courtCount}>{liveCountMap[gym.id] ?? 0}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           ) : (
             /* Empty state — shown until the user follows at least one gym */
@@ -752,7 +761,19 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {/* ── Current Status ────────────────────────────────────────────── */}
-        <View style={styles.card}>
+        <TouchableOpacity
+          style={styles.card}
+          activeOpacity={isCheckedIn ? 0.7 : 1}
+          disabled={!isCheckedIn}
+          onPress={() => {
+            if (isCheckedIn && presence?.gymId) {
+              navigation.navigate('Runs', {
+                screen: 'RunDetails',
+                params: { gymId: presence.gymId, gymName: presence.gymName },
+              });
+            }
+          }}
+        >
           <Text style={styles.cardTitle}>Current Status</Text>
           {/* Live check-in status from usePresence — real-time Firestore data */}
           {isCheckedIn ? (
@@ -779,7 +800,7 @@ export default function ProfileScreen({ navigation }) {
               </Text>
             </View>
           )}
-        </View>
+        </TouchableOpacity>
 
         {/* ── Premium Teaser ────────────────────────────────────────────── */}
         <TouchableOpacity

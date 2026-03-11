@@ -16,7 +16,7 @@
  * when the theme changes.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -32,7 +32,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { useGyms, useProfile } from '../hooks';
+import { useGyms, useProfile, useLivePresenceMap } from '../hooks';
 import { Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { auth, db } from '../config/firebase';
@@ -41,11 +41,6 @@ import {
   updateDoc,
   arrayUnion,
   arrayRemove,
-  collection,
-  query,
-  where,
-  onSnapshot,
-  limit,
 } from 'firebase/firestore';
 import { handleFollowPoints } from '../services/pointsService';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
@@ -67,58 +62,9 @@ export default function ViewRunsScreen({ navigation }) {
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   // ── Live player counts ────────────────────────────────────────────────────
-  // Map of gymId → deduplicated active player count.
-  // Derived from a single real-time Firestore subscription that covers every
-  // gym at once — the same pattern HomeScreen uses for its livePresenceMap.
-  //
-  // Key architecture choices (matching HomeScreen & PROJECT_MEMORY):
-  //   1. Single query (not per-gym) — one subscription for all gyms
-  //   2. Dedup by odId via a Set — prevents one person counting twice
-  //   3. Client-side expiresAt filter — drops stale presences not yet cleaned up
-  //   4. Does NOT read gym.currentPresenceCount — that field is a stale counter
-  //      that drifts whenever a decrement is missed (see Known Issues)
-  const [liveCountMap, setLiveCountMap] = useState({});
-
-  useEffect(() => {
-    // One subscription covers all gyms — we group by gymId client-side.
-    // Using checkedOutAt == null (same index HomeScreen uses) so no new
-    // composite index is required.
-    const q = query(
-      collection(db, 'presence'),
-      where('checkedOutAt', '==', null),
-      limit(200)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const now = new Date();
-        // Use a Map of gymId → Set<odId> to deduplicate per gym in one pass
-        const uidSets = {};
-        snap.docs.forEach((d) => {
-          const data = d.data();
-          if (!data.gymId || !data.odId) return;
-
-          // Drop presences whose expiry has already passed (client-side guard)
-          const expiresAt = data.expiresAt?.toDate?.();
-          if (expiresAt && expiresAt < now) return;
-
-          if (!uidSets[data.gymId]) uidSets[data.gymId] = new Set();
-          uidSets[data.gymId].add(data.odId);
-        });
-
-        // Convert Set sizes to a plain number map
-        const counts = {};
-        Object.entries(uidSets).forEach(([gymId, set]) => {
-          counts[gymId] = set.size;
-        });
-        setLiveCountMap(counts);
-      },
-      () => setLiveCountMap({})
-    );
-
-    return () => unsubscribe();
-  }, []);
+  // Canonical app-wide presence counts — shared hook, single Firestore subscription.
+  // Uses status == 'ACTIVE' filter (matches presenceService) and deduplicates by odId.
+  const { countMap: liveCountMap } = useLivePresenceMap();
 
   /**
    * getRunStatusLabel — Maps a live player count to a run-quality label,

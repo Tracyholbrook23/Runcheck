@@ -36,6 +36,7 @@
  * Presence (Check-in/out):
  * - usePresence: Current user's presence state and actions
  * - useGymPresences: Real-time presences at a specific gym
+ * - useLivePresenceMap: App-wide real-time presence map (all gyms, canonical source of truth)
  *
  * Scheduling:
  * - useSchedules: Current user's scheduled sessions
@@ -61,6 +62,7 @@ export { useAuth } from './useAuth';
 // Presence (Check-in/out)
 export { usePresence } from './usePresence';
 export { useGymPresences } from './useGymPresences';
+export { useLivePresenceMap } from './useLivePresenceMap';
 
 // Scheduling
 export { useSchedules } from './useSchedules';
