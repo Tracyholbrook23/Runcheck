@@ -173,6 +173,10 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Business logic lives in presenceService; we never duplicate it here.
   const { checkIn, checkingIn, presence } = usePresence();
 
+  // True when the current user has an active check-in specifically at this gym.
+  // Compared by gymId so a user checked into a different gym still sees "Check In Here".
+  const isCheckedInHere = !!presence && presence.gymId === gymId;
+
   /**
    * handleCheckInHere — One-tap check-in directly into the gym being viewed.
    *
@@ -1011,12 +1015,21 @@ export default function RunDetailsScreen({ route, navigation }) {
 
           {/* Primary CTA — one-tap check-in directly into this gym */}
           <TouchableOpacity
-            style={[styles.checkInButton, checkingIn && { opacity: 0.6 }]}
+            style={[
+              styles.checkInButton,
+              isCheckedInHere && styles.checkInButtonCheckedIn,
+              (checkingIn || isCheckedInHere) && { opacity: isCheckedInHere ? 1 : 0.6 },
+            ]}
             onPress={handleCheckInHere}
-            disabled={checkingIn}
+            disabled={checkingIn || isCheckedInHere}
           >
             {checkingIn ? (
               <ActivityIndicator size="small" color="#fff" />
+            ) : isCheckedInHere ? (
+              <>
+                <Ionicons name="checkmark-circle" size={16} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.checkInButtonText}>You're Checked In</Text>
+              </>
             ) : (
               <Text style={styles.checkInButtonText}>Check In Here</Text>
             )}
@@ -2260,8 +2273,13 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
     marginTop: SPACING.lg,
     marginBottom: SPACING.lg,
+  },
+  checkInButtonCheckedIn: {
+    backgroundColor: '#22C55E',
   },
   locationBlock: {
     borderTopWidth: StyleSheet.hairlineWidth,
