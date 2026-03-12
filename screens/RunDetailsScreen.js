@@ -57,7 +57,7 @@ import { useTheme } from '../contexts';
 const courtImage = require('../assets/images/court-bg.jpg');
 import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
-import { startOrJoinRun, joinExistingRun, leaveRun } from '../services/runService';
+import { startOrJoinRun, joinExistingRun, leaveRun, subscribeToRunParticipants } from '../services/runService';
 import { auth, db } from '../config/firebase';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -259,6 +259,32 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [selectedRunSlot, setSelectedRunSlot] = useState(null); // time slot object
   const [startingRun, setStartingRun] = useState(false);
   const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
+
+  // ── Per-run participant subscriptions ───────────────────────────────────────
+  // Maps runId → participant[] so each run card can show real-time avatars
+  // and names. Subscriptions are created/torn-down when the visible run list
+  // changes. The dependency key is a comma-joined string of run IDs so the
+  // effect only re-fires when the actual set of runs changes.
+  const [runParticipantsMap, setRunParticipantsMap] = useState({});
+
+  useEffect(() => {
+    if (runs.length === 0) {
+      setRunParticipantsMap({});
+      return;
+    }
+
+    const unsubscribers = runs.map((run) =>
+      subscribeToRunParticipants(run.id, (participants) => {
+        setRunParticipantsMap((prev) => ({ ...prev, [run.id]: participants }));
+      })
+    );
+
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+      setRunParticipantsMap({});
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runs.map((r) => r.id).join(',')]);
 
   /**
    * handleStartOrJoinRun — Creates a new run or joins an existing one.
@@ -937,6 +963,68 @@ export default function RunDetailsScreen({ route, navigation }) {
     );
   };
 
+  /**
+   * renderRunParticipantAvatars — Social avatar row for a run card.
+   *
+   * Shows up to 3 overlapping participant avatars (30 px), a "+X" overflow
+   * chip when more than 3 are present, a first-name preview line, and a
+   * player count. Falls back to a text placeholder while the subscription
+   * is loading (empty array).
+   *
+   * @param {string} runId
+   * @returns {JSX.Element}
+   */
+  const renderRunParticipantAvatars = (runId) => {
+    const participants = runParticipantsMap[runId] || [];
+    const count = participants.length;
+
+    if (count === 0) {
+      return <Text style={styles.runCardMeta}>No one yet — be the first!</Text>;
+    }
+
+    const visible = participants.slice(0, 3);
+    const extra = count - 3;
+
+    // First-name preview: up to 2 names when there's overflow, up to 3 otherwise
+    const previewSlice = extra > 0 ? participants.slice(0, 2) : participants.slice(0, 3);
+    const firstNames = previewSlice.map((p) => (p.userName || 'Player').split(' ')[0]);
+    const namePreview = extra > 0 ? firstNames.join(', ') + '…' : firstNames.join(', ');
+
+    return (
+      <View style={{ marginTop: 6 }}>
+        <View style={styles.runAvatarRow}>
+          {visible.map((p, idx) => (
+            <TouchableOpacity
+              key={p.userId}
+              style={[styles.runAvatarWrap, idx > 0 && styles.runAvatarOffset]}
+              onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: p.userId } })}
+              activeOpacity={0.75}
+            >
+              {p.userAvatar ? (
+                <Image source={{ uri: p.userAvatar }} style={styles.runAvatarImg} />
+              ) : (
+                <View style={styles.runAvatarFallback}>
+                  <Text style={styles.runAvatarInitial}>
+                    {(p.userName || '?')[0].toUpperCase()}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+          {extra > 0 && (
+            <View style={[styles.runAvatarWrap, styles.runAvatarOffset, styles.runAvatarMore]}>
+              <Text style={styles.runAvatarMoreText}>+{extra}</Text>
+            </View>
+          )}
+        </View>
+        <Text style={styles.runParticipantNames} numberOfLines={1}>{namePreview}</Text>
+        <Text style={styles.runCardMeta}>
+          {count === 1 ? '1 player going' : `${count} players going`}
+        </Text>
+      </View>
+    );
+  };
+
   const loading = gymLoading || presencesLoading || schedulesLoading;
 
   // Split the flat schedules array into today's and tomorrow's lists.
@@ -1019,7 +1107,30 @@ export default function RunDetailsScreen({ route, navigation }) {
   const playerCount = presencesLoading
     ? (paramPlayers ?? 0)
     : uniqueActivePresences.length;
-  const todayCount = todaySchedules.length || paramPlannedToday || 0;
+
+  // Planning Today: union of scheduled-visit user IDs and run-participant user IDs
+  // for today's runs. Deduplication (via Set) prevents double-counting a user
+  // who both planned a visit AND joined a run at this gym today.
+  // Runs ⊂ Planning — joining a run implicitly counts as planning.
+  const todayCount = useMemo(() => {
+    const seenUids = new Set();
+    todaySchedules.forEach((s) => {
+      const id = s.odId || s.userId;
+      if (id) seenUids.add(id);
+    });
+    runs.forEach((run) => {
+      const runDate = run.startTime?.toDate();
+      if (runDate && isToday(runDate)) {
+        (runParticipantsMap[run.id] || []).forEach((p) => {
+          if (p.userId) seenUids.add(p.userId);
+        });
+      }
+    });
+    const total = seenUids.size;
+    // Fall back to route-param value only when live data hasn't loaded yet
+    return total > 0 ? total : (paramPlannedToday || 0);
+  }, [todaySchedules, runs, runParticipantsMap, paramPlannedToday]);
+
   const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
 
   // Start or stop the pulse animation based on whether anyone is currently checked in.
@@ -1277,25 +1388,88 @@ export default function RunDetailsScreen({ route, navigation }) {
           />
         </View>
 
-        {/* Scheduled Today — live Firestore schedules only */}
+        {/* ── Runs Today ──────────────────────────────────────────────────────
+            Organized group runs at this gym. Runs are a stronger planning
+            signal than loose planned visits and appear first. Separate from
+            the check-in / presence system — no Firestore schema changes.
+        ─────────────────────────────────────────────────────────────────── */}
+        <View style={[styles.runsSection, { marginHorizontal: SPACING.lg }]}>
+          <View style={styles.runsSectionHeader}>
+            <View style={styles.runsSectionTitleRow}>
+              <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.runsSectionTitle}>Runs Today</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.startRunButton}
+              onPress={() => setRunModalVisible(true)}
+            >
+              <Ionicons name="add" size={14} color={colors.primary} style={{ marginRight: 3 }} />
+              <Text style={styles.startRunButtonText}>Start a Run</Text>
+            </TouchableOpacity>
+          </View>
+
+          {runs.length === 0 ? (
+            <View style={styles.runsEmptyState}>
+              <Text style={styles.runsEmptyText}>No runs planned yet</Text>
+              <Text style={styles.runsEmptySubtext}>Be the first to start one</Text>
+            </View>
+          ) : (
+            runs.map((run) => {
+              const isJoined = joinedRunIds.has(run.id);
+              const isLeaving = leavingRunId === run.id;
+              return (
+                <View key={run.id} style={[styles.runCard, { alignItems: 'flex-start' }]}>
+                  <View style={styles.runCardLeft}>
+                    <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
+                    {renderRunParticipantAvatars(run.id)}
+                  </View>
+                  <View style={[styles.runCardRight, { paddingTop: 2 }]}>
+                    {isJoined ? (
+                      <TouchableOpacity
+                        style={styles.runLeaveButton}
+                        onPress={() => handleLeaveRun(run.id)}
+                        disabled={isLeaving}
+                      >
+                        {isLeaving ? (
+                          <ActivityIndicator size="small" color={colors.textMuted} />
+                        ) : (
+                          <Text style={styles.runLeaveButtonText}>You're Going</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.runJoinButton}
+                        onPress={() => handleJoinRun(run)}
+                      >
+                        <Text style={styles.runJoinButtonText}>Join</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* Planning Today — loose planned visits (separate from organized runs) */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Scheduled Today</Text>
+          <Text style={styles.sectionTitle}>Planning Today</Text>
           <PresenceList
             items={todaySchedules}
             type="schedule"
             navigation={navigation}
-            emptyMessage="No one scheduled today"
+            emptyMessage="No one planning today"
           />
         </View>
 
-        {/* Scheduled Tomorrow — live Firestore schedules only */}
+        {/* Planning Tomorrow — loose planned visits for tomorrow */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Scheduled Tomorrow</Text>
+          <Text style={styles.sectionTitle}>Planning Tomorrow</Text>
           <PresenceList
             items={tomorrowSchedules}
             type="schedule"
             navigation={navigation}
-            emptyMessage="No one scheduled tomorrow"
+            emptyMessage="No one planning tomorrow"
           />
         </View>
 
@@ -1485,74 +1659,6 @@ export default function RunDetailsScreen({ route, navigation }) {
                 )}
               </View>
             ))
-          )}
-        </View>
-
-        {/* ── Runs section ─────────────────────────────────────────────────────
-            Shows upcoming runs at this gym and lets users start or join one.
-            Runs are group-coordination; they are separate from personal
-            "Plan a Visit" schedules and from the live check-in presence system.
-        ─────────────────────────────────────────────────────────────────────── */}
-        <View style={styles.runsSection}>
-          <View style={styles.runsSectionHeader}>
-            <View style={styles.runsSectionTitleRow}>
-              <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.runsSectionTitle}>Runs</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.startRunButton}
-              onPress={() => setRunModalVisible(true)}
-            >
-              <Ionicons name="add" size={14} color={colors.primary} style={{ marginRight: 3 }} />
-              <Text style={styles.startRunButtonText}>Start a Run</Text>
-            </TouchableOpacity>
-          </View>
-
-          {runs.length === 0 ? (
-            <View style={styles.runsEmptyState}>
-              <Text style={styles.runsEmptyText}>No runs planned yet</Text>
-              <Text style={styles.runsEmptySubtext}>Be the first to start one</Text>
-            </View>
-          ) : (
-            runs.map((run) => {
-              const isJoined = joinedRunIds.has(run.id);
-              const isLeaving = leavingRunId === run.id;
-              return (
-                <View key={run.id} style={styles.runCard}>
-                  <View style={styles.runCardLeft}>
-                    <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
-                    <Text style={styles.runCardMeta}>
-                      {run.participantCount === 1
-                        ? '1 going'
-                        : `${run.participantCount} going`}
-                      {run.creatorName ? ` · by ${run.creatorName}` : ''}
-                    </Text>
-                  </View>
-                  <View style={styles.runCardRight}>
-                    {isJoined ? (
-                      <TouchableOpacity
-                        style={styles.runLeaveButton}
-                        onPress={() => handleLeaveRun(run.id)}
-                        disabled={isLeaving}
-                      >
-                        {isLeaving ? (
-                          <ActivityIndicator size="small" color={colors.textMuted} />
-                        ) : (
-                          <Text style={styles.runLeaveButtonText}>You're Going</Text>
-                        )}
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={styles.runJoinButton}
-                        onPress={() => handleJoinRun(run)}
-                      >
-                        <Text style={styles.runJoinButtonText}>Join</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-              );
-            })
           )}
         </View>
 
@@ -3020,6 +3126,60 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: '#fff',
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ─── Run card participant avatars ─────────────────────────────────────────
+  // Smaller than the Who's Going avatars (30 px vs 36 px) to fit inside the
+  // compact run card. Same overlapping-stack pattern.
+  runAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  runAvatarWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    overflow: 'hidden',
+  },
+  runAvatarOffset: {
+    marginLeft: -8,
+  },
+  runAvatarImg: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+  },
+  runAvatarFallback: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.primary + '30',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  runAvatarInitial: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+  },
+  runAvatarMore: {
+    backgroundColor: colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderColor: colors.border,
+  },
+  runAvatarMoreText: {
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+  },
+  runParticipantNames: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textSecondary,
+    marginBottom: 2,
   },
 
   // ─── Runs section ────────────────────────────────────────────────────────
