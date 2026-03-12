@@ -158,7 +158,21 @@ const HomeScreen = ({ navigation }) => {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const items = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const now = new Date();
+        const items = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((item) => {
+            // Check-in items have no plannedTime — always show.
+            // Plan items: only show within the 60-minute lead-up window.
+            //   lower bound: plannedTime > now  (visit hasn't happened yet)
+            //   upper bound: plannedTime <= now + 60 min  (visit is coming up soon)
+            if (item.action === 'planned a visit to' && item.plannedTime) {
+              const planned = item.plannedTime.toDate();
+              const sixtyMinFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+              return planned > now && planned <= sixtyMinFromNow;
+            }
+            return true;
+          });
         setActivityFeed(items);
       },
       (error) => {
