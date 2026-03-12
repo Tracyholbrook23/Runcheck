@@ -1,0 +1,144 @@
+rules_version = '2';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RunCheck — Firestore Security Rules
+//
+// Collections:
+//   users            Profile docs, one per Firebase Auth uid
+//   gyms             Gym directory — read-only from client
+//   presence         Live check-in state, compound key {uid}_{gymId}
+//   schedules        Planned visits, owned per user
+//   activity         Activity feed events (HomeScreen)
+//   runs             Group runs — Start a Run / Join a Run (MVP)
+//   runParticipants  Per-user membership in a run, compound key {runId}_{userId}
+//
+// Deployment:
+//   firebase deploy --only firestore:rules
+// ─────────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    // isAuthed() — true when the request comes from a signed-in user.
+    function isAuthed() {
+      return request.auth != null;
+    }
+
+    // isUser(uid) — true when the requester IS that uid.
+    function isUser(uid) {
+      return isAuthed() && request.auth.uid == uid;
+    }
+
+
+    // ── users/{uid} ───────────────────────────────────────────────────────────
+    // Any authenticated user can read any profile (needed for name/avatar
+    // lookups across the app). Only the owner can write their own doc.
+    match /users/{uid} {
+      allow read:   if isAuthed();
+      allow write:  if isUser(uid);
+    }
+
+
+    // ── gyms/{gymId} ─────────────────────────────────────────────────────────
+    // Gym directory is read-only from client code. Seeding / admin updates
+    // happen via the Firebase console or admin SDK (serviceAccountKey).
+    match /gyms/{gymId} {
+      allow read:  if isAuthed();
+      allow write: if false;
+    }
+
+
+    // ── presence/{presenceId} ────────────────────────────────────────────────
+    // presenceId is a compound key: {uid}_{gymId}
+    //
+    // Reads: any authenticated user (subscribeToGymPresences queries by gymId;
+    //        subscribeToUserPresence queries by odId — both need collection-level
+    //        read access).
+    // Writes: only the user who owns the presence doc. The field 'odId' carries
+    //         the owner's uid and is checked on both create (request.resource)
+    //         and update/delete (resource).
+    match /presence/{presenceId} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed() && isUser(request.resource.data.odId);
+      allow update: if isAuthed() && isUser(resource.data.odId);
+      allow delete: if isAuthed() && isUser(resource.data.odId);
+    }
+
+
+    // ── schedules/{scheduleId} ───────────────────────────────────────────────
+    // Reads: any authenticated user. The app queries schedules by gymId (to
+    //        show slot occupancy on RunDetailsScreen) so we can't restrict
+    //        reads to the owning user alone.
+    // Writes: only the owner (field 'odId').
+    match /schedules/{scheduleId} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed() && isUser(request.resource.data.odId);
+      allow update: if isAuthed() && isUser(resource.data.odId);
+      allow delete: if isAuthed() && isUser(resource.data.odId);
+    }
+
+
+    // ── activity/{activityId} ────────────────────────────────────────────────
+    // The HomeScreen feed queries activity by createdAt without filtering by
+    // userId, so any authenticated user must be able to read the full collection.
+    // Any authenticated user can create an event (fire-and-forget pattern used
+    // by presenceService and runService). No client-side updates or deletes.
+    match /activity/{activityId} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed();
+      allow update: if false;
+      allow delete: if false;
+    }
+
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ── Runs MVP ──────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── runs/{runId} ─────────────────────────────────────────────────────────
+    // Any authenticated user can:
+    //   • read  — subscribeToGymRuns queries runs by gymId + status
+    //   • create — startOrJoinRun creates a new run doc (addDoc)
+    //   • update — joinRun and leaveRun both call txn.update(runRef, { participantCount })
+    //              inside a runTransaction. The transaction also reads/writes
+    //              runParticipants in the same atomic batch, so update must be
+    //              allowed at the collection level for the transaction to succeed.
+    //
+    // Deletes are not needed from client code for MVP.
+    match /runs/{runId} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed();
+      allow update: if isAuthed();
+      allow delete: if false;
+    }
+
+
+    // ── runParticipants/{participantId} ──────────────────────────────────────
+    // participantId is a compound key: {runId}_{userId}
+    //
+    // Firestore rules cannot split the document ID string, so ownership is
+    // enforced via the 'userId' field stored inside the document instead.
+    //
+    // Reads: any authenticated user.
+    //   • subscribeToUserRunsAtGym queries by userId + gymId + status
+    //     (user reads their own participant docs)
+    //   • subscribeToRunParticipants queries by runId + status
+    //     (anyone can see who's going to a run)
+    //
+    // Create/update: only if request.resource.data.userId matches the requester.
+    //   This prevents user A from creating a participant doc that claims to be
+    //   user B.
+    //
+    // Delete: only if resource.data.userId matches the requester.
+    //   leaveRun calls txn.delete(participantRef) — only the owner may leave.
+    match /runParticipants/{participantId} {
+      allow read:   if isAuthed();
+      allow create: if isAuthed() && isUser(request.resource.data.userId);
+      allow update: if isAuthed() && isUser(resource.data.userId);
+      allow delete: if isAuthed() && isUser(resource.data.userId);
+    }
+
+  }
+}
