@@ -392,10 +392,21 @@ export const checkOut = async (isManual = true) => {
     });
   });
 
-  // NOTE: The activity feed entry ("checked in at") is intentionally preserved
-  // after checkout. A check-in counts as attendance regardless of whether the
-  // user leaves early — removing the activity entry would erase the record of
-  // their session, which is the wrong behavior.
+  // Remove the "checked in at" activity feed entry so the Home feed only shows
+  // people who are CURRENTLY at a gym. Attendance credit is NOT lost here —
+  // it was already written to users.reliability.totalAttended at check-in time
+  // and is completely separate from the activity feed.
+  getDocs(
+    query(
+      collection(db, 'activity'),
+      where('userId', '==', user.uid),
+      where('gymId',  '==', activePresence.gymId),
+      where('action', '==', 'checked in at'),
+      limit(1)
+    )
+  )
+    .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id)))))
+    .catch((err) => console.error('Activity cleanup error (checkout):', err));
 
   return { ...activePresence, status: PRESENCE_STATUS.CHECKED_OUT };
 };
@@ -430,6 +441,20 @@ const markPresenceExpired = async (presenceId, gymId) => {
           await updateDoc(userRef, { activePresence: null });
         }
       }
+
+      // Remove the "checked in at" activity feed entry — same logic as checkOut().
+      // Attendance credit in users.reliability.totalAttended is unaffected.
+      getDocs(
+        query(
+          collection(db, 'activity'),
+          where('userId', '==', data.odId),
+          where('gymId',  '==', gymId),
+          where('action', '==', 'checked in at'),
+          limit(1)
+        )
+      )
+        .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id)))))
+        .catch((err) => console.error('Activity cleanup error (expiry):', err));
     }
   } catch (error) {
     console.error('Error marking presence expired:', error);

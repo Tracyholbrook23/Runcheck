@@ -56,6 +56,8 @@ import { useTheme } from '../contexts';
 
 const courtImage = require('../assets/images/court-bg.jpg');
 import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence } from '../hooks';
+import { useGymRuns } from '../hooks/useGymRuns';
+import { startOrJoinRun, joinExistingRun, leaveRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -139,6 +141,77 @@ const tileTimeAgo = (timestamp) => {
   return `${days}d`;
 };
 
+// ─── Run time-picker helpers ─────────────────────────────────────────────────
+// Minimal versions of the helpers from PlanVisitScreen, scoped to runs:
+// today + next 6 days, 30-minute slots 6 AM – 10 PM.
+
+/**
+ * getRunDays — Builds a 7-day array starting from today.
+ * @returns {{ label: string, dateStr: string, dateObj: Date, key: string }[]}
+ */
+const getRunDays = () => {
+  const days = [];
+  const now = new Date();
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(now);
+    date.setDate(date.getDate() + i);
+    let label;
+    if (i === 0) label = 'Today';
+    else if (i === 1) label = 'Tomorrow';
+    else label = date.toLocaleDateString('en-US', { weekday: 'short' });
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    days.push({ label, dateStr, dateObj: date, key: date.toDateString() });
+  }
+  return days;
+};
+
+/**
+ * getRunSlots — Generates 30-minute time slots for a given day (6 AM – 10 PM).
+ * Past slots are filtered out when the selected day is today.
+ * @param {{ dateObj: Date }|null} dayObj
+ * @returns {{ date: Date, label: string, timeSlot: string }[]}
+ */
+const getRunSlots = (dayObj) => {
+  if (!dayObj) return [];
+  const slots = [];
+  const now = new Date();
+  const isToday = dayObj.dateObj.toDateString() === now.toDateString();
+  for (let hour = 6; hour <= 22; hour++) {
+    for (let min = 0; min < 60; min += 30) {
+      const date = new Date(dayObj.dateObj);
+      date.setHours(hour, min, 0, 0);
+      if (isToday && date <= now) continue;
+      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+      const displayMin = min === 0 ? '00' : '30';
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      slots.push({
+        date,
+        label: `${displayHour}:${displayMin} ${ampm}`,
+        timeSlot: date.toISOString(),
+      });
+    }
+  }
+  return slots;
+};
+
+/**
+ * formatRunTime — Human-readable start time for a run card.
+ * @param {import('firebase/firestore').Timestamp} timestamp
+ * @returns {string}
+ */
+const formatRunTime = (timestamp) => {
+  if (!timestamp) return '';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (isToday) return `Today ${time}`;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (date.toDateString() === tomorrow.toDateString()) return `Tomorrow ${time}`;
+  return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ` ${time}`;
+};
+
 /**
  * RunDetailsScreen — Full gym detail screen.
  *
@@ -175,6 +248,89 @@ export default function RunDetailsScreen({ route, navigation }) {
   // True when the current user has an active check-in specifically at this gym.
   // Compared by gymId so a user checked into a different gym still sees "Check In Here".
   const isCheckedInHere = !!presence && presence.gymId === gymId;
+
+  // ── Runs ──────────────────────────────────────────────────────────────────
+  // Real-time runs at this gym and the current user's participation state.
+  const { runs, joinedRunIds } = useGymRuns(gymId);
+
+  // Start-a-Run modal state
+  const [runModalVisible, setRunModalVisible] = useState(false);
+  const [selectedRunDay, setSelectedRunDay] = useState(null);   // day chip object
+  const [selectedRunSlot, setSelectedRunSlot] = useState(null); // time slot object
+  const [startingRun, setStartingRun] = useState(false);
+  const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
+
+  /**
+   * handleStartOrJoinRun — Creates a new run or joins an existing one.
+   * Called when the user confirms from the Start-a-Run modal.
+   * Delegates to runService.startOrJoinRun() which implements the merge rule.
+   */
+  const handleStartOrJoinRun = async () => {
+    if (!selectedRunSlot) return;
+    const gymDisplayName = gym?.name || gymName;
+    setStartingRun(true);
+    try {
+      const { created } = await startOrJoinRun(
+        gymId,
+        gymDisplayName,
+        selectedRunSlot.date
+      );
+      setRunModalVisible(false);
+      setSelectedRunDay(null);
+      setSelectedRunSlot(null);
+      if (created) {
+        Alert.alert(
+          'Run Started!',
+          `Your run at ${gymDisplayName} is live. Others can now see it and join.`,
+          [{ text: 'Nice!' }]
+        );
+      } else {
+        Alert.alert(
+          'You\'re In!',
+          `A run is already happening around that time at ${gymDisplayName}. You\'ve been added to it.`,
+          [{ text: 'Let\'s go!' }]
+        );
+      }
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not start run. Please try again.');
+    } finally {
+      setStartingRun(false);
+    }
+  };
+
+  /**
+   * handleJoinRun — Joins an existing run directly by its Firestore ID (one tap, no modal).
+   * Uses joinExistingRun instead of startOrJoinRun so past/in-progress runs
+   * (within the 30-minute grace window) are joinable without hitting the
+   * "start time must be in the future" validation.
+   */
+  const handleJoinRun = async (run) => {
+    const gymDisplayName = gym?.name || gymName;
+    try {
+      await joinExistingRun(run.id, gymId, gymDisplayName);
+      Alert.alert(
+        'You\'re In!',
+        `You\'ve joined the run at ${gymDisplayName}.`,
+        [{ text: 'Let\'s go!' }]
+      );
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not join run. Please try again.');
+    }
+  };
+
+  /**
+   * handleLeaveRun — Removes the current user from a run.
+   */
+  const handleLeaveRun = async (runId) => {
+    setLeavingRunId(runId);
+    try {
+      await leaveRun(runId);
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not leave run. Please try again.');
+    } finally {
+      setLeavingRunId(null);
+    }
+  };
 
   /**
    * handleCheckInHere — One-tap check-in directly into the gym being viewed.
@@ -1332,6 +1488,74 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
+        {/* ── Runs section ─────────────────────────────────────────────────────
+            Shows upcoming runs at this gym and lets users start or join one.
+            Runs are group-coordination; they are separate from personal
+            "Plan a Visit" schedules and from the live check-in presence system.
+        ─────────────────────────────────────────────────────────────────────── */}
+        <View style={styles.runsSection}>
+          <View style={styles.runsSectionHeader}>
+            <View style={styles.runsSectionTitleRow}>
+              <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.runsSectionTitle}>Runs</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.startRunButton}
+              onPress={() => setRunModalVisible(true)}
+            >
+              <Ionicons name="add" size={14} color={colors.primary} style={{ marginRight: 3 }} />
+              <Text style={styles.startRunButtonText}>Start a Run</Text>
+            </TouchableOpacity>
+          </View>
+
+          {runs.length === 0 ? (
+            <View style={styles.runsEmptyState}>
+              <Text style={styles.runsEmptyText}>No runs planned yet</Text>
+              <Text style={styles.runsEmptySubtext}>Be the first to start one</Text>
+            </View>
+          ) : (
+            runs.map((run) => {
+              const isJoined = joinedRunIds.has(run.id);
+              const isLeaving = leavingRunId === run.id;
+              return (
+                <View key={run.id} style={styles.runCard}>
+                  <View style={styles.runCardLeft}>
+                    <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
+                    <Text style={styles.runCardMeta}>
+                      {run.participantCount === 1
+                        ? '1 going'
+                        : `${run.participantCount} going`}
+                      {run.creatorName ? ` · by ${run.creatorName}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.runCardRight}>
+                    {isJoined ? (
+                      <TouchableOpacity
+                        style={styles.runLeaveButton}
+                        onPress={() => handleLeaveRun(run.id)}
+                        disabled={isLeaving}
+                      >
+                        {isLeaving ? (
+                          <ActivityIndicator size="small" color={colors.textMuted} />
+                        ) : (
+                          <Text style={styles.runLeaveButtonText}>You're Going</Text>
+                        )}
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.runJoinButton}
+                        onPress={() => handleJoinRun(run)}
+                      >
+                        <Text style={styles.runJoinButtonText}>Join</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+
         {/* Secondary CTA — Plan a Visit */}
         <TouchableOpacity
           style={styles.planButton}
@@ -1417,6 +1641,123 @@ export default function RunDetailsScreen({ route, navigation }) {
               </View>
             </TouchableWithoutFeedback>
           </KeyboardAvoidingView>
+        </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── Start a Run Modal ────────────────────────────────────────────── */}
+      <Modal
+        visible={runModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRunModalVisible(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.runModalOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => setRunModalVisible(false)}
+            />
+            <View style={styles.runModalCard}>
+              <Text style={styles.runModalTitle}>Start a Run</Text>
+              <Text style={styles.runModalSubtitle}>
+                Pick a time — others nearby will see it and can join.
+              </Text>
+
+              {/* Day picker */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.runDayPickerContent}
+                style={styles.runDayPickerRow}
+              >
+                {getRunDays().map((day) => (
+                  <TouchableOpacity
+                    key={day.key}
+                    style={[
+                      styles.runDayChip,
+                      selectedRunDay?.key === day.key && styles.runDayChipSelected,
+                    ]}
+                    onPress={() => { setSelectedRunDay(day); setSelectedRunSlot(null); }}
+                  >
+                    <Text style={[
+                      styles.runDayChipLabel,
+                      selectedRunDay?.key === day.key && styles.runDayChipLabelSelected,
+                    ]}>
+                      {day.label}
+                    </Text>
+                    <Text style={[
+                      styles.runDayChipDate,
+                      selectedRunDay?.key === day.key && styles.runDayChipDateSelected,
+                    ]}>
+                      {day.dateStr}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {/* Time slot grid */}
+              {!selectedRunDay ? (
+                <View style={styles.runSelectDayPrompt}>
+                  <Text style={styles.runSelectDayText}>Select a day above</Text>
+                </View>
+              ) : (
+                <ScrollView
+                  style={styles.runSlotsScroll}
+                  showsVerticalScrollIndicator={false}
+                >
+                  <View style={styles.runSlotsContainer}>
+                    {getRunSlots(selectedRunDay).map((slot) => (
+                      <TouchableOpacity
+                        key={slot.timeSlot}
+                        style={[
+                          styles.runSlotCard,
+                          selectedRunSlot?.timeSlot === slot.timeSlot && styles.runSlotCardSelected,
+                        ]}
+                        onPress={() => setSelectedRunSlot(slot)}
+                      >
+                        <Text style={[
+                          styles.runSlotText,
+                          selectedRunSlot?.timeSlot === slot.timeSlot && styles.runSlotTextSelected,
+                        ]}>
+                          {slot.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
+
+              {/* Actions */}
+              <View style={styles.runModalActions}>
+                <TouchableOpacity
+                  style={styles.runModalCancelButton}
+                  onPress={() => {
+                    setRunModalVisible(false);
+                    setSelectedRunDay(null);
+                    setSelectedRunSlot(null);
+                  }}
+                  disabled={startingRun}
+                >
+                  <Text style={styles.runModalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.runModalConfirmButton,
+                    (!selectedRunSlot || startingRun) && styles.runModalButtonDisabled,
+                  ]}
+                  onPress={handleStartOrJoinRun}
+                  disabled={!selectedRunSlot || startingRun}
+                >
+                  {startingRun ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.runModalConfirmText}>Confirm</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </TouchableWithoutFeedback>
       </Modal>
 
@@ -2679,5 +3020,250 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: '#fff',
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ─── Runs section ────────────────────────────────────────────────────────
+  runsSection: {
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  runsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  runsSectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  runsSectionTitle: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  startRunButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+  },
+  startRunButtonText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runsEmptyState: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+  },
+  runsEmptyText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runsEmptySubtext: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  runCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  runCardLeft: {
+    flex: 1,
+    marginRight: SPACING.sm,
+  },
+  runCardTime: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  runCardMeta: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  runCardRight: {
+    alignItems: 'flex-end',
+  },
+  runJoinButton: {
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs + 2,
+  },
+  runJoinButtonText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runLeaveButton: {
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs + 2,
+    minWidth: 88,
+    alignItems: 'center',
+  },
+  runLeaveButtonText: {
+    color: colors.primary,
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ─── Start a Run modal ───────────────────────────────────────────────────
+  runModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+    paddingBottom: Platform.OS === 'ios' ? 34 : 16,
+  },
+  runModalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: RADIUS.lg * 1.5,
+    borderTopRightRadius: RADIUS.lg * 1.5,
+    paddingTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
+    maxHeight: '85%',
+  },
+  runModalTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  runModalSubtitle: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    marginBottom: SPACING.lg,
+  },
+  runDayPickerRow: {
+    marginBottom: SPACING.md,
+    marginHorizontal: -SPACING.xs,
+  },
+  runDayPickerContent: {
+    paddingHorizontal: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  runDayChip: {
+    backgroundColor: colors.background,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    alignItems: 'center',
+    minWidth: 78,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  runDayChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  runDayChipLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+  },
+  runDayChipLabelSelected: {
+    color: '#fff',
+  },
+  runDayChipDate: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  runDayChipDateSelected: {
+    color: 'rgba(255,255,255,0.8)',
+  },
+  runSelectDayPrompt: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+  },
+  runSelectDayText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textMuted,
+  },
+  runSlotsScroll: {
+    maxHeight: 180,
+  },
+  runSlotsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  runSlotCard: {
+    width: '48%',
+    backgroundColor: colors.background,
+    borderRadius: RADIUS.md,
+    padding: SPACING.sm,
+    marginBottom: SPACING.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  runSlotCardSelected: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primary + '15',
+  },
+  runSlotText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textPrimary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  runSlotTextSelected: {
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  runModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: SPACING.lg,
+    gap: SPACING.sm,
+  },
+  runModalCancelButton: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceLight,
+  },
+  runModalCancelText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runModalConfirmButton: {
+    flex: 1,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  runModalConfirmText: {
+    fontSize: FONT_SIZES.body,
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runModalButtonDisabled: {
+    opacity: 0.45,
   },
 });

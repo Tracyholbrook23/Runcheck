@@ -117,10 +117,21 @@ const getRunEnergyLabel = (count) => {
 ## Files Modified Recently (2026-03-11 session)
 | File | What changed |
 |---|---|
-| `services/presenceService.js` | `checkIn()` now calls `awardPoints()` (client-side, idempotent) and increments `reliability.totalAttended` + recalculates `reliability.score` in a transaction — fire-and-forget after the main presence write |
-| `services/presenceService.js` | `checkOut()` no longer deletes the activity feed entry — the "checked in at" record persists so attendance is preserved regardless of early checkout |
-| `screens/RunDetailsScreen.js` | Removed defunct `httpsCallable(getFunctions(), 'checkIn')` call (Cloud Function never existed); removed `getFunctions`, `httpsCallable`, `findMatchingSchedule` imports; `handleCheckInHere` now uses `checkinResult.scheduleId` to determine points label |
-| `screens/CheckInScreen.js` | Fixed stale "−10 pts have been deducted" alert text — checkout no longer deducts points; alert now says "Your session has been recorded" |
+| `services/presenceService.js` | `checkIn()` now calls `awardPoints()` (client-side, idempotent via `sessionKey`) and increments `reliability.totalAttended` + recalculates `reliability.score` |
+| `services/presenceService.js` | `checkOut()` deletes the "checked in at" activity feed entry (keeps feed live); attendance is tracked separately in `reliability.totalAttended` and is unaffected |
+| `services/presenceService.js` | `markPresenceExpired()` now also deletes the "checked in at" activity feed entry — consistent with checkout behaviour |
+| `screens/RunDetailsScreen.js` | Removed defunct `httpsCallable(getFunctions(), 'checkIn')` call; removed dead imports; `handleCheckInHere` uses `checkinResult.scheduleId` for points label |
+| `screens/CheckInScreen.js` | Fixed stale "−10 pts have been deducted" alert text |
+| `screens/PlanVisitScreen.js` | Plan activity docs now include `plannedTime` field so the feed can filter out past plans |
+| `screens/HomeScreen.js` | Activity snapshot callback now filters out `planned a visit to` items whose `plannedTime` has passed |
+
+## Activity Feed Architecture (as of 2026-03-11)
+- `activity` collection is **ephemeral display data only** — not used for attendance tracking
+- **Check-in activity** (`action: 'checked in at'`): created on check-in, deleted on checkout AND on auto-expiry → feed only shows currently active sessions
+- **Plan activity** (`action: 'planned a visit to'`): created when a plan is saved, includes `plannedTime` field; deleted on cancellation; HomeScreen filters out items where `plannedTime < now`
+- **No checkout events** are ever written to the activity feed
+- HomeScreen subscribes: `createdAt >= twoHoursAgo` (computed at mount), `limit(10)`, plan items additionally filtered client-side by `plannedTime`
+- Old activity docs (pre-March 2026) lack a `plannedTime` field — these are treated as always-visible by the filter (`!item.plannedTime` passes through)
 
 ## Attendance / Points Architecture (as of 2026-03-11)
 - **Check-in = attended session** — every successful `presenceService.checkIn()` call awards points AND increments `reliability.totalAttended`

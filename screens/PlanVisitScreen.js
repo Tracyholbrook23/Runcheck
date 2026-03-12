@@ -184,6 +184,9 @@ export default function PlanVisitScreen({ navigation }) {
           gymId: selectedGym.id,
           gymName: selectedGym.name,
           createdAt: Timestamp.now(),
+          // plannedTime lets the HomeScreen filter out plans whose time has passed.
+          // Without this field, a plan for tomorrow could show in today's feed.
+          plannedTime: Timestamp.fromDate(new Date(selectedSlot.date)),
         });
 
         // Backlink: store the activity doc ID on the schedule document so that
