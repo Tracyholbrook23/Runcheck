@@ -114,6 +114,23 @@ const getRunEnergyLabel = (count) => {
 - Check In tab: repurposed as session status screen (see Navigation Structure); gym picker removed
 - Find a Run (ViewRunsScreen): gym search bar with local-only filter against name + address; input sanitized (strip non-`[a-zA-Z0-9 '.-&]`, max 50 chars)
 
+## Files Modified Recently (2026-03-11 session)
+| File | What changed |
+|---|---|
+| `services/presenceService.js` | `checkIn()` now calls `awardPoints()` (client-side, idempotent) and increments `reliability.totalAttended` + recalculates `reliability.score` in a transaction — fire-and-forget after the main presence write |
+| `services/presenceService.js` | `checkOut()` no longer deletes the activity feed entry — the "checked in at" record persists so attendance is preserved regardless of early checkout |
+| `screens/RunDetailsScreen.js` | Removed defunct `httpsCallable(getFunctions(), 'checkIn')` call (Cloud Function never existed); removed `getFunctions`, `httpsCallable`, `findMatchingSchedule` imports; `handleCheckInHere` now uses `checkinResult.scheduleId` to determine points label |
+| `screens/CheckInScreen.js` | Fixed stale "−10 pts have been deducted" alert text — checkout no longer deducts points; alert now says "Your session has been recorded" |
+
+## Attendance / Points Architecture (as of 2026-03-11)
+- **Check-in = attended session** — every successful `presenceService.checkIn()` call awards points AND increments `reliability.totalAttended`
+- `awardPoints()` in `pointsService.js` handles all point writes (idempotent via `sessionKey = \`${presenceId}_${now.getTime()}\``) — the timestamp suffix ensures each visit to the same gym gets its own unique award slot, even though the presence document ID itself is reused
+- `reliability.totalAttended` and `reliability.score` are written client-side on check-in (no Cloud Function dependency for the MVP)
+- `reliability.score` is recalculated on each check-in using `calculateReliabilityScore({ totalAttended, totalNoShow })`
+- **Checkout does NOT deduct points, does NOT decrement `totalAttended`, does NOT remove the activity feed entry**
+- Session Stats on ProfileScreen reads `users/{uid}.reliability.totalAttended` (now correctly updates)
+- Leaderboard reads `users/{uid}.totalPoints` (now correctly updates on check-in)
+
 ## Files Modified Recently (2026-03-05 session)
 | File | What changed |
 |---|---|
@@ -156,6 +173,9 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - Auto-expiry is client-side only; a Cloud Function is needed to expire presences server-side without deducting points
 - No composite Firestore index for `activity` collection query (`createdAt >= X, orderBy createdAt`) — may need manual index creation for scale
 - `gym.currentPresenceCount` is a stale denormalized counter — do NOT use it for display; always use real-time presence data
+- `reliability.totalScheduled` is NOT incremented on plain check-ins (only via `createSchedule`) — this is intentional; the Session Stats "Scheduled" column reflects explicit planned visits
+- When Cloud Functions are eventually deployed for reliability/no-show tracking, the client-side `reliability.totalAttended` increment in `presenceService.checkIn()` should be removed to avoid double-counting
+- The compound presenceId (`{userId}_{gymId}`) is reused when a user checks in, checks out, and re-checks into the same gym — this is intentional for duplicate-prevention; the points idempotency key is separately `{presenceId}_{checkinTimestampMs}` so repeat visits earn points correctly
 
 ## Next Tasks
 1. Remove `__DEV__` debug logs from HomeScreen.js and RunDetailsScreen.js (after confirming counts look correct)
@@ -163,6 +183,7 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 3. Build the Cloud Function for auto-expiry: mark presence expired + decrement gym count + clear `activePresence`, call `checkOut(isManual=false)`
 4. Add a Firestore composite index for the `activity` collection on `(createdAt DESC)` and confirm the HomeScreen feed query is covered
 5. Set `cli.appVersionSource` in eas.json (EAS warned this will be required in the future)
+6. ~~Consider switching to timestamp-based presenceIds~~ — resolved: points idempotency key is now `{presenceId}_{checkinTimestampMs}` so each session earns points correctly; the doc ID stays as `{userId}_{gymId}` for duplicate prevention
 
 ## How to Give Claude Context at Start of Each Session
 Tell Claude: "Read PROJECT_MEMORY.md in my Runcheck folder before we start."
