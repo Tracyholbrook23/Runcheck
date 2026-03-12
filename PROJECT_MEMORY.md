@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-06_
+_Last updated: 2026-03-12_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -113,6 +113,28 @@ const getRunEnergyLabel = (count) => {
 - RunCheck Premium: UI-only teaser card on ProfileScreen (below Current Status, above Settings) → PremiumScreen with 5 feature cards ($4.99/mo · $29.99/yr) + Alert-based CTA; zero billing logic
 - Check In tab: repurposed as session status screen (see Navigation Structure); gym picker removed
 - Find a Run (ViewRunsScreen): gym search bar with local-only filter against name + address; input sanitized (strip non-`[a-zA-Z0-9 '.-&]`, max 50 chars)
+- **Start a Run / Join a Run MVP**: any user can start a group run at a gym; others can join with one tap; merge rule prevents duplicate runs within ±60 min at the same gym; runs display participant count and who's going; grace window keeps runs visible 30 min after startTime so late arrivals can still join
+
+## Files Modified Recently (2026-03-12 session)
+| File | What changed |
+|---|---|
+| `screens/HomeScreen.js` | Planned visit filter now enforces upper bound: only shows plan items where `plannedTime > now AND plannedTime <= now + 60 min` |
+| `services/runService.js` | **New file** — full runs MVP: `startOrJoinRun`, `joinExistingRun`, `leaveRun`, `subscribeToGymRuns`, `subscribeToUserRunsAtGym`, `subscribeToRunParticipants` |
+| `hooks/useGymRuns.js` | **New file** — composes two Firestore subscriptions; exposes `{ runs, loading, joinedRunIds, userParticipants }` |
+| `screens/RunDetailsScreen.js` | Added runs section (run cards, Start a Run modal with day/time picker, Join/Leave handlers); new styles block |
+| `firestore.rules` | **New file** — Firestore security rules for all collections including `runs` and `runParticipants` |
+| `firebase.json` | **New file** — Firebase CLI config pointing to `firestore.rules` for `firebase deploy --only firestore:rules` |
+
+## Start a Run / Join a Run — Architecture Notes
+- **Collections**: `runs/{autoId}` and `runParticipants/{runId}_{userId}` (compound key)
+- **Merge rule**: client-side ±60 min check after a single `gymId + status` query — avoids needing a composite index on two range fields
+- **`startOrJoinRun`**: validates `startTime > now` and `startTime <= now + 7 days`; checks for a mergeable run; creates or joins
+- **`joinExistingRun`**: joins a known run by ID, bypasses time validation — required for grace-window runs whose `startTime` is in the past
+- **`joinRun` (internal)**: runs a `runTransaction`; compound participant key makes joins idempotent; `!alreadyJoined` guard prevents double-counting `participantCount`
+- **`leaveRun`**: transaction deletes participant doc + `increment(-1)` on `participantCount`; no-op if user isn't in the run
+- **Grace window**: `subscribeToGymRuns` shows runs whose `startTime >= now - 30 min`; late joiners use `joinExistingRun`, not `startOrJoinRun`
+- **Activity feed**: `'started a run at'` is written fire-and-forget on run creation. `'joined a run at'` writes exist in the code but are **flagged for removal** before commit — they would cause feed spam when multiple users join the same run (see Known Issues)
+- **Plan a Visit is untouched** — `scheduleService`, `PlanVisitScreen`, reliability, and no-show logic are completely separate
 
 ## Files Modified Recently (2026-03-11 session)
 | File | What changed |
@@ -131,7 +153,9 @@ const getRunEnergyLabel = (count) => {
 - **Plan activity** (`action: 'planned a visit to'`): created when a plan is saved, includes `plannedTime` field; deleted on cancellation; HomeScreen filters out items where `plannedTime < now`
 - **No checkout events** are ever written to the activity feed
 - HomeScreen subscribes: `createdAt >= twoHoursAgo` (computed at mount), `limit(10)`, plan items additionally filtered client-side by `plannedTime`
+- **Planned visit visibility window**: `plannedTime > now AND plannedTime <= now + 60 minutes`. Both bounds enforced. Items outside this window are filtered out. Old docs lacking `plannedTime` pass through as always-visible.
 - Old activity docs (pre-March 2026) lack a `plannedTime` field — these are treated as always-visible by the filter (`!item.plannedTime` passes through)
+- **Run activity events** (`'started a run at'`) pass through the filter via the `return true` branch — they have no `plannedTime` so no extra filtering applies. `'joined a run at'` writes are present in `runService.js` but flagged for removal before commit (see Known Issues)
 
 ## Attendance / Points Architecture (as of 2026-03-11)
 - **Check-in = attended session** — every successful `presenceService.checkIn()` call awards points AND increments `reliability.totalAttended`
@@ -187,6 +211,7 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - `reliability.totalScheduled` is NOT incremented on plain check-ins (only via `createSchedule`) — this is intentional; the Session Stats "Scheduled" column reflects explicit planned visits
 - When Cloud Functions are eventually deployed for reliability/no-show tracking, the client-side `reliability.totalAttended` increment in `presenceService.checkIn()` should be removed to avoid double-counting
 - The compound presenceId (`{userId}_{gymId}`) is reused when a user checks in, checks out, and re-checks into the same gym — this is intentional for duplicate-prevention; the points idempotency key is separately `{presenceId}_{checkinTimestampMs}` so repeat visits earn points correctly
+- **`'joined a run at'` activity writes** are present in `runService.js` (both `joinExistingRun` and the merge-join branch of `startOrJoinRun`) but should be removed before commit — with many users joining one run, the feed fills with identical join events. Only `'started a run at'` should remain. The code change is two `addDoc` call deletions in `runService.js`.
 
 ## Next Tasks
 1. Remove `__DEV__` debug logs from HomeScreen.js and RunDetailsScreen.js (after confirming counts look correct)

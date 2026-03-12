@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-05_
+_Last updated: 2026-03-12_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -90,11 +90,37 @@ Firebase-only backend. No custom server. Logic lives in:
 ```js
 {
   userId, userName, userAvatar,
-  action: 'checked in at',
+  action: 'checked in at',   // also: 'planned a visit to', 'started a run at'
   gymId, gymName,
   createdAt: Timestamp,      // Timestamp.now() — see note above
+  plannedTime: Timestamp,    // only present on 'planned a visit to' events
+  runId: string,             // only present on run events
 }
 ```
+
+### `runs/{autoId}`
+```js
+{
+  gymId, gymName,
+  createdBy: string,         // userId of the user who started the run
+  creatorName: string,
+  startTime: Timestamp,
+  status: 'upcoming',        // only status for MVP
+  participantCount: number,  // denormalized; kept in sync via runTransaction
+  createdAt: Timestamp,      // serverTimestamp()
+}
+```
+
+### `runParticipants/{runId}_{userId}`   ← compound doc ID
+```js
+{
+  runId, userId, userName, userAvatar,
+  joinedAt: Timestamp,       // Timestamp.now()
+  status: 'going',
+  gymId,                     // denormalized for userId+gymId query in subscribeToUserRunsAtGym
+}
+```
+> Compound key `{runId}_{userId}` makes joins idempotent (setDoc overwrites) and leaveRun O(1) (delete by ID, no query). Ownership enforced via the `userId` field since Firestore rules cannot split the doc ID string.
 
 ---
 
@@ -143,6 +169,15 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 - `markScheduleNoShow(scheduleId)` — called by cleanup job
 - `findMatchingSchedule(odId, gymId)` — finds a `SCHEDULED` session within grace period (60 min)
 
+### `runService.js`
+- **`startOrJoinRun(gymId, gymName, startTime)`** — merge rule: queries `upcoming` runs at this gym, joins an existing one if `|existingStartTime - requestedStartTime| <= 60 min`, otherwise creates a new run. Validates `startTime > now` and `<= now + 7 days`. Returns `{ runId, created: boolean }`.
+- **`joinExistingRun(runId, gymId, gymName)`** — joins a known run by ID; skips time validation. Use this (not `startOrJoinRun`) for run cards shown in the grace window whose `startTime` is already in the past.
+- **`leaveRun(runId)`** — transaction: deletes `runParticipants/{runId}_{uid}`, decrements `participantCount`. No-op if user isn't in the run.
+- **`subscribeToGymRuns(gymId, callback)`** — real-time; filters `status == 'upcoming'`, grace window `startTime >= now - 30 min`.
+- **`subscribeToUserRunsAtGym(userId, gymId, callback)`** — real-time; user's own participant docs at a specific gym (`userId + gymId + status == 'going'`).
+- **`subscribeToRunParticipants(runId, callback)`** — real-time; all participants in a run (for future "who's going" list).
+- Internal `joinRun` uses `runTransaction`: reads participant doc first; `increment(1)` only fires if `!alreadyJoined`.
+
 ### `reliabilityService.js` — READ-ONLY on client
 - `getUserReliability(uid)` — reads `users/{uid}.reliability`
 - `getReliabilityTier(score)` — returns label/color for score display
@@ -164,6 +199,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useSchedules(uid)` | `{ schedules, todaySchedules, tomorrowSchedules, loading }` | schedules query |
 | `useReliability(uid)` | `{ reliability, loading }` | `getUserReliability` |
 | `useLocation()` | `{ location, error, loading }` | Expo Location |
+| `useGymRuns(gymId)` | `{ runs, loading, joinedRunIds, userParticipants }` | `subscribeToGymRuns` + `subscribeToUserRunsAtGym` |
 
 ---
 
@@ -197,13 +233,16 @@ RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, g
 
 ## Required Firestore Indexes
 ```
-1. presence:  odId ASC, status ASC
-2. presence:  gymId ASC, status ASC, checkedInAt DESC
-3. presence:  status ASC, expiresAt ASC
-4. schedules: odId ASC, status ASC, scheduledTime ASC
-5. schedules: gymId ASC, status ASC, scheduledTime ASC
-6. schedules: status ASC, scheduledTime ASC
-7. activity:  createdAt DESC   ← may need composite index for HomeScreen query
+1.  presence:        odId ASC, status ASC
+2.  presence:        gymId ASC, status ASC, checkedInAt DESC
+3.  presence:        status ASC, expiresAt ASC
+4.  schedules:       odId ASC, status ASC, scheduledTime ASC
+5.  schedules:       gymId ASC, status ASC, scheduledTime ASC
+6.  schedules:       status ASC, scheduledTime ASC
+7.  activity:        createdAt DESC   ← may need composite index for HomeScreen query
+8.  runs:            gymId ASC, status ASC, startTime ASC   ← subscribeToGymRuns + startOrJoinRun
+9.  runParticipants: userId ASC, gymId ASC, status ASC      ← subscribeToUserRunsAtGym
+10. runParticipants: runId ASC, status ASC, joinedAt ASC    ← subscribeToRunParticipants
 ```
 
 ---
@@ -214,6 +253,9 @@ RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, g
 3. **`gym.currentPresenceCount` lags real-time** — it's a denormalized counter updated by transactions. The UI must NOT use it for display — always use `subscribeToGymPresences` data
 4. **`activity` index** — confirm composite Firestore index exists for `createdAt DESC` inequality query on HomeScreen feed
 5. **Reliability writes** — currently all in Cloud Functions (backend). Do not re-add to client code.
+6. **`'joined a run at'` activity writes** — present in `runService.js` but should be removed before commit. With multiple users joining one run, the feed produces identical spam entries. Only `'started a run at'` should be kept. Requires deleting the `addDoc` calls inside `joinExistingRun` and the merge-join branch of `startOrJoinRun`.
+7. **`participantCount` floor** — `increment(-1)` in `leaveRun` is not clamped. A retry race could push the counter negative. Acceptable for MVP; add a Security Rule floor (`participantCount >= 0`) or Cloud Function validation before launch.
+8. **Runs indexes** — three new composite indexes required (see Required Firestore Indexes #8–10). Create these in the Firebase console or `firestore.indexes.json` to avoid "index required" errors at query time.
 
 ---
 
@@ -221,3 +263,5 @@ RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, g
 - `config/firebase.js` — exports `db`, `auth`, `storage`
 - `config/env.js` — environment variables
 - `serviceAccountKey.json` — firebase-admin key for migration scripts only (never import in app code)
+- `firestore.rules` — Firestore security rules (all collections). Deploy with `firebase deploy --only firestore:rules`. Added 2026-03-12; previously rules were managed exclusively via the Firebase console.
+- `firebase.json` — Firebase CLI config pointing to `firestore.rules`
