@@ -55,14 +55,15 @@ export default function CheckInScreen({ navigation }) {
 
   /**
    * handleCheckOut — delegates to usePresence.checkOut() (manual check-out).
-   * Deducts 10 pts server-side via presenceService.checkOut(isManual=true).
+   * Points are NOT deducted on checkout — the check-in already counted as
+   * attendance and that record is permanent regardless of when you leave.
    */
   const handleCheckOut = async () => {
     try {
       await checkOut();
       Alert.alert(
         'Checked Out',
-        'You have been checked out. −10 pts have been deducted.',
+        "You've been checked out. Your session has been recorded.",
         [{ text: 'OK' }]
       );
     } catch (error) {

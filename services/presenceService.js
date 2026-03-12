@@ -70,6 +70,8 @@ import {
 
 import { findMatchingSchedule, markScheduleAttended } from './scheduleService';
 import { calculateDistanceMeters } from '../utils/locationUtils';
+import { awardPoints } from './pointsService';
+import { calculateReliabilityScore } from './reliabilityService';
 
 /**
  * Generate presence document ID (compound key prevents duplicates)
@@ -299,6 +301,39 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     await markScheduleAttended(matchingSchedule.id, presenceId);
   }
 
+  // ── Award points for this check-in (client-side, idempotent via sessionKey) ──
+  // The key is presenceId + check-in timestamp so each session at the same gym
+  // gets its own unique idempotency slot. Using just presenceId ({userId}_{gymId})
+  // would block points on the second visit to the same gym because the document
+  // ID is reused when the previous session is checked out or expired.
+  // The presence document ID itself is unchanged — only the points-award key differs.
+  const pointsAction = matchingSchedule ? 'checkinWithPlan' : 'checkin';
+  const sessionKey = `${presenceId}_${now.getTime()}`;
+  awardPoints(odId, pointsAction, sessionKey).catch((err) =>
+    console.error('Points award error (check-in):', err)
+  );
+
+  // ── Record attended session in reliability stats ─────────────────────────
+  // Increments reliability.totalAttended and recalculates the score.
+  // Uses a transaction so the read-increment-recalculate is atomic.
+  // Fire-and-forget — non-critical relative to the presence write above.
+  runTransaction(db, async (txn) => {
+    const snap = await txn.get(userRef);
+    const d = snap.data() || {};
+    const r = d.reliability || {};
+    const newAttended = (r.totalAttended || 0) + 1;
+    const newNoShow = r.totalNoShow || 0;
+    const newScore = calculateReliabilityScore({
+      totalAttended: newAttended,
+      totalNoShow: newNoShow,
+    });
+    txn.update(userRef, {
+      'reliability.totalAttended': increment(1),
+      'reliability.score': newScore,
+      'reliability.lastUpdated': Timestamp.now(),
+    });
+  }).catch((err) => console.error('Attendance record error (check-in):', err));
+
   return { id: presenceId, ...presenceData };
 };
 
@@ -308,17 +343,13 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
  * Uses a transaction to atomically update presence status, decrement the gym
  * count, and clear the user's activePresence.
  *
- * isManual controls whether this is a voluntary early checkout (true) or an
- * auto-expiry triggered by the server/Cloud Function (false):
+ * isManual is kept for API compatibility but currently has no behavioral
+ * difference. Points are NEVER deducted on checkout — the check-in itself
+ * is the attendance record and it is permanent. The activity feed entry is
+ * preserved in both paths so the user's session history stays intact.
  *
- *   isManual = true  → User tapped "Check Out" before the session expired.
- *                       Deduct 10 pts (prevents check-in/out point farming)
- *                       and delete the "checked in at" activity feed entry.
- *
- *   isManual = false → Auto-expiry path (Cloud Function / client-side cleanup).
- *                       Do NOT deduct points — the user successfully attended
- *                       their session and has already earned those points.
- *                       Do NOT remove the activity entry.
+ *   isManual = true  → User tapped "Check Out" (UI path, via usePresence hook)
+ *   isManual = false → Auto-expiry path (Cloud Function / client-side cleanup)
  *
  * @param {boolean} isManual — true for user-initiated checkout (default), false for auto-expiry
  * @returns {Promise<Object>} Checked out presence data
@@ -361,26 +392,10 @@ export const checkOut = async (isManual = true) => {
     });
   });
 
-  // Manual checkout only: delete the "checked in at" activity feed entry.
-  // This keeps the activity feed honest — a check-in that was reversed
-  // shouldn't appear as if the user attended the session.
-  if (isManual) {
-    try {
-      const activitySnap = await getDocs(
-        query(
-          collection(db, 'activity'),
-          where('userId', '==', user.uid),
-          where('gymId', '==', activePresence.gymId),
-          where('action', '==', 'checked in at'),
-          limit(1)
-        )
-      );
-      activitySnap.forEach((actDoc) => deleteDoc(actDoc.ref));
-    } catch (err) {
-      // Non-critical — log and continue. The points deduction already happened.
-      console.error('Activity cleanup error (manual check-out):', err);
-    }
-  }
+  // NOTE: The activity feed entry ("checked in at") is intentionally preserved
+  // after checkout. A check-in counts as attendance regardless of whether the
+  // user leaves early — removing the activity entry would erase the record of
+  // their session, which is the wrong behavior.
 
   return { ...activePresence, status: PRESENCE_STATUS.CHECKED_OUT };
 };

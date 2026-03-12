@@ -57,7 +57,6 @@ import { useTheme } from '../contexts';
 const courtImage = require('../assets/images/court-bg.jpg');
 import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence } from '../hooks';
 import { auth, db } from '../config/firebase';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -67,7 +66,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { handleFollowPoints, awardPoints } from '../services/pointsService';
-import { findMatchingSchedule } from '../services/scheduleService';
 import { formatSkillLevel } from '../services/models';
 
 /**
@@ -181,35 +179,25 @@ export default function RunDetailsScreen({ route, navigation }) {
   /**
    * handleCheckInHere — One-tap check-in directly into the gym being viewed.
    *
-   * Calls the same checkIn / findMatchingSchedule / awardPoints chain that
-   * CheckInScreen uses — no business logic is duplicated.  On success the user
-   * stays on this screen; the live useGymPresences subscription surfaces the
-   * updated player list automatically.
+   * Delegates to presenceService.checkIn() which handles the full side-effect
+   * chain: presence write, activity feed, points award, and attendance recording.
+   * On success the user stays on this screen; the live useGymPresences subscription
+   * surfaces the updated player list automatically.
    */
   const handleCheckInHere = async () => {
     try {
-      const currentUid = auth.currentUser?.uid;
       const gymDisplayName = gym?.name || gymName;
 
       const checkinResult = await checkIn(gymId);
 
-      // Trigger server-side point awarding — fire-and-forget, does not block UI.
-      // The backend callable verifies the presence doc before writing any points.
-      if (checkinResult?.id) {
-        httpsCallable(getFunctions(), 'checkIn')({
-          gymId,
-          presenceId: checkinResult.id,
-        }).catch((err) => console.warn('[RunDetails] points callable failed:', err.message));
-      }
+      // presenceService.checkIn() now handles points + attendance recording
+      // directly (client-side, idempotent). No Cloud Function needed here.
 
-      // Check if this check-in fulfils a prior scheduled visit (±60 min window)
-      const matchedSchedule = currentUid
-        ? await findMatchingSchedule(currentUid, gymId).catch(() => null)
-        : null;
-
-      // Points are awarded server-side by the backend checkIn callable.
-      const ptsLabel  = matchedSchedule ? '+15 pts' : '+10 pts';
-      const bonusNote = matchedSchedule
+      // checkinResult.scheduleId is non-null when the check-in fulfilled a
+      // prior scheduled visit — presenceService already determined this.
+      const hasMatchedSchedule = !!checkinResult?.scheduleId;
+      const ptsLabel  = hasMatchedSchedule ? '+15 pts' : '+10 pts';
+      const bonusNote = hasMatchedSchedule
         ? 'Nice follow-through! You earned a +5 bonus.'
         : 'Keep showing up to earn more points.';
 
