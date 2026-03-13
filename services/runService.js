@@ -208,19 +208,8 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
     // ── Join existing run ──────────────────────────────────────────────────
     const runId = matchingRun.id;
     await joinRun(runId, gymId, userInfo);
-
-    // Activity feed — fire and forget (non-blocking; non-fatal if it fails)
-    addDoc(collection(db, 'activity'), {
-      userId: uid,
-      userName: userInfo.userName,
-      userAvatar: userInfo.userAvatar,
-      action: 'joined a run at',
-      gymId,
-      gymName,
-      runId,
-      createdAt: Timestamp.now(),
-    }).catch((err) => console.error('[runService] activity write error (join):', err));
-
+    // No activity write for joining an existing run — only 'started a run at'
+    // is written (on creation below) to keep the feed clean. See RC-002.
     return { runId, created: false };
   }
 
@@ -274,18 +263,7 @@ export const joinExistingRun = async (runId, gymId, gymName) => {
 
   const userInfo = await fetchUserDisplayInfo();
   await joinRun(runId, gymId, userInfo);
-
-  // Activity feed — fire and forget
-  addDoc(collection(db, 'activity'), {
-    userId: uid,
-    userName: userInfo.userName,
-    userAvatar: userInfo.userAvatar,
-    action: 'joined a run at',
-    gymId,
-    gymName,
-    runId,
-    createdAt: Timestamp.now(),
-  }).catch((err) => console.error('[runService] activity write error (joinExisting):', err));
+  // No activity write for joining — only 'started a run at' is kept. See RC-002.
 };
 
 /**
@@ -354,7 +332,11 @@ export const subscribeToGymRuns = (gymId, callback) => {
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((run) => {
           const st = run.startTime?.toDate();
-          return st && st >= graceCutoff;
+          if (!st || st < graceCutoff) return false;
+          // Hide runs with no participants. Treat missing, zero, or negative
+          // counts (possible from an unclamped increment(-1) retry) as empty.
+          if ((run.participantCount ?? 0) <= 0) return false;
+          return true;
         });
 
       callback(runs);

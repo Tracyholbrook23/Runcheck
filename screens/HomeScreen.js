@@ -162,6 +162,9 @@ const HomeScreen = ({ navigation }) => {
         const items = snapshot.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((item) => {
+            // Hide 'joined a run at' items — these writes have been removed from
+            // runService but docs already in Firestore must also be suppressed. RC-002.
+            if (item.action === 'joined a run at') return false;
             // Check-in items have no plannedTime — always show.
             // Plan items: only show within the 60-minute lead-up window.
             //   lower bound: plannedTime > now  (visit hasn't happened yet)
