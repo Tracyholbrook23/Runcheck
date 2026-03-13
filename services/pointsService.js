@@ -19,8 +19,27 @@
  */
 
 import { db } from '../config/firebase';
-import { doc, updateDoc, increment, getDoc, runTransaction, arrayUnion, arrayRemove } from 'firebase/firestore';
+import { doc, updateDoc, increment, getDoc, runTransaction, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
 import { POINT_VALUES, getUserRank } from '../utils/badges';
+
+// ── Check-in reward cooldown ──────────────────────────────────────────────────
+// Prevents points farming by repeatedly checking in/out at the same gym.
+// The cooldown is enforced per user per gym: if a user last earned check-in
+// points at a gym within the window, the award is silently skipped on the
+// next check-in — presence and reliability tracking are NOT affected.
+//
+// Production: 4-hour window.
+// Test accounts (TEST_USER_UIDS): 30-second window so manual testing remains easy.
+//
+// To add a test account: paste the user's Firebase Auth UID as a string entry
+// in TEST_USER_UIDS below (e.g.  'abc123firebaseUID').
+// ─────────────────────────────────────────────────────────────────────────────
+const CHECKIN_COOLDOWN_MS      = 4 * 60 * 60 * 1000;  // 4 hours  (production)
+const TEST_CHECKIN_COOLDOWN_MS =      30 * 1000;        // 30 seconds (test accounts)
+const TEST_USER_UIDS = new Set([
+  // Add test account Firebase Auth UIDs here:
+  // 'PASTE_YOUR_TEST_UID_HERE',
+]);
 
 /**
  * handleFollowPoints — Awards or deducts follow points in a cheat-proof way.
@@ -94,7 +113,7 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
  *   prevRank:     object | null, — The RANKS entry before the award.
  * }>}
  */
-export const awardPoints = async (uid, action, presenceId = null) => {
+export const awardPoints = async (uid, action, presenceId = null, gymId = null) => {
   const noOp = { newTotal: 0, rankChanged: false, newRank: null, prevRank: null };
 
   if (!uid || !POINT_VALUES[action]) return noOp;
@@ -103,11 +122,14 @@ export const awardPoints = async (uid, action, presenceId = null) => {
   const userRef = doc(db, 'users', uid);
 
   try {
-    // ── checkin / checkinWithPlan — idempotent guard via presenceId ──────────
-    // Runs inside a transaction so the read-check-write is atomic: even if the
-    // user taps "Check In" twice in rapid succession only one award goes through.
-    // Falls through to the normal path if presenceId is not provided (shouldn't
-    // happen in normal flow, but safe to handle gracefully).
+    // ── checkin / checkinWithPlan — idempotent + cooldown guard ─────────────
+    // Runs inside a transaction so all reads and writes are atomic.
+    // Two guards are applied in order:
+    //   1. Idempotency: if this exact sessionKey was already awarded, skip.
+    //   2. Cooldown: if the user earned check-in points at this gym within the
+    //      cooldown window (4 h production / 30 s test), skip this award.
+    //      Presence and reliability tracking are unaffected — only points.
+    // Falls through to the normal path if presenceId is not provided.
     if ((action === 'checkin' || action === 'checkinWithPlan') && presenceId) {
       return await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(userRef);
@@ -115,15 +137,33 @@ export const awardPoints = async (uid, action, presenceId = null) => {
         const currentTotal = data.totalPoints || 0;
         const prevRank = getUserRank(currentTotal);
 
-        // Already awarded for this exact presence — skip silently
+        // Guard 1 — idempotency: already awarded for this exact session key
         if (data.pointsAwarded?.checkins?.[presenceId]) {
           return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
         }
 
+        // Guard 2 — cooldown: skip if re-checking into the same gym too soon
+        if (gymId) {
+          const cooldownMs = TEST_USER_UIDS.has(uid)
+            ? TEST_CHECKIN_COOLDOWN_MS
+            : CHECKIN_COOLDOWN_MS;
+          const lastAt = data.pointsAwarded?.lastCheckinAt?.[gymId];
+          if (lastAt) {
+            const elapsed = Date.now() - lastAt.toMillis();
+            if (elapsed < cooldownMs) {
+              return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
+            }
+          }
+        }
+
+        // Both guards passed — award points and record the timestamp
         transaction.update(userRef, {
           totalPoints:  increment(points),
           weeklyPoints: increment(points),
           [`pointsAwarded.checkins.${presenceId}`]: true,
+          // Record when points were last awarded at this gym so the cooldown
+          // guard can compare on the next check-in.
+          ...(gymId ? { [`pointsAwarded.lastCheckinAt.${gymId}`]: Timestamp.now() } : {}),
         });
 
         const newTotal = currentTotal + points;

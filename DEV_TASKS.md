@@ -142,4 +142,42 @@ Stats card may show zeroes, stale values, or incorrect attendance rate if the un
 
 ---
 
-_Last updated: 2026-03-12_
+---
+
+## RC-005 — Check-in Reward Abuse Prevention
+**Status:** `[x]`
+**Priority:** High
+
+### Goal
+Prevent users from farming leaderboard points by repeatedly checking in and out of the same gym within a short window. Check-in presence, reliability tracking, and session stats must remain unaffected.
+
+### Root Cause
+`presenceService.checkIn()` builds a `sessionKey = ${presenceId}_${timestamp}` to make every check-in idempotent. This was intentional (allows points on a second visit the next day), but it also means rapid check-in/check-out cycling generates a fresh key each time and awards full points each cycle.
+
+### Fix Applied (2026-03-13)
+Added a 4-hour per-user per-gym cooldown on check-in point awards inside `awardPoints()`.
+
+**Schema addition** — `users/{uid}.pointsAwarded.lastCheckinAt.{gymId}: Timestamp`
+Written atomically inside the existing checkin transaction when points are awarded.
+Read on the next check-in; if `now - lastCheckinAt[gymId] < 4 hours`, points are skipped.
+
+**Test bypass** — set `TEST_USER_UIDS` in `pointsService.js` with test account UIDs to use a 30-second cooldown instead of 4 hours.
+
+### Files Modified
+- `services/pointsService.js` — Timestamp import, 3 cooldown constants, new `gymId` param, cooldown check + `lastCheckinAt` write inside transaction
+- `services/presenceService.js` — passes `gymId` as 4th arg to `awardPoints` call
+
+### Acceptance Criteria
+- [x] Checking in/out/in at the same gym within 4 hours does NOT award duplicate points
+- [x] A genuine return visit after 4 hours DOES award points normally
+- [x] Presence tracking, reliability stats, session stats are NOT affected
+- [x] Test UIDs in `TEST_USER_UIDS` use a 30-second cooldown for easy manual testing
+
+### Remaining Risks / Follow-ups
+- **Client-side only** — this guard runs in the app. A determined bad actor could manipulate the client to skip it. A Cloud Function hook on `presence` creation would be the server-side enforcement path for production hardening.
+- **`lastCheckinAt` map growth** — one entry per gym the user has ever checked into. At realistic gym counts this is negligible. No cleanup needed for MVP.
+- **Add your test UID** — open `services/pointsService.js`, find `TEST_USER_UIDS`, and paste your Firebase Auth UID to enable 30-second cooldown for your account.
+
+---
+
+_Last updated: 2026-03-13_

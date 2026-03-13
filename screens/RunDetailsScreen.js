@@ -502,10 +502,6 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Map-model like state derived directly from the gymClips doc fields:
   //   likedByMe[clipId]   — true if item.likedBy[uid] === true on the live doc
   //   (no separate listeners needed — the gymClips onSnapshot covers this)
-  // Who's Going — enriched user lists for today's and tomorrow's schedules.
-  // Populated asynchronously so photo URLs load without blocking the screen.
-  const [todayGoingUsers, setTodayGoingUsers] = useState([]);
-  const [tomorrowGoingUsers, setTomorrowGoingUsers] = useState([]);
 
   useEffect(() => {
     if (!uid) return;
@@ -520,50 +516,6 @@ export default function RunDetailsScreen({ route, navigation }) {
       .catch((err) => console.error('checkIn history query error:', err));
   }, [uid, gymId]);
 
-  /**
-   * hydrateGoingUsers — Takes a raw schedule array and enriches each entry with
-   * the user's `name` and `photoURL` from their Firestore profile document.
-   * Falls back to the denormalized `userName` already on the schedule doc and
-   * `null` for the avatar when the profile fetch fails.
-   *
-   * @param {object[]} scheduleList - Array from useGymSchedules
-   * @param {Function} setFn - State setter to call with the enriched array
-   */
-  const hydrateGoingUsers = async (scheduleList, setFn) => {
-    try {
-      const users = await Promise.all(
-        scheduleList.map(async (s) => {
-          // scheduleService writes the userId under `odId`
-          const userId = s.odId || s.userId;
-          try {
-            const snap = await getDoc(doc(db, 'users', userId));
-            const data = snap.data();
-            return {
-              userId,
-              userName: data?.name || s.userName || 'User',
-              userAvatar: data?.photoURL || null,
-            };
-          } catch {
-            return { userId, userName: s.userName || 'User', userAvatar: null };
-          }
-        })
-      );
-      setFn(users);
-    } catch (err) {
-      console.error('hydrateGoingUsers error:', err);
-    }
-  };
-
-  // Re-hydrate the "Who's Going" lists whenever the live schedule arrays change
-  useEffect(() => {
-    if (todaySchedules.length === 0) { setTodayGoingUsers([]); return; }
-    hydrateGoingUsers(todaySchedules, setTodayGoingUsers);
-  }, [todaySchedules]);
-
-  useEffect(() => {
-    if (tomorrowSchedules.length === 0) { setTomorrowGoingUsers([]); return; }
-    hydrateGoingUsers(tomorrowSchedules, setTomorrowGoingUsers);
-  }, [tomorrowSchedules]);
 
   // Subscribe to this gym's reviews subcollection, newest first
   useEffect(() => {
@@ -919,49 +871,6 @@ export default function RunDetailsScreen({ route, navigation }) {
     }
   };
 
-  /**
-   * renderAvatarRow — Renders a compact row of up to 5 overlapping avatar circles
-   * for a given user list. Shows the user's photo if available; falls back to
-   * a coloured circle with their first initial. If the list exceeds 5, a "+N"
-   * overflow chip is appended. When the list is empty, an italic empty-state
-   * message is shown instead.
-   *
-   * @param {{ userId: string, userName: string, userAvatar: string|null }[]} users
-   * @param {string} emptyMessage - Text shown when `users` is empty
-   * @returns {JSX.Element}
-   */
-  const renderAvatarRow = (users, emptyMessage) => {
-    if (users.length === 0) {
-      return <Text style={styles.whoGoingEmpty}>{emptyMessage}</Text>;
-    }
-    const visible = users.slice(0, 5);
-    const extra = users.length - 5;
-    return (
-      <View style={styles.avatarRow}>
-        {visible.map((user, idx) => (
-          <View
-            key={user.userId}
-            style={[styles.avatarCircleWrap, idx > 0 && styles.avatarCircleOffset]}
-          >
-            {user.userAvatar ? (
-              <Image source={{ uri: user.userAvatar }} style={styles.avatarCircleImg} />
-            ) : (
-              <View style={styles.avatarCircleFallback}>
-                <Text style={styles.avatarCircleInitial}>
-                  {(user.userName || '?')[0].toUpperCase()}
-                </Text>
-              </View>
-            )}
-          </View>
-        ))}
-        {extra > 0 && (
-          <View style={[styles.avatarCircleWrap, styles.avatarCircleOffset, styles.avatarCircleMore]}>
-            <Text style={styles.avatarCircleMoreText}>+{extra}</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
 
   /**
    * renderRunParticipantAvatars — Social avatar row for a run card.
@@ -1363,19 +1272,6 @@ export default function RunDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Who's Going — compact avatar rows for today and tomorrow's scheduled visits */}
-        <View style={styles.whoGoingSection}>
-          <Text style={styles.sectionTitle}>Who's Going</Text>
-          <View style={styles.whoGoingRow}>
-            <Text style={styles.whoGoingDayLabel}>Today</Text>
-            {renderAvatarRow(todayGoingUsers, 'No one scheduled today')}
-          </View>
-          <View style={[styles.whoGoingRow, { marginTop: SPACING.sm }]}>
-            <Text style={styles.whoGoingDayLabel}>Tomorrow</Text>
-            {renderAvatarRow(tomorrowGoingUsers, 'No one scheduled tomorrow')}
-          </View>
-        </View>
-
         {/* Now Playing section — deduplicated real-time presences */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Now Playing</Text>
@@ -1388,16 +1284,16 @@ export default function RunDetailsScreen({ route, navigation }) {
           />
         </View>
 
-        {/* ── Runs Today ──────────────────────────────────────────────────────
-            Organized group runs at this gym. Runs are a stronger planning
-            signal than loose planned visits and appear first. Separate from
-            the check-in / presence system — no Firestore schema changes.
+        {/* ── Upcoming Runs ───────────────────────────────────────────────────
+            Organized group runs at this gym (today and tomorrow). Runs are a
+            stronger planning signal than loose planned visits and appear first.
+            Separate from the check-in / presence system — no Firestore schema changes.
         ─────────────────────────────────────────────────────────────────── */}
         <View style={[styles.runsSection, { marginHorizontal: SPACING.lg }]}>
           <View style={styles.runsSectionHeader}>
             <View style={styles.runsSectionTitleRow}>
               <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.runsSectionTitle}>Runs Today</Text>
+              <Text style={styles.runsSectionTitle}>Upcoming Runs</Text>
             </View>
             <TouchableOpacity
               style={styles.startRunButton}
@@ -1422,26 +1318,34 @@ export default function RunDetailsScreen({ route, navigation }) {
                   <View style={styles.runCardLeft}>
                     <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
                     {renderRunParticipantAvatars(run.id)}
+                    {run.creatorName ? (
+                      <Text style={styles.runStartedBy}>Started by {run.creatorName}</Text>
+                    ) : null}
                   </View>
                   <View style={[styles.runCardRight, { paddingTop: 2 }]}>
                     {isJoined ? (
-                      <TouchableOpacity
-                        style={styles.runLeaveButton}
-                        onPress={() => handleLeaveRun(run.id)}
-                        disabled={isLeaving}
-                      >
-                        {isLeaving ? (
-                          <ActivityIndicator size="small" color={colors.textMuted} />
-                        ) : (
-                          <Text style={styles.runLeaveButtonText}>You're Going</Text>
-                        )}
-                      </TouchableOpacity>
+                      <View style={styles.runJoinedActions}>
+                        <View style={styles.runGoingBadge}>
+                          <Text style={styles.runGoingBadgeText}>Going</Text>
+                        </View>
+                        <TouchableOpacity
+                          style={styles.runLeaveButton}
+                          onPress={() => handleLeaveRun(run.id)}
+                          disabled={isLeaving}
+                        >
+                          {isLeaving ? (
+                            <ActivityIndicator size="small" color={colors.textMuted} />
+                          ) : (
+                            <Text style={styles.runLeaveButtonText}>Leave</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                     ) : (
                       <TouchableOpacity
                         style={styles.runJoinButton}
                         onPress={() => handleJoinRun(run)}
                       >
-                        <Text style={styles.runJoinButtonText}>Join</Text>
+                        <Text style={styles.runJoinButtonText}>Join Run</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -3022,75 +2926,6 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
   },
 
-  // ─── Who's Going section ──────────────────────────────────────────────────
-  whoGoingSection: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  whoGoingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  whoGoingDayLabel: {
-    fontSize: FONT_SIZES.small,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: colors.textSecondary,
-    width: 76,
-  },
-  whoGoingEmpty: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-  },
-  // Outer wrapper — adds the white border that separates overlapping avatars
-  avatarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatarCircleWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: colors.background,
-    overflow: 'hidden',
-  },
-  // Negative margin creates the overlapping stack effect
-  avatarCircleOffset: {
-    marginLeft: -10,
-  },
-  avatarCircleImg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  // Coloured fallback circle when no photoURL is available
-  avatarCircleFallback: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary + '30',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarCircleInitial: {
-    fontSize: FONT_SIZES.small,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: colors.primary,
-  },
-  // "+N more" overflow chip
-  avatarCircleMore: {
-    backgroundColor: colors.surfaceLight,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderColor: colors.border,
-  },
-  avatarCircleMoreText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: colors.textSecondary,
-  },
-
   // ─── Gym Clips feed ──────────────────────────────────────────────────────
   clipCard: {
     backgroundColor: '#1a1a1a',
@@ -3129,8 +2964,8 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
 
   // ─── Run card participant avatars ─────────────────────────────────────────
-  // Smaller than the Who's Going avatars (30 px vs 36 px) to fit inside the
-  // compact run card. Same overlapping-stack pattern.
+  // Compact 30 px avatars that fit inside the run card. Same overlapping-stack
+  // pattern as the removed Who's Going section (36 px), scaled down.
   runAvatarRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -3277,13 +3112,34 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs + 2,
-    minWidth: 88,
     alignItems: 'center',
   },
   runLeaveButtonText: {
     color: colors.primary,
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runJoinedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  runGoingBadge: {
+    backgroundColor: 'rgba(52, 199, 89, 0.15)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs + 2,
+    alignItems: 'center',
+  },
+  runGoingBadgeText: {
+    color: '#34C759',
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  runStartedBy: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
   },
 
   // ─── Start a Run modal ───────────────────────────────────────────────────

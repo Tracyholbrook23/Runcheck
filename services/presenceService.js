@@ -309,7 +309,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   // The presence document ID itself is unchanged — only the points-award key differs.
   const pointsAction = matchingSchedule ? 'checkinWithPlan' : 'checkin';
   const sessionKey = `${presenceId}_${now.getTime()}`;
-  awardPoints(odId, pointsAction, sessionKey).catch((err) =>
+  awardPoints(odId, pointsAction, sessionKey, gymId).catch((err) =>
     console.error('Points award error (check-in):', err)
   );
 

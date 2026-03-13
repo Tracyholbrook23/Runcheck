@@ -23,8 +23,9 @@ Firebase-only backend. No custom server. Logic lives in:
   totalPoints: number,
   profileCompletionAwarded: boolean,   // one-time bonus guard
   pointsAwarded: {
-    checkins: { [presenceId]: true },  // idempotency guard per check-in
-    followedGyms: string[],            // gymIds currently earning follow points
+    checkins: { [sessionKey]: true },        // idempotency guard per check-in session
+    followedGyms: string[],                  // gymIds currently earning follow points
+    lastCheckinAt: { [gymId]: Timestamp },   // cooldown guard — when points were last awarded per gym
   },
   reliability: {
     score: number,          // 0–100, starts at 100
@@ -149,8 +150,10 @@ Firebase-only backend. No custom server. Logic lives in:
 
 ### `pointsService.js`
 Single source of truth for all point writes. Never write `totalPoints` anywhere else.
-- **`awardPoints(uid, action, presenceId?)`** — Actions: `'checkin'`, `'checkinWithPlan'`, `'planVisit'`, `'review'`, `'followGym'`, `'completeProfile'`
-  - `checkin`/`checkinWithPlan`: idempotent transaction — guards via `pointsAwarded.checkins[presenceId]`
+- **`awardPoints(uid, action, presenceId?, gymId?)`** — Actions: `'checkin'`, `'checkinWithPlan'`, `'planVisit'`, `'review'`, `'followGym'`, `'completeProfile'`
+  - `checkin`/`checkinWithPlan`: two atomic guards inside a transaction:
+    1. **Idempotency** — skips if `pointsAwarded.checkins[sessionKey]` already exists (double-tap protection)
+    2. **Cooldown** — skips if `pointsAwarded.lastCheckinAt[gymId]` is within 4 hours (production) / 30 seconds (test UIDs in `TEST_USER_UIDS` constant in `pointsService.js`). Presence and reliability tracking are **not** affected — only points are blocked.
   - `completeProfile`: one-time — guards via `profileCompletionAwarded` flag
   - Returns `{ newTotal, rankChanged, newRank, prevRank }` for rank-up UI
 - **`handleFollowPoints(uid, gymId, isFollowing)`** — Follow/unfollow point management:
