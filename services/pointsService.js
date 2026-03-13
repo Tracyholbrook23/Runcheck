@@ -9,9 +9,14 @@
  * Point values come from `utils/badges.POINT_VALUES` so changing a reward
  * only requires editing one file.
  *
- * The `completeProfile` action is idempotent — it will silently skip the
- * award if `users/{uid}.profileCompletionAwarded` is already true, preventing
- * double-counting when the user updates their photo multiple times.
+ * Action idempotency:
+ *   checkin / checkinWithPlan — guarded by pointsAwarded.checkins.{idempotencyKey}
+ *                               also writes pointsAwarded.gymVisits: arrayUnion(gymId) for review eligibility
+ *   runComplete               — guarded by pointsAwarded.runs.{idempotencyKey} (idempotencyKey = runId)
+ *                               also writes pointsAwarded.runGyms: arrayUnion(gymId) for review eligibility
+ *   review                    — guarded by pointsAwarded.reviewedGyms array (gymId must be provided)
+ *   completeProfile           — guarded by profileCompletionAwarded flag
+ *   followGym                 — handled separately by handleFollowPoints (not routed through awardPoints)
  *
  * @example
  *   const { rankChanged, newRank } = await awardPoints(uid, 'checkin');
@@ -103,9 +108,15 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
  * awardPoints — Increments the user's `totalPoints` in Firestore and returns
  * rank transition data so the caller can show a celebration UI if needed.
  *
- * @param {string} uid    — Firebase Auth user ID.
- * @param {string} action — One of: 'checkin' | 'planVisit' | 'review' |
- *                          'followGym' | 'completeProfile'
+ * @param {string}      uid              — Firebase Auth user ID.
+ * @param {string}      action           — One of: 'checkin' | 'checkinWithPlan' | 'runComplete' |
+ *                                         'review' | 'followGym' | 'completeProfile'
+ * @param {string|null} idempotencyKey   — Unique key used to prevent duplicate awards.
+ *                                         checkin/checkinWithPlan: pass sessionKey (presenceId + timestamp).
+ *                                         runComplete: pass the runId.
+ *                                         Other actions: omit (null).
+ * @param {string|null} gymId            — Required for checkin cooldown guard and review idempotency.
+ *                                         Also written to runGyms when awarding runComplete.
  * @returns {Promise<{
  *   newTotal:     number,        — Point total after the award.
  *   rankChanged:  boolean,       — True if the user crossed a tier boundary.
@@ -113,7 +124,7 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
  *   prevRank:     object | null, — The RANKS entry before the award.
  * }>}
  */
-export const awardPoints = async (uid, action, presenceId = null, gymId = null) => {
+export const awardPoints = async (uid, action, idempotencyKey = null, gymId = null) => {
   const noOp = { newTotal: 0, rankChanged: false, newRank: null, prevRank: null };
 
   if (!uid || !POINT_VALUES[action]) return noOp;
@@ -125,12 +136,12 @@ export const awardPoints = async (uid, action, presenceId = null, gymId = null) 
     // ── checkin / checkinWithPlan — idempotent + cooldown guard ─────────────
     // Runs inside a transaction so all reads and writes are atomic.
     // Two guards are applied in order:
-    //   1. Idempotency: if this exact sessionKey was already awarded, skip.
+    //   1. Idempotency: if this exact idempotencyKey was already awarded, skip.
     //   2. Cooldown: if the user earned check-in points at this gym within the
     //      cooldown window (4 h production / 30 s test), skip this award.
     //      Presence and reliability tracking are unaffected — only points.
-    // Falls through to the normal path if presenceId is not provided.
-    if ((action === 'checkin' || action === 'checkinWithPlan') && presenceId) {
+    // Falls through if idempotencyKey is not provided.
+    if ((action === 'checkin' || action === 'checkinWithPlan') && idempotencyKey) {
       return await runTransaction(db, async (transaction) => {
         const snap = await transaction.get(userRef);
         const data = snap.data() || {};
@@ -138,7 +149,7 @@ export const awardPoints = async (uid, action, presenceId = null, gymId = null) 
         const prevRank = getUserRank(currentTotal);
 
         // Guard 1 — idempotency: already awarded for this exact session key
-        if (data.pointsAwarded?.checkins?.[presenceId]) {
+        if (data.pointsAwarded?.checkins?.[idempotencyKey]) {
           return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
         }
 
@@ -156,14 +167,94 @@ export const awardPoints = async (uid, action, presenceId = null, gymId = null) 
           }
         }
 
-        // Both guards passed — award points and record the timestamp
+        // Both guards passed — award points and record the timestamp.
+        // gymVisits uses arrayUnion so it is naturally idempotent: adding a
+        // gymId that is already present is a no-op. This means the field
+        // accumulates unique gymIds across all sessions, forming a permanent
+        // per-gym visit record that reviewService uses for eligibility checks.
         transaction.update(userRef, {
           totalPoints:  increment(points),
           weeklyPoints: increment(points),
-          [`pointsAwarded.checkins.${presenceId}`]: true,
+          [`pointsAwarded.checkins.${idempotencyKey}`]: true,
           // Record when points were last awarded at this gym so the cooldown
           // guard can compare on the next check-in.
           ...(gymId ? { [`pointsAwarded.lastCheckinAt.${gymId}`]: Timestamp.now() } : {}),
+          // Persistent visit record — written once per gym (arrayUnion is a no-op
+          // on subsequent visits). Used by checkReviewEligibility as the
+          // session-attendance signal alongside pointsAwarded.runGyms.
+          ...(gymId ? { 'pointsAwarded.gymVisits': arrayUnion(gymId) } : {}),
+        });
+
+        const newTotal = currentTotal + points;
+        const newRank = getUserRank(newTotal);
+        return { newTotal, rankChanged: newRank.name !== prevRank.name, newRank, prevRank };
+      });
+    }
+
+    // ── runComplete — transactional idempotency guard per runId ──────────────
+    // idempotencyKey is the runId. Guard field: pointsAwarded.runs.{runId}.
+    // Legitimacy (participantCount >= 2, creator presence) is verified upstream
+    // in evaluateRunReward() before this function is called.
+    // A missing idempotencyKey means the caller has no runId — bail out rather
+    // than falling through to the unconditional increment path below.
+    if (action === 'runComplete' && !idempotencyKey) {
+      console.warn('awardPoints: runComplete called without idempotencyKey (runId) — skipping award');
+      return noOp;
+    }
+    if (action === 'runComplete' && idempotencyKey) {
+      return await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(userRef);
+        const data = snap.data() || {};
+        const currentTotal = data.totalPoints || 0;
+        const prevRank = getUserRank(currentTotal);
+
+        // Guard — already awarded for this run
+        if (data.pointsAwarded?.runs?.[idempotencyKey]) {
+          return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
+        }
+
+        transaction.update(userRef, {
+          totalPoints:  increment(points),
+          weeklyPoints: increment(points),
+          [`pointsAwarded.runs.${idempotencyKey}`]: true,
+          // Record the gymId so RunDetailsScreen can check run attendance
+          // eligibility with a single getDoc rather than querying runParticipants.
+          ...(gymId ? { 'pointsAwarded.runGyms': arrayUnion(gymId) } : {}),
+        });
+
+        const newTotal = currentTotal + points;
+        const newRank = getUserRank(newTotal);
+        return { newTotal, rankChanged: newRank.name !== prevRank.name, newRank, prevRank };
+      });
+    }
+
+    // ── review — transactional one-per-gym reward guard ──────────────────────
+    // gymId is the uniqueness key. A user earns the review bonus at most once
+    // per gym, ever — recorded in pointsAwarded.reviewedGyms. Deleting a review
+    // and reposting cannot earn a second reward because the gymId stays in the
+    // array permanently. gymId is required; omitting it is treated as a caller
+    // error and silently skipped.
+    if (action === 'review') {
+      if (!gymId) {
+        console.warn('awardPoints: review called without gymId — skipping award');
+        return noOp;
+      }
+      return await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(userRef);
+        const data = snap.data() || {};
+        const currentTotal = data.totalPoints || 0;
+        const prevRank = getUserRank(currentTotal);
+
+        // Guard — already rewarded for reviewing this gym
+        const reviewedGyms = data.pointsAwarded?.reviewedGyms ?? [];
+        if (reviewedGyms.includes(gymId)) {
+          return { newTotal: currentTotal, rankChanged: false, newRank: prevRank, prevRank };
+        }
+
+        transaction.update(userRef, {
+          totalPoints:  increment(points),
+          weeklyPoints: increment(points),
+          'pointsAwarded.reviewedGyms': arrayUnion(gymId),
         });
 
         const newTotal = currentTotal + points;
@@ -189,7 +280,8 @@ export const awardPoints = async (uid, action, presenceId = null, gymId = null) 
         profileCompletionAwarded: true,
       });
     } else {
-      // All other actions — unconditional increment
+      // Remaining actions (e.g. any future action not yet given its own guard)
+      // — unconditional increment as a safe fallback.
       await updateDoc(userRef, { totalPoints: increment(points), weeklyPoints: increment(points) });
     }
 
@@ -201,5 +293,37 @@ export const awardPoints = async (uid, action, presenceId = null, gymId = null) 
   } catch (err) {
     console.error('awardPoints error:', err);
     return noOp;
+  }
+};
+
+/**
+ * penalizePoints — Deducts points from a user's total, floored at 0.
+ *
+ * Used exclusively for late-cancel penalties on runs (creator: −15,
+ * participant: −5).  Does NOT touch reliability — that remains Cloud
+ * Function-owned.  weeklyPoints are also reduced so the leaderboard
+ * stays accurate within the current week.
+ *
+ * @param {string} uid    — Firebase Auth user ID.
+ * @param {number} amount — Positive number of points to deduct.
+ * @returns {Promise<void>}
+ */
+export const penalizePoints = async (uid, amount) => {
+  if (!uid || amount <= 0) return;
+
+  const userRef = doc(db, 'users', uid);
+  try {
+    const snap = await getDoc(userRef);
+    const current = snap.data()?.totalPoints ?? 0;
+    // Clamp deduction so totalPoints never goes below 0.
+    const deduction = Math.min(amount, current);
+    if (deduction <= 0) return;
+
+    await updateDoc(userRef, {
+      totalPoints:  increment(-deduction),
+      weeklyPoints: increment(-deduction),
+    });
+  } catch (err) {
+    console.error('penalizePoints error:', err);
   }
 };

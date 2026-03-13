@@ -42,7 +42,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { useSchedules, useGyms, useProfile } from '../hooks';
+import { useSchedules, useGyms, useProfile, useLivePresenceMap } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { addDoc, updateDoc, collection, serverTimestamp, Timestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
@@ -153,6 +153,7 @@ export default function PlanVisitScreen({ navigation }) {
   } = useSchedules();
 
   const { gyms, loading: gymsLoading } = useGyms();
+  const { countMap } = useLivePresenceMap();
 
   const loading = schedulesLoading || gymsLoading;
 
@@ -377,10 +378,10 @@ export default function PlanVisitScreen({ navigation }) {
                       <Text style={styles.gymCardAccent}>OPEN RUN</Text>
                     </Text>
                   </View>
-                  {/* Live presence badge — shows if anyone is currently there */}
-                  {gym.currentPresenceCount > 0 && (
+                  {/* Live presence badge — count from useLivePresenceMap (expiry-filtered, deduplicated) */}
+                  {(countMap[gym.id] ?? 0) > 0 && (
                     <View style={styles.presenceBadge}>
-                      <Text style={styles.presenceBadgeText}>{gym.currentPresenceCount} here</Text>
+                      <Text style={styles.presenceBadgeText}>{countMap[gym.id]} here</Text>
                     </View>
                   )}
                 </TouchableOpacity>

@@ -63,12 +63,13 @@ import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import {
   doc, getDoc, updateDoc, arrayUnion, arrayRemove,
-  collection, addDoc, onSnapshot, serverTimestamp, query, orderBy,
+  collection, onSnapshot, query, orderBy,
   getDocs, deleteDoc, where, limit, setDoc, runTransaction, deleteField,
   Timestamp,
 } from 'firebase/firestore';
-import { handleFollowPoints, awardPoints } from '../services/pointsService';
+import { handleFollowPoints } from '../services/pointsService';
 import { formatSkillLevel } from '../services/models';
+import { checkReviewEligibility, submitReview } from '../services/reviewService';
 
 /**
  * isToday — Checks whether a given Date falls on the current calendar day.
@@ -412,6 +413,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [selectedRating, setSelectedRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
   const [submittingReview, setSubmittingReview] = useState(false);
+  // Reviewer stats cache — { [userId]: { totalAttended: number } }.
+  // Populated lazily when the reviews snapshot changes; skips UIDs already
+  // resolved so snapshot re-fires don't trigger duplicate user doc reads.
+  const [reviewerStatsMap, setReviewerStatsMap] = useState({});
+  const resolvedReviewerUidsRef = useRef(new Set());
 
   // Derived — true if the current user already has a review for this gym.
   // Recomputed whenever the live reviews snapshot updates.
@@ -436,9 +442,12 @@ export default function RunDetailsScreen({ route, navigation }) {
     Array.isArray(gymClips) &&
     gymClips.some((c) => c.uploaderUid === uid && c.presenceId === presence.id);
 
-  // Check-in gate — true once we confirm the user has ever checked in here.
-  // A one-time query is sufficient; presence records are never deleted.
-  const [hasCheckedIn, setHasCheckedIn] = useState(false);
+  // Review eligibility gate — true if user can review (runGyms OR gymVisits).
+  // Set from checkReviewEligibility on mount; single user doc read.
+  const [hasRunAttended, setHasRunAttended] = useState(false);
+  // Strict run-verification signal — true only if user completed a verified run
+  // here (runGyms). Used exclusively for the verifiedAttendee badge on the review doc.
+  const [hasVerifiedRun, setHasVerifiedRun] = useState(false);
 
   // ── ScrollView ref + clips section Y offset (for scrollToClips nav param) ──
   const scrollViewRef  = useRef(null);
@@ -505,15 +514,12 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   useEffect(() => {
     if (!uid) return;
-    const q = query(
-      collection(db, 'presence'),
-      where('userId', '==', uid),
-      where('gymId', '==', gymId),
-      limit(1)
-    );
-    getDocs(q)
-      .then((snap) => setHasCheckedIn(!snap.empty))
-      .catch((err) => console.error('checkIn history query error:', err));
+    checkReviewEligibility(uid, gymId)
+      .then(({ canReview, hasVerifiedRun: runVerified }) => {
+        setHasRunAttended(canReview);
+        setHasVerifiedRun(runVerified);
+      })
+      .catch((err) => console.error('checkReviewEligibility error:', err));
   }, [uid, gymId]);
 
 
@@ -530,6 +536,38 @@ export default function RunDetailsScreen({ route, navigation }) {
     });
     return unsub;
   }, [gymId]);
+
+  // Fetch reliability.totalAttended for any reviewer UIDs not yet in the cache.
+  // Fires after every reviews snapshot update; UIDs already resolved are skipped
+  // via resolvedReviewerUidsRef so each user doc is read at most once per session.
+  useEffect(() => {
+    if (reviews.length === 0) return;
+    const newUids = reviews
+      .map((r) => r.userId)
+      .filter((id) => id && !resolvedReviewerUidsRef.current.has(id));
+    if (newUids.length === 0) return;
+
+    // Mark as in-flight before the async work so concurrent effect calls
+    // triggered by rapid snapshot updates don't issue duplicate fetches.
+    newUids.forEach((id) => resolvedReviewerUidsRef.current.add(id));
+
+    Promise.all(
+      newUids.map((id) =>
+        getDoc(doc(db, 'users', id))
+          .then((snap) => ({
+            id,
+            totalAttended: snap.data()?.reliability?.totalAttended ?? 0,
+          }))
+          .catch(() => ({ id, totalAttended: 0 }))
+      )
+    ).then((results) => {
+      setReviewerStatsMap((prev) => {
+        const next = { ...prev };
+        results.forEach(({ id, totalAttended }) => { next[id] = { totalAttended }; });
+        return next;
+      });
+    });
+  }, [reviews]);
 
   // Gym Clips — daily highlight + 24-hour feed, both live via onSnapshot
   useEffect(() => {
@@ -828,13 +866,13 @@ export default function RunDetailsScreen({ route, navigation }) {
   };
 
   /**
-   * handleSubmitReview — Writes a review to `gyms/{gymId}/reviews`, awards 15
-   * points, and dismisses the modal.
+   * handleSubmitReview — Delegates to reviewService.submitReview, which writes
+   * the review doc and awaits the one-per-gym points award atomically.
    *
-   * Guards:
+   * Guards (UI + service-layer):
    *   - Requires a star rating.
-   *   - Blocks submission if the user has already reviewed this gym (prevents
-   *     duplicates even if the UI guard was somehow bypassed).
+   *   - Blocks if user has already reviewed (UI guard + service re-check).
+   *   - Points awarded at most once per user per gym (pointsService transaction).
    */
   const handleSubmitReview = async () => {
     if (selectedRating === 0) {
@@ -842,7 +880,6 @@ export default function RunDetailsScreen({ route, navigation }) {
       return;
     }
     if (!uid) return;
-    // Server-side duplicate guard (mirrors the UI check)
     if (hasReviewed) {
       Alert.alert('Already Reviewed', "You've already reviewed this gym.");
       setReviewModalVisible(false);
@@ -850,21 +887,33 @@ export default function RunDetailsScreen({ route, navigation }) {
     }
     setSubmittingReview(true);
     try {
-      await addDoc(collection(db, 'gyms', gymId, 'reviews'), {
-        userId:     uid,
-        userName:   profile?.name || 'Anonymous',
-        userAvatar: profile?.photoURL || null,
-        rating:     selectedRating,
-        text:       reviewText.trim(),
-        createdAt:  serverTimestamp(),
-      });
-      awardPoints(uid, 'review');
+      const { success, alreadyReviewed, pointsResult } = await submitReview(
+        uid,
+        gymId,
+        profile?.name    || 'Anonymous',
+        profile?.photoURL ?? null,
+        selectedRating,
+        reviewText.trim(),
+        hasVerifiedRun,  // isVerified: true only for run-completion path (badge signal)
+      );
+      if (alreadyReviewed) {
+        Alert.alert('Already Reviewed', "You've already reviewed this gym.");
+        setReviewModalVisible(false);
+        return;
+      }
+      if (!success) {
+        Alert.alert('Error', 'Could not submit your review. Please try again.');
+        return;
+      }
       setReviewModalVisible(false);
       setSelectedRating(0);
       setReviewText('');
-      Alert.alert('Review submitted! +15 pts 🎉');
+      const message = pointsResult?.rankChanged
+        ? `Review submitted! You ranked up to ${pointsResult.newRank?.name}! 🎉`
+        : 'Review submitted! +15 pts 🎉';
+      Alert.alert(message);
     } catch (err) {
-      console.error('submitReview error:', err);
+      console.error('handleSubmitReview error:', err);
       Alert.alert('Error', 'Could not submit your review. Please try again.');
     } finally {
       setSubmittingReview(false);
@@ -1040,7 +1089,27 @@ export default function RunDetailsScreen({ route, navigation }) {
     return total > 0 ? total : (paramPlannedToday || 0);
   }, [todaySchedules, runs, runParticipantsMap, paramPlannedToday]);
 
-  const tomorrowCount = tomorrowSchedules.length || paramPlannedTomorrow || 0;
+  // Planning Tomorrow: same Set-union pattern as todayCount — union of scheduled-visit
+  // user IDs and run-participant user IDs for tomorrow's runs. Deduplication prevents
+  // double-counting a user who both planned a visit AND joined a run tomorrow.
+  const tomorrowCount = useMemo(() => {
+    const seenUids = new Set();
+    tomorrowSchedules.forEach((s) => {
+      const id = s.odId || s.userId;
+      if (id) seenUids.add(id);
+    });
+    runs.forEach((run) => {
+      const runDate = run.startTime?.toDate();
+      if (runDate && isTomorrow(runDate)) {
+        (runParticipantsMap[run.id] || []).forEach((p) => {
+          if (p.userId) seenUids.add(p.userId);
+        });
+      }
+    });
+    const total = seenUids.size;
+    // Fall back to route-param value only when live data hasn't loaded yet
+    return total > 0 ? total : (paramPlannedTomorrow || 0);
+  }, [tomorrowSchedules, runs, runParticipantsMap, paramPlannedTomorrow]);
 
   // Start or stop the pulse animation based on whether anyone is currently checked in.
   // Uses Animated.loop + Animated.sequence for a smooth, continuous opacity breath effect.
@@ -1355,28 +1424,6 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
 
-        {/* Planning Today — loose planned visits (separate from organized runs) */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Planning Today</Text>
-          <PresenceList
-            items={todaySchedules}
-            type="schedule"
-            navigation={navigation}
-            emptyMessage="No one planning today"
-          />
-        </View>
-
-        {/* Planning Tomorrow — loose planned visits for tomorrow */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Planning Tomorrow</Text>
-          <PresenceList
-            items={tomorrowSchedules}
-            type="schedule"
-            navigation={navigation}
-            emptyMessage="No one planning tomorrow"
-          />
-        </View>
-
         {/* Clips — Stories-style horizontal row */}
         <View
           style={styles.section}
@@ -1480,16 +1527,41 @@ export default function RunDetailsScreen({ route, navigation }) {
             <Text style={styles.sectionTitle}>Player Reviews</Text>
           </View>
 
+          {/* Rating summary — shown above the CTA only when reviews exist */}
+          {reviews.length > 0 && (() => {
+            const avg = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length;
+            return (
+              <View style={styles.ratingSummary}>
+                <Text style={styles.ratingBig}>{avg.toFixed(1)}</Text>
+                <View style={styles.ratingDetails}>
+                  <View style={styles.starsRow}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={star <= Math.round(avg) ? 'star' : 'star-outline'}
+                        size={16}
+                        color="#F59E0B"
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.ratingCount}>
+                    {reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
+
           {/*
            * Leave a Review CTA — gated behind two conditions:
-           *   1. User must have a check-in record at this gym (hasCheckedIn)
+           *   1. User must have a verified visit or run at this gym (hasRunAttended)
            *   2. User must not have already reviewed this gym (hasReviewed)
            * If neither condition blocks, show the primary button.
            */}
-          {!hasCheckedIn ? (
+          {!hasRunAttended ? (
             <View style={styles.reviewGateNote}>
               <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} style={{ marginRight: 5 }} />
-              <Text style={styles.reviewGateText}>Attend a run here to leave a review</Text>
+              <Text style={styles.reviewGateText}>Check in here to leave a review</Text>
             </View>
           ) : hasReviewed ? (
             <View style={styles.reviewGateNote}>
@@ -1506,7 +1578,8 @@ export default function RunDetailsScreen({ route, navigation }) {
             </TouchableOpacity>
           )}
 
-          {/* Reviews list or empty state */}
+          {/* Reviews list — sorted: verified run first, then rating desc, then newest.
+              Empty state shown inline when no reviews exist. */}
           {reviews.length === 0 ? (
             <View style={styles.reviewsEmpty}>
               <Ionicons name="star-outline" size={28} color={colors.textMuted} />
@@ -1514,55 +1587,95 @@ export default function RunDetailsScreen({ route, navigation }) {
               <Text style={styles.reviewsEmptySubtext}>Be the first to leave one!</Text>
             </View>
           ) : (
-            reviews.map((review) => (
-              <View key={review.id} style={styles.reviewCard}>
-                <View style={styles.reviewHeader}>
-                  {review.userAvatar ? (
-                    <Image source={{ uri: review.userAvatar }} style={styles.reviewAvatar} />
-                  ) : (
-                    <View style={styles.reviewAvatarPlaceholder}>
-                      <Text style={styles.reviewAvatarInitial}>
-                        {(review.userName || 'A')[0].toUpperCase()}
-                      </Text>
-                    </View>
-                  )}
-                  <View style={styles.reviewMeta}>
-                    <Text style={styles.reviewerName}>{review.userName || 'Anonymous'}</Text>
-                    <View style={styles.reviewStarsRow}>
-                      {[1, 2, 3, 4, 5].map((star) => (
-                        <Ionicons
-                          key={star}
-                          name={star <= review.rating ? 'star' : 'star-outline'}
-                          size={13}
-                          color="#F59E0B"
-                        />
-                      ))}
-                    </View>
-                  </View>
-                  {/* Timestamp on the right — replaced by trash icon for own reviews */}
-                  {review.userId === uid ? (
+            [...reviews]
+              .sort((a, b) => {
+                // Priority 1 — verified run attendees float to the top
+                const aV = a.verifiedAttendee ? 1 : 0;
+                const bV = b.verifiedAttendee ? 1 : 0;
+                if (bV !== aV) return bV - aV;
+                // Priority 2 — higher rating first
+                const ratingDiff = (b.rating || 0) - (a.rating || 0);
+                if (ratingDiff !== 0) return ratingDiff;
+                // Priority 3 — newest first
+                const aMs = a.createdAt?.toMillis?.() ?? 0;
+                const bMs = b.createdAt?.toMillis?.() ?? 0;
+                return bMs - aMs;
+              })
+              .map((review) => (
+                <View key={review.id} style={styles.reviewCard}>
+                  <View style={styles.reviewHeader}>
                     <TouchableOpacity
-                      style={styles.deleteReviewButton}
-                      onPress={() => handleDeleteReview(review.id)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
+                      onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: review.userId } })}
                     >
-                      <Ionicons name="trash-outline" size={17} color={colors.danger} />
+                      {review.userAvatar ? (
+                        <Image source={{ uri: review.userAvatar }} style={styles.reviewAvatar} />
+                      ) : (
+                        <View style={styles.reviewAvatarPlaceholder}>
+                          <Text style={styles.reviewAvatarInitial}>
+                            {(review.userName || 'A')[0].toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
                     </TouchableOpacity>
-                  ) : (
-                    <Text style={styles.reviewDate}>{timeAgo(review.createdAt)}</Text>
+                    <View style={styles.reviewMeta}>
+                      {/* Name + run count on one line */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: review.userId } })}
+                        >
+                          <Text style={styles.reviewerName}>{review.userName || 'Anonymous'}</Text>
+                        </TouchableOpacity>
+                        {(reviewerStatsMap[review.userId]?.totalAttended ?? 0) > 0 && (
+                          <Text style={{ fontSize: 11, color: colors.textMuted }}>
+                            {' \u2022 '}{reviewerStatsMap[review.userId].totalAttended} runs attended
+                          </Text>
+                        )}
+                      </View>
+                      {/* Star rating */}
+                      <View style={styles.reviewStarsRow}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons
+                            key={star}
+                            name={star <= review.rating ? 'star' : 'star-outline'}
+                            size={13}
+                            color="#F59E0B"
+                          />
+                        ))}
+                      </View>
+                      {/* Verified Run badge — below stars, run-completion path only */}
+                      {review.verifiedAttendee && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                          <Ionicons name="checkmark-circle" size={12} color="#6366F1" />
+                          <Text style={{ fontSize: 10, color: '#6366F1', fontWeight: '600' }}>Verified Run</Text>
+                        </View>
+                      )}
+                    </View>
+                    {/* Timestamp on the right — replaced by trash icon for own reviews */}
+                    {review.userId === uid ? (
+                      <TouchableOpacity
+                        style={styles.deleteReviewButton}
+                        onPress={() => handleDeleteReview(review.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="trash-outline" size={17} color={colors.danger} />
+                      </TouchableOpacity>
+                    ) : (
+                      <Text style={styles.reviewDate}>{timeAgo(review.createdAt)}</Text>
+                    )}
+                  </View>
+                  {/* For own review, show time below the content row */}
+                  {review.userId === uid && (
+                    <Text style={[styles.reviewDate, { marginTop: 2, textAlign: 'right' }]}>
+                      {timeAgo(review.createdAt)}
+                    </Text>
+                  )}
+                  {!!review.text && (
+                    <Text style={styles.reviewComment}>{review.text}</Text>
                   )}
                 </View>
-                {/* For own review, show time below the content row */}
-                {review.userId === uid && (
-                  <Text style={[styles.reviewDate, { marginTop: 2, textAlign: 'right' }]}>
-                    {timeAgo(review.createdAt)}
-                  </Text>
-                )}
-                {!!review.text && (
-                  <Text style={styles.reviewComment}>{review.text}</Text>
-                )}
-              </View>
-            ))
+              ))
           )}
         </View>
 
@@ -2980,7 +3093,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     overflow: 'hidden',
   },
   runAvatarOffset: {
-    marginLeft: -8,
+    marginLeft: 4,
   },
   runAvatarImg: {
     width: 30,

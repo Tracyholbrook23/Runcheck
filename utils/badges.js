@@ -74,6 +74,7 @@ export const RANKS = [
 export const POINT_VALUES = {
   checkin:          10, // Standard check-in (no prior plan)
   checkinWithPlan:  15, // Check-in that fulfils a scheduled plan (+5 bonus)
+  runComplete:      10, // Check in to a gym when you're a run participant — show-up bonus
   review:           15,
   followGym:         2,
   completeProfile:  10,
@@ -105,6 +106,15 @@ export const ACTION_LABELS = [
     iconColor: null,          // use colors.primary from theme
     points: POINT_VALUES.checkinWithPlan,
     note: '+5 follow-through bonus',
+  },
+  {
+    action: 'runComplete',
+    label: 'Show up for a run',
+    icon: '🏃',
+    ionicon: 'flag',
+    iconColor: '#6366F1',     // indigo
+    points: POINT_VALUES.runComplete,
+    note: '+10 show-up bonus',
   },
   {
     action: 'review',

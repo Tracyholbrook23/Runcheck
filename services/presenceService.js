@@ -71,6 +71,7 @@ import {
 import { findMatchingSchedule, markScheduleAttended } from './scheduleService';
 import { calculateDistanceMeters } from '../utils/locationUtils';
 import { awardPoints } from './pointsService';
+import { evaluateRunReward } from './runService';
 import { calculateReliabilityScore } from './reliabilityService';
 
 /**
@@ -311,6 +312,13 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   const sessionKey = `${presenceId}_${now.getTime()}`;
   awardPoints(odId, pointsAction, sessionKey, gymId).catch((err) =>
     console.error('Points award error (check-in):', err)
+  );
+
+  // ── Run follow-through reward — delegated to runService ─────────────────
+  // evaluateRunReward verifies legitimacy (participantCount >= 2, creator
+  // presence, time window) and handles idempotency before awarding points.
+  evaluateRunReward(odId, gymId, now).catch((err) =>
+    console.error('Run reward evaluation error:', err)
   );
 
   // ── Record attended session in reliability stats ─────────────────────────

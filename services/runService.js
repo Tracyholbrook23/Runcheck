@@ -41,6 +41,7 @@
  */
 
 import { db, auth } from '../config/firebase';
+import { awardPoints, penalizePoints } from './pointsService';
 import {
   collection,
   doc,
@@ -276,6 +277,14 @@ export const joinExistingRun = async (runId, gymId, gymName) => {
  * If the user isn't in the run, this is a no-op (deleteDoc on a non-existent
  * doc succeeds silently in Firestore).
  *
+ * Late-cancel penalty: if the user leaves within 60 minutes of the run's
+ * scheduled startTime (but the run hasn't started yet), points are deducted
+ * as a commitment signal.
+ *   • Creator leaves < 60 min before start → −15 pts (others committed to them)
+ *   • Participant leaves < 60 min before start → −5 pts
+ * Leaving more than 60 min before start, or after the run has already started,
+ * carries no penalty.  Points floor at 0 — never go negative.
+ *
  * @param {string} runId
  * @returns {Promise<void>}
  * @throws {Error} If not authenticated
@@ -288,14 +297,41 @@ export const leaveRun = async (runId) => {
   const participantRef = doc(db, 'runParticipants', participantId);
   const runRef = doc(db, 'runs', runId);
 
+  // Tracks whether a late-cancel penalty should fire after the transaction.
+  let penaltyAmount = 0;
+
   await runTransaction(db, async (txn) => {
-    const participantSnap = await txn.get(participantRef);
+    const [participantSnap, runSnap] = await Promise.all([
+      txn.get(participantRef),
+      txn.get(runRef),
+    ]);
+
     if (!participantSnap.exists()) return; // already not in the run
+
+    // ── Late-cancel penalty check ──────────────────────────────────────────
+    if (runSnap.exists()) {
+      const runData = runSnap.data();
+      const startMs = runData.startTime?.toMillis?.();
+      if (startMs) {
+        const minutesUntilStart = (startMs - Date.now()) / 60000;
+        // Penalty window: run is still in the future but within 60 minutes
+        if (minutesUntilStart > 0 && minutesUntilStart < 60) {
+          penaltyAmount = runData.createdBy === uid ? 15 : 5;
+        }
+      }
+    }
 
     txn.delete(participantRef);
     // Use increment(-1) — Firestore Security Rules or cleanup can clamp to 0
     txn.update(runRef, { participantCount: increment(-1) });
   });
+
+  // Apply penalty after the transaction — fire-and-forget, non-critical.
+  if (penaltyAmount > 0) {
+    penalizePoints(uid, penaltyAmount).catch((err) =>
+      console.error('Leave-run penalty error:', err)
+    );
+  }
 };
 
 /**
@@ -412,4 +448,98 @@ export const subscribeToRunParticipants = (runId, callback) => {
       callback([]);
     }
   );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Run reward evaluation
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * evaluateRunReward — Determines whether a user earns a runComplete bonus
+ * after checking in at a gym.
+ *
+ * Called fire-and-forget from presenceService.checkIn() immediately after
+ * the main check-in transaction completes.
+ *
+ * Legitimacy rules (all must pass before awardPoints is called):
+ *   1. User has an active runParticipants doc at this gym (status: 'going')
+ *   2. Check-in falls within the run window: startTime − 30 min to startTime + 60 min
+ *   3. Run has participantCount >= 2 (not a solo run)
+ *   4. Run creator also checked in at the same gym within the same window
+ *      (skipped when the evaluating user IS the creator — their check-in is the proof)
+ *
+ * Idempotency is enforced inside awardPoints via pointsAwarded.runs.{runId}.
+ *
+ * Reads (worst case, one eligible run found):
+ *   1. getDocs(runParticipants query) — find user's runs at this gym
+ *   2. getDoc(runs/{runId})           — startTime, createdBy, participantCount
+ *   3. getDoc(presence/{createdBy}_{gymId}) — creator check-in proof (skipped if user is creator)
+ *
+ * @param {string} uid          — Firebase Auth user ID of the checking-in user.
+ * @param {string} gymId        — Gym where the check-in occurred.
+ * @param {Date}   checkInTime  — JS Date of the check-in (from presenceService.now).
+ * @returns {Promise<void>}
+ */
+export const evaluateRunReward = async (uid, gymId, checkInTime) => {
+  if (!uid || !gymId || !checkInTime) return;
+
+  const checkInMs = checkInTime.getTime();
+
+  // Find all runs this user is actively participating in at this gym.
+  const participantsRef = collection(db, 'runParticipants');
+  const participantQuery = query(
+    participantsRef,
+    where('userId', '==', uid),
+    where('gymId',  '==', gymId),
+    where('status', '==', 'going'),
+  );
+  const participantSnap = await getDocs(participantQuery);
+  if (participantSnap.empty) return;
+
+  for (const participantDoc of participantSnap.docs) {
+    const { runId } = participantDoc.data();
+    if (!runId) continue;
+
+    // ── Read the run doc ────────────────────────────────────────────────────
+    const runSnap = await getDoc(doc(db, 'runs', runId));
+    if (!runSnap.exists()) continue;
+
+    const { startTime, createdBy, participantCount, status } = runSnap.data();
+    const startMs = startTime?.toMillis?.();
+    if (!startMs || !createdBy) continue;
+
+    // Skip runs that were canceled before anyone showed up.
+    if (status && status !== 'upcoming') continue;
+
+    // ── Rule 2: time window check ───────────────────────────────────────────
+    // Valid window: 30 min before run start up to 60 min after run start.
+    const windowStartMs = startMs - 30 * 60 * 1000;
+    const windowEndMs   = startMs + 60 * 60 * 1000;
+    if (checkInMs < windowStartMs || checkInMs > windowEndMs) continue;
+
+    // ── Rule 3: legitimacy — not a solo run ─────────────────────────────────
+    if ((participantCount ?? 0) < 2) continue;
+
+    // ── Rule 4: creator presence check ─────────────────────────────────────
+    // If the user IS the creator, their current check-in satisfies this rule.
+    // Otherwise, read the creator's presence doc and verify their checkedInAt
+    // falls within the same window.
+    if (uid !== createdBy) {
+      const creatorPresenceId = `${createdBy}_${gymId}`;
+      const creatorPresenceSnap = await getDoc(doc(db, 'presence', creatorPresenceId));
+      if (!creatorPresenceSnap.exists()) continue;
+
+      const creatorCheckedInMs = creatorPresenceSnap.data().checkedInAt?.toMillis?.();
+      if (!creatorCheckedInMs) continue;
+      if (creatorCheckedInMs < windowStartMs || creatorCheckedInMs > windowEndMs) continue;
+    }
+
+    // ── All rules passed — award the runComplete bonus ──────────────────────
+    // awardPoints handles idempotency atomically via pointsAwarded.runs.{runId}.
+    // gymId is passed as the 4th arg so the transaction also writes
+    // pointsAwarded.runGyms: arrayUnion(gymId), which reviewService uses to
+    // gate verified-attendee review eligibility with a single user doc read.
+    await awardPoints(uid, 'runComplete', runId, gymId);
+    break; // One runComplete bonus per check-in, even if multiple runs qualify.
+  }
 };

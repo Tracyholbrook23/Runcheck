@@ -188,4 +188,113 @@ Read on the next check-in; if `now - lastCheckinAt[gymId] < 4 hours`, points are
 
 ---
 
-_Last updated: 2026-03-13 (RC-002 community feed filter)_
+---
+
+## RC-006 — Run Reward & Accountability
+**Status:** `[x]`
+**Priority:** High
+
+### Goal
+Reward users who join a run *and actually show up*, and penalize users who cancel too close to the run's start time. Joining a run alone earns nothing — follow-through earns the reward.
+
+### Product Rules
+- **Show-up reward** — Check in at the same gym within the valid window (startTime − 30 min to startTime + 60 min), run has ≥ 2 participants, and creator also checked in during that window → +10 pts (`runComplete`)
+- **Late-cancel penalty (creator)** — Leave a run < 60 minutes before `startTime` → −15 pts
+- **Late-cancel penalty (participant)** — Leave a run < 60 minutes before `startTime` → −5 pts
+- Leaving > 60 min before start: no penalty
+- Leaving after the run has already started: no penalty
+- Points floor at 0 — never go negative
+
+### Legitimacy rules enforced in `evaluateRunReward`
+All four must pass before `runComplete` is awarded:
+1. User has a `runParticipants` doc at this gym with `status: 'going'`
+2. Check-in falls within `[startTime − 30 min, startTime + 60 min]`
+3. `participantCount >= 2` on the run doc (not a solo run)
+4. Creator has a `presence` doc at the same gym with `checkedInAt` in the same window (skipped if user IS the creator — their current check-in satisfies this)
+
+### Files Modified
+- `utils/badges.js` — Added `runComplete: 10` to `POINT_VALUES`; added `runComplete` entry to `ACTION_LABELS`
+- `services/pointsService.js` — Renamed `presenceId` param → `idempotencyKey`; added `runComplete` transactional case with `pointsAwarded.runs.{runId}` guard; added `penalizePoints(uid, amount)` export
+- `services/runService.js` — Added `awardPoints` import; added `evaluateRunReward(uid, gymId, checkInTime)` export at end of file; expanded `leaveRun()` with late-cancel penalty
+- `services/presenceService.js` — Added `evaluateRunReward` import; replaced 40-line inline IIFE with single `evaluateRunReward(odId, gymId, now)` fire-and-forget call
+
+### Schema additions
+- `users/{uid}.pointsAwarded.runs.{runId}: true` — written atomically when `runComplete` is awarded; serves as idempotency guard
+
+No new collections required.
+
+### Acceptance Criteria
+- [x] User joins run, checks in within valid window, run has ≥ 2 participants, creator also checked in → +10 pts awarded
+- [x] User checks in at gym with no matching run → no bonus
+- [x] User is sole participant (solo run) → no bonus
+- [x] Creator never checked in → participant receives no bonus
+- [x] Check-in > 60 min before run start or > 60 min after → no bonus
+- [x] Second check-in during same window → idempotency guard blocks duplicate award
+- [x] Creator leaves run < 60 min before start → −15 pts
+- [x] Participant leaves run < 60 min before start → −5 pts
+- [x] Anyone leaves run > 60 min before start → no penalty
+- [x] Points never go below 0
+- [x] Reliability tracking unaffected (Cloud Function-owned — not touched)
+
+### Known Limitations
+- **Creator presence uses the most recent check-in doc** — `presence/{createdBy}_{gymId}` is a single reused doc. If the creator checked out and back in during the window, `checkedInAt` reflects their latest check-in and the check passes correctly. If they checked in during the window then checked out before the participant's check-in, the doc's `checkedInAt` is still in the window and the check still passes — which is the right behaviour.
+- **`participantCount` is denormalized and client-maintained** — a race between two `leaveRun` calls theoretically makes it go stale for milliseconds. This is an existing constraint of the data model, not new to this feature.
+- **Creator bypass** — when the evaluating user is the creator (Case A), the creator-presence read is skipped and the check trivially passes. A participant can still farm if they convince a friend to join without the creator ever showing up. Full mitigation requires a Cloud Function.
+
+---
+
+## RC-007 — Player Reviews (Verified Attendee System)
+
+**Status:** Implemented
+**Priority:** High
+**Description:** Verified-only review system for gyms on RunDetailsScreen. Eligibility gated on real run completion, not casual check-ins. One active review per user per gym. One reward per user per gym, forever.
+
+### Design Decisions
+- **Eligibility signal:** `users/{uid}.pointsAwarded.runGyms` array — written atomically inside the `runComplete` transaction when a user earns a run-complete bonus. Single `getDoc` on screen mount; no presence or participant collection queries.
+- **Review reward idempotency:** `pointsAwarded.reviewedGyms: arrayUnion(gymId)` — written in a transaction in `pointsService`. Delete-and-repost cannot earn a second reward.
+- **`review` points are awaited:** `submitReview()` awaits `awardPoints()` rather than fire-and-forget, so errors surface at the call site.
+- **`verifiedAttendee: boolean`** written on each review doc from the `isVerified` parameter passed by the screen.
+
+### Files Modified
+- `services/pointsService.js`
+  - `runComplete` transaction: added `pointsAwarded.runGyms: arrayUnion(gymId)` write (when gymId provided) to enable eligibility reads downstream
+  - Added transactional `'review'` case with `pointsAwarded.reviewedGyms` guard; replaces former unconditional increment path
+  - Updated JSDoc throughout
+- `services/runService.js`
+  - `evaluateRunReward`: changed `awardPoints(uid, 'runComplete', runId)` → `awardPoints(uid, 'runComplete', runId, gymId)` to pass gymId into the runComplete transaction
+- `services/reviewService.js` *(new)*
+  - `checkReviewEligibility(uid, gymId)` → `Promise<boolean>`: single user doc read on `pointsAwarded.runGyms`
+  - `submitReview(uid, gymId, userName, userAvatar, rating, text, isVerified)` → enforces one-active-review guard via Firestore query, writes review doc, awaits points award
+- `screens/RunDetailsScreen.js`
+  - Removed `awardPoints` import (no longer called directly for reviews)
+  - Removed `addDoc`, `serverTimestamp` from Firestore import (now in reviewService)
+  - Added `import { checkReviewEligibility, submitReview } from '../services/reviewService'`
+  - Replaced `hasCheckedIn`/presence query useEffect with `hasRunAttended`/`checkReviewEligibility` useEffect
+  - Replaced inline `handleSubmitReview` with delegation to `reviewService.submitReview`; rank-up aware Alert
+  - Added rating summary block (avg score, stars, review count) shown when ≥1 review exists
+  - Added verified attendee badge on review cards (`Ionicons shield-checkmark` + "Verified" label)
+  - Updated gate copy: "Attend a run here" → "Complete a run here to leave a review"
+
+### Schema additions
+- `users/{uid}.pointsAwarded.runGyms: string[]` — gymIds where user has earned a runComplete bonus; used as eligibility index for review gating
+- `users/{uid}.pointsAwarded.reviewedGyms: string[]` — gymIds where user has received the review reward; idempotency guard
+- `gyms/{gymId}/reviews/{autoId}.verifiedAttendee: boolean` — true if reviewer had `hasRunAttended === true` at submit time
+
+### Acceptance Criteria
+- [x] User with no completed run at a gym sees "Complete a run here" lock gate
+- [x] User with a completed run sees "Leave a Review" button
+- [x] User who has already reviewed sees "You've reviewed this gym" confirmation
+- [x] Submitting a review creates doc with `verifiedAttendee: true` for run attendees
+- [x] Review reward awarded at most once per user per gym (transactional guard)
+- [x] Points call is awaited — errors surface immediately rather than silently
+- [x] Rating summary (avg, stars, count) visible when ≥1 review exists
+- [x] Verified badge displayed on review cards from verified attendees
+- [x] `alreadyReviewed` service-layer guard blocks duplicate submissions even if UI bypassed
+
+### Known Limitations
+- **`hasRunAttended` is read once on mount.** If a user earns their runComplete bonus while the screen is already open, the gate won't update until they navigate away and return. Acceptable for MVP.
+- **Delete is still possible from the UI** (existing trash icon). Deleting and reposting will create a second review doc. The reward won't double (guard in pointsService), but the one-active-review rule is enforced only at submit time by querying existing docs. If a hard server-side constraint is needed, a Cloud Function is the right place.
+
+---
+
+_Last updated: 2026-03-13 (RC-007: verified reviews, rating summary, run-attendance gating)_
