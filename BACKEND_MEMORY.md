@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-12_
+_Last updated: 2026-03-13_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -26,6 +26,10 @@ Firebase-only backend. No custom server. Logic lives in:
     checkins: { [sessionKey]: true },        // idempotency guard per check-in session
     followedGyms: string[],                  // gymIds currently earning follow points
     lastCheckinAt: { [gymId]: Timestamp },   // cooldown guard — when points were last awarded per gym
+    runs: { [runId]: true },                 // runComplete reward idempotency guard (one per run)
+    runGyms: string[],                       // gymIds where user earned runComplete bonus; "Verified Run" badge signal
+    gymVisits: string[],                     // gymIds where user earned check-in points; widened review-eligibility signal
+    reviewedGyms: string[],                  // gymIds where review reward was already earned; one-time-per-gym guard
   },
   reliability: {
     score: number,          // 0–100, starts at 100
@@ -123,6 +127,19 @@ Firebase-only backend. No custom server. Logic lives in:
 ```
 > Compound key `{runId}_{userId}` makes joins idempotent (setDoc overwrites) and leaveRun O(1) (delete by ID, no query). Ownership enforced via the `userId` field since Firestore rules cannot split the doc ID string.
 
+### `gyms/{gymId}/reviews/{autoId}`   ← subcollection per gym
+```js
+{
+  userId, userName, userAvatar,
+  rating: number,               // 1–5
+  text: string,
+  verifiedAttendee: boolean,    // true only if reviewer had pointsAwarded.runGyms.includes(gymId) at submit time
+  createdAt: Timestamp,         // serverTimestamp()
+}
+```
+> One active review per user per gym enforced at submit time in `reviewService.submitReview` via `getDocs` existence check.
+> `verifiedAttendee` reflects the **run-completion path only** — session-only check-in reviewers get `verifiedAttendee: false`. This is intentional; see RC-007.
+
 ---
 
 ## Services
@@ -150,12 +167,16 @@ Firebase-only backend. No custom server. Logic lives in:
 
 ### `pointsService.js`
 Single source of truth for all point writes. Never write `totalPoints` anywhere else.
-- **`awardPoints(uid, action, presenceId?, gymId?)`** — Actions: `'checkin'`, `'checkinWithPlan'`, `'planVisit'`, `'review'`, `'followGym'`, `'completeProfile'`
+- **`awardPoints(uid, action, idempotencyKey?, gymId?)`** — Actions: `'checkin'`, `'checkinWithPlan'`, `'planVisit'`, `'review'`, `'followGym'`, `'completeProfile'`, `'runComplete'`
   - `checkin`/`checkinWithPlan`: two atomic guards inside a transaction:
     1. **Idempotency** — skips if `pointsAwarded.checkins[sessionKey]` already exists (double-tap protection)
     2. **Cooldown** — skips if `pointsAwarded.lastCheckinAt[gymId]` is within 4 hours (production) / 30 seconds (test UIDs in `TEST_USER_UIDS` constant in `pointsService.js`). Presence and reliability tracking are **not** affected — only points are blocked.
+    3. Writes `pointsAwarded.gymVisits: arrayUnion(gymId)` atomically (when gymId provided) — widened review-eligibility signal
+  - `runComplete`: transactional guard via `pointsAwarded.runs[runId]`; writes `pointsAwarded.runGyms: arrayUnion(gymId)` — run-eligibility and badge signal. Idempotency key is the `runId`.
+  - `review`: transactional guard via `pointsAwarded.reviewedGyms.includes(gymId)`; one reward per user per gym forever regardless of delete/repost.
   - `completeProfile`: one-time — guards via `profileCompletionAwarded` flag
   - Returns `{ newTotal, rankChanged, newRank, prevRank }` for rank-up UI
+- **`penalizePoints(uid, amount)`** — Deducts points (floored at 0). Used by `leaveRun` for late-cancel penalties.
 - **`handleFollowPoints(uid, gymId, isFollowing)`** — Follow/unfollow point management:
   - Follow: awards 2 pts, records `gymId` in `pointsAwarded.followedGyms`
   - Unfollow: deducts 2 pts, removes `gymId`
@@ -181,6 +202,12 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 - **`subscribeToRunParticipants(runId, callback)`** — real-time; all participants in a run (for future "who's going" list).
 - Internal `joinRun` uses `runTransaction`: reads participant doc first; `increment(1)` only fires if `!alreadyJoined`.
 
+### `reviewService.js`
+- **`checkReviewEligibility(uid, gymId)`** → `Promise<{ canReview, hasVerifiedRun }>`: single `getDoc` on `users/{uid}`; checks `pointsAwarded.runGyms` and `pointsAwarded.gymVisits` independently.
+  - `canReview` = `runGyms.includes(gymId) || gymVisits.includes(gymId)` — gates the review submission form
+  - `hasVerifiedRun` = `runGyms.includes(gymId)` — controls whether `verifiedAttendee: true` is written on the review doc
+- **`submitReview(uid, gymId, userName, userAvatar, rating, text, isVerified)`** → one-active-review guard (getDocs query), writes to `gyms/{gymId}/reviews`, awaits `awardPoints(uid, 'review', null, gymId)`. Returns `{ success, alreadyReviewed, pointsResult }`.
+
 ### `reliabilityService.js` — READ-ONLY on client
 - `getUserReliability(uid)` — reads `users/{uid}.reliability`
 - `getReliabilityTier(score)` — returns label/color for score display
@@ -203,6 +230,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useReliability(uid)` | `{ reliability, loading }` | `getUserReliability` |
 | `useLocation()` | `{ location, error, loading }` | Expo Location |
 | `useGymRuns(gymId)` | `{ runs, loading, joinedRunIds, userParticipants }` | `subscribeToGymRuns` + `subscribeToUserRunsAtGym` |
+| `useLivePresenceMap()` | `{ presenceMap, countMap }` | Single `presence` subscription (status==active, limit 200); client-side `expiresAt` guard; deduplicates by `odId` per gym. **Canonical source** for all-gym player counts — use `countMap[gymId]` everywhere, never `gym.currentPresenceCount`. |
 
 ---
 
@@ -253,7 +281,7 @@ RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, g
 ## Known Issues / TODO (Backend)
 1. **GPS enforcement is off** — re-enable the commented-out distance check in `presenceService.checkIn` before launch
 2. **Auto-expiry is client-side only** — need Cloud Function to expire presences server-side without deducting points (call `checkOut(isManual=false)`)
-3. **`gym.currentPresenceCount` lags real-time** — it's a denormalized counter updated by transactions. The UI must NOT use it for display — always use `subscribeToGymPresences` data
+3. **`gym.currentPresenceCount` lags real-time** — it's a denormalized counter updated by transactions; not filtered by `expiresAt`. The UI must NOT use it for display — always use `useLivePresenceMap` / `subscribeToGymPresences`. All screens now use the correct source. (`PlanVisitScreen` was the last remaining violation; fixed 2026-03-13 — replaced with `countMap[gym.id]` from `useLivePresenceMap`.)
 4. **`activity` index** — confirm composite Firestore index exists for `createdAt DESC` inequality query on HomeScreen feed
 5. **Reliability writes** — currently all in Cloud Functions (backend). Do not re-add to client code.
 6. **`'joined a run at'` activity writes** — present in `runService.js` but should be removed before commit. With multiple users joining one run, the feed produces identical spam entries. Only `'started a run at'` should be kept. Requires deleting the `addDoc` calls inside `joinExistingRun` and the merge-join branch of `startOrJoinRun`.

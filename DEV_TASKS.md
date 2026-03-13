@@ -245,56 +245,98 @@ No new collections required.
 
 ## RC-007 — Player Reviews (Verified Attendee System)
 
-**Status:** Implemented
+**Status:** `[x]`
 **Priority:** High
-**Description:** Verified-only review system for gyms on RunDetailsScreen. Eligibility gated on real run completion, not casual check-ins. One active review per user per gym. One reward per user per gym, forever.
+**Description:** Review system for gyms on RunDetailsScreen. Eligibility gated on meaningful gym participation: run completion (`runGyms`) OR any check-in that earned points (`gymVisits`). "Verified Run" badge shown only for run completions. One active review per user per gym. One reward per user per gym, forever.
 
 ### Design Decisions
-- **Eligibility signal:** `users/{uid}.pointsAwarded.runGyms` array — written atomically inside the `runComplete` transaction when a user earns a run-complete bonus. Single `getDoc` on screen mount; no presence or participant collection queries.
+- **Eligibility signals (two-signal model):** `checkReviewEligibility(uid, gymId)` reads one user doc and returns `{ canReview, hasVerifiedRun }`.
+  - `canReview = runGyms.includes(gymId) || gymVisits.includes(gymId)` — gates the review form
+  - `hasVerifiedRun = runGyms.includes(gymId)` — gates the "Verified Run" badge only
+  - `gymVisits` written atomically inside the `checkin`/`checkinWithPlan` points transaction via `arrayUnion`
+  - `runGyms` written atomically inside the `runComplete` points transaction via `arrayUnion`
+- **Badge semantics:** `verifiedAttendee: true` on a review doc means the reviewer had a completed run at that gym. Session-only check-in reviewers can post reviews but receive no badge. This split is intentional.
 - **Review reward idempotency:** `pointsAwarded.reviewedGyms: arrayUnion(gymId)` — written in a transaction in `pointsService`. Delete-and-repost cannot earn a second reward.
 - **`review` points are awaited:** `submitReview()` awaits `awardPoints()` rather than fire-and-forget, so errors surface at the call site.
-- **`verifiedAttendee: boolean`** written on each review doc from the `isVerified` parameter passed by the screen.
+- **One active review per user per gym:** enforced in `submitReview` via a `getDocs` existence check before `addDoc`.
 
 ### Files Modified
 - `services/pointsService.js`
-  - `runComplete` transaction: added `pointsAwarded.runGyms: arrayUnion(gymId)` write (when gymId provided) to enable eligibility reads downstream
+  - `runComplete` transaction: added `pointsAwarded.runGyms: arrayUnion(gymId)` write (when gymId provided) — enables eligibility reads and badge signal downstream
+  - `checkin`/`checkinWithPlan` transaction: added `pointsAwarded.gymVisits: arrayUnion(gymId)` write (when gymId provided) — widened review-eligibility signal
   - Added transactional `'review'` case with `pointsAwarded.reviewedGyms` guard; replaces former unconditional increment path
   - Updated JSDoc throughout
 - `services/runService.js`
   - `evaluateRunReward`: changed `awardPoints(uid, 'runComplete', runId)` → `awardPoints(uid, 'runComplete', runId, gymId)` to pass gymId into the runComplete transaction
 - `services/reviewService.js` *(new)*
-  - `checkReviewEligibility(uid, gymId)` → `Promise<boolean>`: single user doc read on `pointsAwarded.runGyms`
-  - `submitReview(uid, gymId, userName, userAvatar, rating, text, isVerified)` → enforces one-active-review guard via Firestore query, writes review doc, awaits points award
+  - `checkReviewEligibility(uid, gymId)` → `Promise<{ canReview, hasVerifiedRun }>`: single user doc read; checks `runGyms` (run-completion path) and `gymVisits` (check-in path) independently
+  - `submitReview(uid, gymId, userName, userAvatar, rating, text, isVerified)` → enforces one-active-review guard, writes review doc, awaits points award
 - `screens/RunDetailsScreen.js`
   - Removed `awardPoints` import (no longer called directly for reviews)
-  - Removed `addDoc`, `serverTimestamp` from Firestore import (now in reviewService)
   - Added `import { checkReviewEligibility, submitReview } from '../services/reviewService'`
-  - Replaced `hasCheckedIn`/presence query useEffect with `hasRunAttended`/`checkReviewEligibility` useEffect
-  - Replaced inline `handleSubmitReview` with delegation to `reviewService.submitReview`; rank-up aware Alert
-  - Added rating summary block (avg score, stars, review count) shown when ≥1 review exists
-  - Added verified attendee badge on review cards (`Ionicons shield-checkmark` + "Verified" label)
-  - Updated gate copy: "Attend a run here" → "Complete a run here to leave a review"
+  - Two state vars: `hasRunAttended` (= `canReview`, gates the form) and `hasVerifiedRun` (= badge signal only)
+  - `handleSubmitReview` delegates to `reviewService.submitReview`; passes `hasVerifiedRun` (not `hasRunAttended`) as `isVerified` — ensures badge is never set for session-only reviewers
+  - Rating summary (avg score, stars, review count) repositioned above the review CTA
+  - Review sort: verifiedAttendee desc → rating desc → createdAt desc
+  - Verified badge: `Ionicons checkmark-circle` + "Verified Run" label; shown only when `verifiedAttendee === true`
+  - Gate copy: "Check in here to leave a review" (widened from run-only)
+  - `reviewerStatsMap` lazy-cache (following `clipUserMap` pattern) fetches `reliability.totalAttended` per reviewer uid; guarded by `resolvedReviewerUidsRef` (useRef Set) to prevent duplicate in-flight reads across snapshot re-fires
+  - Reviewer avatar and name tappable → `navigation.navigate('Home', { screen: 'UserProfile', params: { userId } })`
 
 ### Schema additions
-- `users/{uid}.pointsAwarded.runGyms: string[]` — gymIds where user has earned a runComplete bonus; used as eligibility index for review gating
-- `users/{uid}.pointsAwarded.reviewedGyms: string[]` — gymIds where user has received the review reward; idempotency guard
-- `gyms/{gymId}/reviews/{autoId}.verifiedAttendee: boolean` — true if reviewer had `hasRunAttended === true` at submit time
+- `users/{uid}.pointsAwarded.runGyms: string[]` — gymIds where user has earned a runComplete bonus; run-eligibility and "Verified Run" badge signal
+- `users/{uid}.pointsAwarded.gymVisits: string[]` — gymIds where user has earned check-in points; widened review-eligibility signal (written in checkin/checkinWithPlan transaction)
+- `users/{uid}.pointsAwarded.reviewedGyms: string[]` — gymIds where user has received the review reward; one-time-per-gym idempotency guard
+- `gyms/{gymId}/reviews/{autoId}.verifiedAttendee: boolean` — true only when reviewer had `runGyms.includes(gymId)` at submit time (run-completion path only)
 
 ### Acceptance Criteria
-- [x] User with no completed run at a gym sees "Complete a run here" lock gate
-- [x] User with a completed run sees "Leave a Review" button
+- [x] User with no check-in or run at a gym sees "Check in here to leave a review" lock gate
+- [x] User who has checked in (gymVisits, no run) sees "Leave a Review" button; no "Verified Run" badge on their review
+- [x] User who has completed a run (runGyms) sees "Leave a Review" button; review gets "Verified Run" badge
 - [x] User who has already reviewed sees "You've reviewed this gym" confirmation
-- [x] Submitting a review creates doc with `verifiedAttendee: true` for run attendees
-- [x] Review reward awarded at most once per user per gym (transactional guard)
+- [x] Review reward awarded at most once per user per gym (transactional reviewedGyms guard)
+- [x] Delete-and-repost cannot earn a second reward
 - [x] Points call is awaited — errors surface immediately rather than silently
-- [x] Rating summary (avg, stars, count) visible when ≥1 review exists
-- [x] Verified badge displayed on review cards from verified attendees
+- [x] Rating summary (avg, stars, count) visible when ≥1 review exists, positioned above review CTA
+- [x] Reviews sorted: verified attendees first → highest rating → newest
+- [x] Reviewer run count (`reliability.totalAttended`) shown next to name when > 0
+- [x] Reviewer avatar and name tappable to UserProfile
 - [x] `alreadyReviewed` service-layer guard blocks duplicate submissions even if UI bypassed
 
 ### Known Limitations
-- **`hasRunAttended` is read once on mount.** If a user earns their runComplete bonus while the screen is already open, the gate won't update until they navigate away and return. Acceptable for MVP.
-- **Delete is still possible from the UI** (existing trash icon). Deleting and reposting will create a second review doc. The reward won't double (guard in pointsService), but the one-active-review rule is enforced only at submit time by querying existing docs. If a hard server-side constraint is needed, a Cloud Function is the right place.
+- **`canReview`/`hasVerifiedRun` are read once on mount.** If a user earns eligibility while the screen is already open, the gate won't update until they navigate away and return. Acceptable for MVP.
+- **Delete is still possible from the UI** (trash icon). Deleting and reposting creates a second review doc. The reward won't double (guard in pointsService), but the one-active-review rule is only enforced at submit time.
+- **Eligibility vs badge split is intentional.** `canReview` (gate) is wider than `verifiedAttendee` (badge). Session-only players can review; only run-completion players appear as verified.
+- **`gymVisits` is additive, never pruned.** One entry per gym per user. At realistic gym counts this is negligible.
 
 ---
 
-_Last updated: 2026-03-13 (RC-007: verified reviews, rating summary, run-attendance gating)_
+## RC-008 — Plan Tab Stale Presence Count Fix
+
+**Status:** `[x]`
+**Priority:** Medium
+
+### Problem
+Plan > Schedule a Visit > Select a Gym screen showed "X here" badges sourced from `gym.currentPresenceCount` — a stale denormalized Firestore counter that is never filtered by `expiresAt` client-side. Presence docs whose timers had lapsed still inflated the count. This was a data-trust issue: the planning screen was the only screen in the app still using the stale counter.
+
+### Root Cause
+`PlanVisitScreen.js` was never migrated to `useLivePresenceMap`. Every other screen (HomeScreen, ViewRunsScreen, ProfileScreen) already uses `useLivePresenceMap`, which subscribes to the `presence` collection, drops expired docs client-side (`expiresAt < now`), and deduplicates by `odId`. `PlanVisitScreen` was reading `gym.currentPresenceCount` directly from the gym doc via `useGyms`.
+
+### Fix Applied
+Replaced `gym.currentPresenceCount` with `countMap[gym.id]` from `useLivePresenceMap`.
+
+### Files Modified
+- `screens/PlanVisitScreen.js`
+  - Import: added `useLivePresenceMap` to the existing `'../hooks'` import
+  - Hook call: `const { countMap } = useLivePresenceMap();`
+  - Badge render: `gym.currentPresenceCount > 0` → `(countMap[gym.id] ?? 0) > 0`; label value `gym.currentPresenceCount` → `countMap[gym.id]`
+
+### Acceptance Criteria
+- [x] Plan > Select Gym "X here" badge now matches HomeScreen for the same gym
+- [x] Expired presences no longer inflate the count on this screen
+- [x] No badge shown when no non-expired active presences exist
+- [x] No regression to HomeScreen, ViewRunsScreen, or any other screen
+
+---
+
+_Last updated: 2026-03-13 (RC-007: review system, widened eligibility, UI refinements; RC-008: Plan tab stale count fix)_

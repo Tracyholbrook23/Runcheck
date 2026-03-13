@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-12_
+_Last updated: 2026-03-13_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -114,6 +114,17 @@ const getRunEnergyLabel = (count) => {
 - Check In tab: repurposed as session status screen (see Navigation Structure); gym picker removed
 - Find a Run (ViewRunsScreen): gym search bar with local-only filter against name + address; input sanitized (strip non-`[a-zA-Z0-9 '.-&]`, max 50 chars)
 - **Start a Run / Join a Run MVP**: any user can start a group run at a gym; others can join with one tap; merge rule prevents duplicate runs within ±60 min at the same gym; runs display participant count and who's going; grace window keeps runs visible 30 min after startTime so late arrivals can still join
+- **Run accountability (RC-006)**: `evaluateRunReward` awards `+10 pts` for genuine run follow-through; late-cancel penalties apply; solo farming blocked; creator-presence legitimacy check; idempotency via `pointsAwarded.runs[runId]`
+- **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
+
+## Files Modified Recently (2026-03-13 session)
+| File | What changed |
+|---|---|
+| `services/reviewService.js` | **New file** — `checkReviewEligibility(uid, gymId)` → `{ canReview, hasVerifiedRun }`; `submitReview(...)` with one-active-review guard, review doc write to `gyms/{gymId}/reviews`, awaited `awardPoints` call |
+| `services/pointsService.js` | Added transactional `'review'` case guarded by `pointsAwarded.reviewedGyms`; `runComplete` transaction now writes `pointsAwarded.runGyms: arrayUnion(gymId)`; `checkin`/`checkinWithPlan` transactions now write `pointsAwarded.gymVisits: arrayUnion(gymId)`; added `penalizePoints` export |
+| `services/runService.js` | `evaluateRunReward` passes `gymId` as 4th arg to `awardPoints` so `runComplete` transaction can write `runGyms` |
+| `screens/RunDetailsScreen.js` | Full review section: `reviewerStatsMap` lazy-cache for `totalAttended`; review sort (verifiedAttendee→rating→date); "Verified Run" badge (`checkmark-circle`); rating summary above CTA; eligibility split into `hasRunAttended` (gate) + `hasVerifiedRun` (badge); reviewer avatar + name tappable to UserProfile |
+| `screens/PlanVisitScreen.js` | Fixed stale "X here" badge: `gym.currentPresenceCount` → `countMap[gym.id]` from `useLivePresenceMap` (RC-008) |
 
 ## Files Modified Recently (2026-03-12 session)
 | File | What changed |
@@ -156,6 +167,19 @@ const getRunEnergyLabel = (count) => {
 - **Planned visit visibility window**: `plannedTime > now AND plannedTime <= now + 60 minutes`. Both bounds enforced. Items outside this window are filtered out. Old docs lacking `plannedTime` pass through as always-visible.
 - Old activity docs (pre-March 2026) lack a `plannedTime` field — these are treated as always-visible by the filter (`!item.plannedTime` passes through)
 - **Run activity events** (`'started a run at'`) pass through the filter via the `return true` branch — they have no `plannedTime` so no extra filtering applies. `'joined a run at'` writes are present in `runService.js` but flagged for removal before commit (see Known Issues)
+
+## Review System Architecture (as of 2026-03-13)
+- **Collection**: `gyms/{gymId}/reviews/{autoId}` — subcollection per gym
+- **Service**: `services/reviewService.js` — owns `checkReviewEligibility` and `submitReview`
+- **Eligibility (two-signal model)** — single `getDoc` on `users/{uid}` on screen mount:
+  - `canReview` = `pointsAwarded.runGyms.includes(gymId) || pointsAwarded.gymVisits.includes(gymId)` — gates the review form
+  - `hasVerifiedRun` = `pointsAwarded.runGyms.includes(gymId)` — controls "Verified Run" badge only
+  - `gymVisits` written atomically in the `checkin`/`checkinWithPlan` points transaction
+  - `runGyms` written atomically in the `runComplete` points transaction
+- **Badge semantics**: `verifiedAttendee: true` on a review doc means run completion at that gym. Session-only reviewers (`canReview` via `gymVisits`) can post reviews but receive no badge. Intentional design.
+- **One active review per user per gym**: enforced by `submitReview` querying before writing
+- **One-time reward per user per gym**: `pointsAwarded.reviewedGyms` guard in `pointsService` transaction — delete/repost cannot re-earn
+- **Display**: rating summary above CTA, 3-level sort (verifiedAttendee→rating→date), reviewer run count via lazy `reviewerStatsMap` cache, tappable avatar/name → UserProfile
 
 ## Attendance / Points Architecture (as of 2026-03-11)
 - **Check-in = attended session** — every successful `presenceService.checkIn()` call awards points AND increments `reliability.totalAttended`
@@ -207,7 +231,7 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - GPS distance enforcement is commented out in both `usePresence.js` and `presenceService.js` — must be re-enabled before launch
 - Auto-expiry is client-side only; a Cloud Function is needed to expire presences server-side without deducting points
 - No composite Firestore index for `activity` collection query (`createdAt >= X, orderBy createdAt`) — may need manual index creation for scale
-- `gym.currentPresenceCount` is a stale denormalized counter — do NOT use it for display; always use real-time presence data
+- `gym.currentPresenceCount` is a stale denormalized counter — do NOT use it for display; always use `useLivePresenceMap` / `subscribeToGymPresences`. All screens now use the correct source (`PlanVisitScreen` was the last violation; fixed 2026-03-13)
 - `reliability.totalScheduled` is NOT incremented on plain check-ins (only via `createSchedule`) — this is intentional; the Session Stats "Scheduled" column reflects explicit planned visits
 - When Cloud Functions are eventually deployed for reliability/no-show tracking, the client-side `reliability.totalAttended` increment in `presenceService.checkIn()` should be removed to avoid double-counting
 - The compound presenceId (`{userId}_{gymId}`) is reused when a user checks in, checks out, and re-checks into the same gym — this is intentional for duplicate-prevention; the points idempotency key is separately `{presenceId}_{checkinTimestampMs}` so repeat visits earn points correctly
