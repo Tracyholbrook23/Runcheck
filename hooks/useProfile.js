@@ -59,6 +59,7 @@ export const useProfile = () => {
   return {
     profile,
     followedGyms: profile?.followedGyms ?? [],
+    homeCourtId: profile?.homeCourtId ?? null,
     loading,
   };
 };

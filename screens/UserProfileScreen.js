@@ -134,6 +134,16 @@ export default function UserProfileScreen({ route, navigation }) {
   const totalPoints = profile?.totalPoints ?? 0;
   const rank = getUserRank(totalPoints);
   const sessionsAttended = profile?.reliability?.totalAttended ?? 0;
+  const runsStarted = profile?.runsStarted ?? 0;
+
+  // Resolve Home Court from the profile — independent of followedGyms.
+  // Name is resolved from the gyms list, not cached on the user doc.
+  // Returns null if the gym isn't found (e.g. gyms list hasn't loaded yet).
+  const homeCourtGym = useMemo(() => {
+    if (!profile?.homeCourtId || !gyms.length) return null;
+    const match = gyms.find((g) => g.id === profile.homeCourtId);
+    return match ? { id: match.id, name: match.name, type: match.type } : null;
+  }, [profile?.homeCourtId, gyms]);
 
   // Resolve followed gym IDs to display names using the live gyms list
   const followedGymNames = useMemo(() => {
@@ -310,6 +320,11 @@ export default function UserProfileScreen({ route, navigation }) {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
+            <Text style={styles.statNumber}>{runsStarted}</Text>
+            <Text style={styles.statLabel}>Runs{'\n'}Started</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
             <Text style={styles.statNumber}>{totalPoints}</Text>
             <Text style={styles.statLabel}>Total{'\n'}Points</Text>
           </View>
@@ -370,6 +385,27 @@ export default function UserProfileScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
           )
+        )}
+
+        {/* ── Home Court ── */}
+        {homeCourtGym && (
+          <View style={[styles.section, { marginBottom: SPACING.lg }]}>
+            <Text style={styles.sectionTitle}>Home Court</Text>
+            <Pressable
+              onPress={() => {
+                navigation.getParent()?.navigate('Runs', {
+                  screen: 'RunDetails',
+                  params: { gymId: homeCourtGym.id, gymName: homeCourtGym.name },
+                });
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={({ pressed }) => [styles.gymRow, pressed ? { opacity: 0.7 } : null]}
+              accessibilityRole="button"
+            >
+              <Ionicons name="home" size={18} color="#6366F1" style={{ marginRight: SPACING.sm }} />
+              <Text style={styles.gymName}>{homeCourtGym.name}</Text>
+            </Pressable>
+          </View>
         )}
 
         {/* ── Followed Gyms ── */}

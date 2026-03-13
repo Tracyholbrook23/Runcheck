@@ -474,6 +474,7 @@ export default function ProfileScreen({ navigation }) {
   const displayAttended   = reliability?.totalAttended   ?? 0;
   const displayNoShows    = reliability?.totalNoShow     ?? 0;
   const displayCancelled  = reliability?.totalCancelled  ?? 0;
+  const displayRunsStarted = liveProfile?.runsStarted ?? 0;
   const _completionDenom  = displayAttended + displayCancelled + displayNoShows;
   const displayAttendance = _completionDenom > 0
     ? `${Math.round(((displayAttended + displayCancelled) / _completionDenom) * 100)}%`
@@ -662,7 +663,49 @@ export default function ProfileScreen({ navigation }) {
               {displayAttendance}
             </Text>
           </View>
+          {/* Runs Started — total runs the user has created */}
+          <View style={styles.attendanceRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="flag-outline" size={14} color="#6366F1" />
+              <Text style={styles.attendanceLabel}>Runs Started</Text>
+            </View>
+            <Text style={[styles.attendanceValue, { color: '#6366F1' }]}>
+              {displayRunsStarted}
+            </Text>
+          </View>
         </View>
+
+        {/* ── Home Court ────────────────────────────────────────────────── */}
+        {/* Resolved from gyms list — no cached name stored on user doc */}
+        {(() => {
+          if (!liveProfile?.homeCourtId) return null;
+          const homeGym = gyms.find((g) => g.id === liveProfile.homeCourtId);
+          if (!homeGym) return null;
+          return (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Home Court</Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() =>
+                  navigation.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: { gymId: homeGym.id, gymName: homeGym.name },
+                  })
+                }
+                style={styles.courtRow}
+              >
+                <View style={[styles.courtIcon, { backgroundColor: '#6366F118' }]}>
+                  <Ionicons name="home" size={18} color="#6366F1" />
+                </View>
+                <View style={styles.courtInfo}>
+                  <Text style={styles.courtName} numberOfLines={1}>{homeGym.name}</Text>
+                  <Text style={styles.courtMeta}>{homeGym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
+                </View>
+                <AnimatedCourtBadge count={liveCountMap[homeGym.id] ?? 0} colors={colors} />
+              </TouchableOpacity>
+            </View>
+          );
+        })()}
 
         {/* ── My Courts ─────────────────────────────────────────────────── */}
         <View style={styles.card}>

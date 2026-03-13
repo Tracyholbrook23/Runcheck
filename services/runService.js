@@ -54,6 +54,7 @@ import {
   orderBy,
   onSnapshot,
   runTransaction,
+  writeBatch,
   serverTimestamp,
   Timestamp,
   increment,
@@ -215,7 +216,13 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
   }
 
   // ── Create new run ───────────────────────────────────────────────────────
-  const newRunRef = await addDoc(runsRef, {
+  // Use a writeBatch so the run doc and the user's runsStarted counter are
+  // written atomically — both land or neither does. This prevents the counter
+  // from drifting out of sync with the actual runs collection.
+  const newRunRef = doc(runsRef); // auto-ID without writing yet
+  const batch = writeBatch(db);
+
+  batch.set(newRunRef, {
     gymId,
     gymName,
     createdBy: uid,
@@ -226,10 +233,14 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
     participantCount: 0, // joinRun will increment this to 1
   });
 
+  batch.update(doc(db, 'users', uid), { runsStarted: increment(1) });
+
+  await batch.commit();
+
   const runId = newRunRef.id;
   await joinRun(runId, gymId, userInfo);
 
-  // Activity feed — fire and forget
+  // Activity feed — fire and forget (non-critical display data)
   addDoc(collection(db, 'activity'), {
     userId: uid,
     userName: userInfo.userName,

@@ -236,6 +236,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   const isFollowed = followedGyms.includes(gymId);
   const [followLoading, setFollowLoading] = useState(false);
 
+  // ── Home Court ─────────────────────────────────────────────────────────────
+  // Derived from the live profile — separate from followedGyms / My Courts.
+  const isHomeCourt = profile?.homeCourtId === gymId;
+  const [homeCourtLoading, setHomeCourtLoading] = useState(false);
+
   // Current user UID — stable for the lifetime of the screen
   const uid = auth.currentUser?.uid;
 
@@ -743,6 +748,27 @@ export default function RunDetailsScreen({ route, navigation }) {
   };
 
   /**
+   * toggleHomeCourt — Sets or clears this gym as the user's Home Court.
+   *
+   * Writes only `homeCourtId` to `users/{uid}`. The gym name is resolved
+   * at render time from the gyms list — no cached name stored.
+   * Completely independent from followedGyms / My Courts and awards no points.
+   */
+  const toggleHomeCourt = async () => {
+    if (!uid) return;
+    setHomeCourtLoading(true);
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        homeCourtId: isHomeCourt ? null : gymId,
+      });
+    } catch (err) {
+      console.error('toggleHomeCourt error:', err);
+    } finally {
+      setHomeCourtLoading(false);
+    }
+  };
+
+  /**
    * handleDeleteReview — Prompts for confirmation then deletes the user's own
    * review document from `gyms/{gymId}/reviews/{reviewId}`.
    *
@@ -1224,9 +1250,11 @@ export default function RunDetailsScreen({ route, navigation }) {
 
         {/* Gym name, address, directions button, and type badge */}
         <View style={styles.header}>
-          {/* Gym name row — name on the left, Follow button on the right */}
-          <View style={styles.gymNameRow}>
-            <Text style={[styles.gymName, { flex: 1 }]}>{gym?.name || gymName}</Text>
+          {/* Gym name — full-width row so long names wrap naturally */}
+          <Text style={styles.gymName} numberOfLines={2}>{gym?.name || gymName}</Text>
+
+          {/* Action buttons row — sits below the name so it never competes for space */}
+          <View style={styles.gymActionRow}>
             <TouchableOpacity
               style={[
                 styles.followButton,
@@ -1248,6 +1276,30 @@ export default function RunDetailsScreen({ route, navigation }) {
                 ]}
               >
                 {isFollowed ? 'Following' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+            {/* Home Court toggle — separate from Follow/heart */}
+            <TouchableOpacity
+              style={[
+                styles.followButton,
+                isHomeCourt && { backgroundColor: '#6366F120', borderColor: '#6366F155' },
+              ]}
+              onPress={toggleHomeCourt}
+              disabled={homeCourtLoading}
+            >
+              <Ionicons
+                name={isHomeCourt ? 'home' : 'home-outline'}
+                size={16}
+                color={isHomeCourt ? '#6366F1' : colors.textSecondary}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.followButtonText,
+                  isHomeCourt && { color: '#6366F1' },
+                ]}
+              >
+                {isHomeCourt ? 'Home Court' : 'Set Home'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -2598,16 +2650,18 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
   },
-  gymNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
   gymName: {
     fontSize: FONT_SIZES.title,
     fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
     letterSpacing: 0.5,
+    marginBottom: SPACING.xs,
+  },
+  gymActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: SPACING.xs,
   },
   followButton: {
     flexDirection: 'row',
@@ -2618,8 +2672,6 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    marginLeft: SPACING.sm,
-    flexShrink: 0,
   },
   followButtonActive: {
     borderColor: '#FCA5A5',
