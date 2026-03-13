@@ -74,6 +74,7 @@ import { registerPushToken } from '../utils/notifications';
 import { getUserRank, getProgressToNextRank, RANKS } from '../utils/badges';
 import { awardPoints } from '../services/pointsService';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { LinearGradient } from 'expo-linear-gradient';
 
 /**
  * AnimatedCourtBadge — Pulsing green dot + player count for a My Courts row.
@@ -537,6 +538,11 @@ export default function ProfileScreen({ navigation }) {
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.scroll}>
         {/* ── Avatar & User Info ─────────────────────────────────────────── */}
+        <LinearGradient
+          colors={['#3D1E00', '#1A0A00', '#000000']}
+          locations={[0, 0.55, 1]}
+          style={styles.headerGradient}
+        >
         <View style={styles.header}>
           {/* Tappable avatar: shows picked photo, live profile photo, or initials fallback */}
           <TouchableOpacity onPress={handlePickImage} disabled={uploading}>
@@ -619,6 +625,7 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.leaderboardLinkText}>View Leaderboard</Text>
           </TouchableOpacity>
         </View>
+        </LinearGradient>
 
         {/* ── Reliability Score ──────────────────────────────────────────── */}
         <View style={styles.card}>
@@ -1067,9 +1074,16 @@ const getStyles = (colors, isDark) =>
       paddingBottom: SPACING.xl,
     },
     // Header
+    headerGradient: {
+      marginHorizontal: -SPACING.md,
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.md,
+      paddingBottom: SPACING.xs,
+      borderRadius: RADIUS.lg,
+      marginBottom: SPACING.lg,
+    },
     header: {
       alignItems: 'center',
-      marginBottom: SPACING.lg,
     },
     avatar: {
       width: 88,
