@@ -198,7 +198,20 @@ function MainTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeStack} />
-      <Tab.Screen name="Runs" component={RunsStack} />
+      <Tab.Screen
+        name="Runs"
+        component={RunsStack}
+        listeners={({ navigation }) => ({
+          // Always reset the Runs stack to the gym list when the Runs tab is pressed.
+          // Without this, React Navigation restores the last-visited screen (e.g. RunDetails)
+          // instead of returning the user to ViewRunsMain. e.preventDefault() suppresses the
+          // default state-restoration; the navigate call handles the actual tab switch + pop.
+          tabPress: (e) => {
+            e.preventDefault();
+            navigation.navigate('Runs', { screen: 'ViewRunsMain' });
+          },
+        })}
+      />
       <Tab.Screen name="CheckIn" component={CheckInStack} options={{ title: 'Check In' }} />
       <Tab.Screen name="Plan" component={PlanStack} />
       <Tab.Screen name="Profile" component={ProfileStack} />

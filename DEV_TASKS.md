@@ -62,7 +62,9 @@ Activity feed entries referencing runs that have zero participants (or are past 
 ### Acceptance Criteria
 - [ ] Activity items for runs are hidden when `participantCount === 0` or run is past grace window
 - [x] Only `'started a run at'` action is created going forward (not `'joined a run at'`) — see BACKEND_MEMORY Known Issue #6
-- [x] The feed continues to show check-in and plan activity correctly
+- [x] Community Activity section renamed from "Recent Activity" and filtered to high-value events only (`'started a run at'`, `'joined a run at'`, `'clip_posted'`)
+- [x] Low-signal events (`'checked in at'`, `'planned a visit to'`) suppressed from Community Activity section
+- [x] Friends Activity feed unchanged
 
 ### Notes
 - Per BACKEND_MEMORY Known Issue #6: `'joined a run at'` writes in `joinExistingRun` and the merge-join branch of `startOrJoinRun` should be removed. This is a prerequisite or concurrent fix.
@@ -72,6 +74,12 @@ Activity feed entries referencing runs that have zero participants (or are past 
 ### What Was Fixed (2026-03-12)
 - Removed both `'joined a run at'` `addDoc` writes from `runService.js` (`startOrJoinRun` merge-join branch and `joinExistingRun`). No new join events will be written going forward.
 - Added `if (item.action === 'joined a run at') return false` to the HomeScreen activity filter. Already-written `'joined a run at'` docs in Firestore are suppressed immediately in the UI.
+
+### What Was Fixed (2026-03-13) — Community Activity filter
+- Renamed "Recent Activity" section → "Community Activity" in `HomeScreen.js`.
+- Added `COMMUNITY_ACTIONS` allowlist (`Set(['started a run at', 'joined a run at', 'clip_posted'])`).
+- Derived `communityDisplayFeed` from the existing `communityActivity` / `activityFeed` partition, filtered through the allowlist. `'checked in at'` and `'planned a visit to'` are now excluded from the section.
+- Friends Activity section untouched.
 
 ### Follow-up Required — Stale `'started a run at'` entries
 `'started a run at'` activity docs remain visible for up to 2 hours after a run empties. Fully solving this requires one of:
@@ -180,4 +188,4 @@ Read on the next check-in; if `now - lastCheckinAt[gymId] < 4 hours`, points are
 
 ---
 
-_Last updated: 2026-03-13_
+_Last updated: 2026-03-13 (RC-002 community feed filter)_

@@ -19,8 +19,8 @@
  *   - Live Runs        — Horizontal scroll of gyms with active players right now,
  *                        each card showing a 🔴 LIVE badge, avatar stack, gym name,
  *                        and player count. Empty state shown when totalActive === 0.
- *   - Recent Activity  — Feed of recent community check-ins and plans
- *                        (currently seeded with placeholder data)
+ *   - Community Activity — Feed of high-value public run events (run starts,
+ *                          run joins, clips). Check-ins and plan visits excluded.
  *
  * Layout uses a full-screen `ImageBackground` with a dark overlay so
  * all content renders on top of the court photo with consistent contrast.
@@ -320,7 +320,13 @@ const HomeScreen = ({ navigation }) => {
   const friendsActivity = activityFeed.filter((item) => friendIds.includes(item.userId));
   const communityActivity = activityFeed.filter((item) => !friendIds.includes(item.userId));
 
-  // Shared row renderer — used by Recent Activity section (taps go to UserProfile)
+  // Community Activity shows only high-value public events: run starts, run joins, clips.
+  // Low-signal events ('checked in at', 'planned a visit to') are excluded from this section.
+  const COMMUNITY_ACTIONS = new Set(['started a run at', 'joined a run at', 'clip_posted']);
+  const communityDisplayFeed = (friendsActivity.length > 0 ? communityActivity : activityFeed)
+    .filter((item) => COMMUNITY_ACTIONS.has(item.action));
+
+  // Shared row renderer — used by Community Activity section (taps go to UserProfile)
   const renderActivityRow = (item) => (
     <TouchableOpacity
       key={item.id}
@@ -749,17 +755,18 @@ const HomeScreen = ({ navigation }) => {
             </>
           )}
 
-          {/* Recent Activity feed — community items (non-friends), or full feed if no friends activity */}
-          <Text style={styles.sectionTitleStandalone}>Recent Activity</Text>
+          {/* Community Activity feed — run events and clips only (non-friends).
+              Low-signal events (check-ins, plan visits) are intentionally excluded. */}
+          <Text style={styles.sectionTitleStandalone}>Community Activity</Text>
           <View style={styles.activityFeed}>
-            {(friendsActivity.length > 0 ? communityActivity : activityFeed).length === 0 ? (
+            {communityDisplayFeed.length === 0 ? (
               <BlurView intensity={40} tint="dark" style={styles.activityRow}>
                 <View style={styles.activityInfo}>
                   <Text style={styles.activityTime}>No recent activity yet</Text>
                 </View>
               </BlurView>
             ) : (
-              (friendsActivity.length > 0 ? communityActivity : activityFeed).map(renderActivityRow)
+              communityDisplayFeed.map(renderActivityRow)
             )}
           </View>
 
@@ -1305,7 +1312,7 @@ actionCard: {
     letterSpacing: 0.2,
   },
 
-  // Recent Activity feed
+  // Community Activity feed
   activityFeed: {
     gap: SPACING.xs,
   },

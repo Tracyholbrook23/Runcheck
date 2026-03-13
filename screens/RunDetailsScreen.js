@@ -1146,7 +1146,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             onPress={() =>
               navigation.canGoBack()
                 ? navigation.goBack()
-                : navigation.navigate('Runs')
+                : navigation.navigate('ViewRunsMain')
             }
           >
             <Ionicons name="chevron-back" size={24} color="#fff" />
