@@ -188,12 +188,18 @@ export default function LeaderboardScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  const scrollRef = useRef(null);
   const [activeTab,      setActiveTab]      = useState('allTime');
   const [allTimeUsers,   setAllTimeUsers]   = useState([]);
   const [allTimeLoading, setAllTimeLoading] = useState(true);
   const [weeklyUsers,    setWeeklyUsers]    = useState([]);
   const [weeklyLoading,  setWeeklyLoading]  = useState(true);
   const currentUid = auth.currentUser?.uid;
+
+  // Reset scroll position when screen mounts
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, []);
 
   // Subscribe to top-20 users by totalPoints — All Time tab
   useEffect(() => {
@@ -264,7 +270,7 @@ export default function LeaderboardScreen({ navigation }) {
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
 
         {/* ── My Rank summary card ─────────────────────────────────── */}
         <View style={[styles.myRankCard, { borderColor: currentRank.color + '55' }]}>
@@ -299,15 +305,215 @@ export default function LeaderboardScreen({ navigation }) {
               <Text style={[styles.nextUnlockLabel, { color: nextRankEntry?.color }]}>
                 {nextRankEntry?.icon}  {nextRankEntry?.name} · {ptsToNext} pts away
               </Text>
-              <Text style={styles.nextUnlockDesc}>
-                {RANK_PERKS[nextRankEntry?.name ?? '']}
-              </Text>
             </View>
           ) : (
-            <Text style={styles.progressLabel}>
-              {"You've reached the top tier. RunCheck's most trusted hooper."}
-            </Text>
+            <Text style={styles.progressLabel}>Max rank achieved</Text>
           )}
+        </View>
+
+        {/* ── Leaderboard list ─────────────────────────────────────── */}
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'allTime' && styles.tabPillActive]}
+            onPress={() => setActiveTab('allTime')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'allTime' && styles.tabPillTextActive]}>
+              All Time
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabPill, activeTab === 'thisWeek' && styles.tabPillActive]}
+            onPress={() => setActiveTab('thisWeek')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabPillText, activeTab === 'thisWeek' && styles.tabPillTextActive]}>
+              This Week
+            </Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.sectionTitle}>Top Players</Text>
+
+        {displayLoading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        ) : displayUsers.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>
+              {activeTab === 'allTime'
+                ? 'No rankings yet. Be the first to earn points!'
+                : 'No weekly scores yet. Check back after your next run!'}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.listCard}>
+            {displayUsers.map((user, index) => {
+              const position = index + 1;
+              const isMe = user.id === currentUid;
+              const rank = getUserRank(user.totalPoints || 0);
+              const initials = (user.name || 'U')
+                .split(' ')
+                .map((w) => w[0])
+                .join('')
+                .slice(0, 2)
+                .toUpperCase();
+
+              // Subtle podium tint for top 3
+              const podiumBg = position === 1
+                ? '#FFD70010'
+                : position === 2
+                ? '#A8A9AD10'
+                : position === 3
+                ? '#CD7F3210'
+                : null;
+
+              const displayPts = (activeTab === 'allTime'
+                ? user.totalPoints  || 0
+                : user.weeklyPoints || 0
+              ).toLocaleString();
+
+              const displayName = user.name || 'Anonymous';
+
+              return (
+                <TouchableOpacity
+                  key={user.id}
+                  // Own row is not tappable — disabled suppresses press and opacity flash
+                  disabled={isMe}
+                  activeOpacity={isMe ? 1 : 0.7}
+                  onPress={() => navigation.push('UserProfile', { userId: user.id })}
+                  accessibilityLabel={`Rank ${position}, ${displayName}${isMe ? ', you' : ''}, ${displayPts} points`}
+                  style={[
+                    styles.row,
+                    position === 1 && styles.firstPlaceRow,
+                    podiumBg && { backgroundColor: podiumBg },
+                    isMe && styles.rowHighlight,
+                    index < displayUsers.length - 1 && styles.rowBorder,
+                  ]}
+                >
+                  {/* Rank position — Ionicons trophy (colored) for top 3, number otherwise */}
+                  <View style={styles.positionWrap}>
+                    {position <= 3 ? (
+                      <Ionicons
+                        name="trophy"
+                        size={position === 1 ? 22 : 18}
+                        color={TROPHY_COLORS[position]}
+                      />
+                    ) : (
+                      <Text style={[styles.posNum, isMe && { color: colors.primary }]}>
+                        {position}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Avatar — photo or initials circle */}
+                  {user.photoURL ? (
+                    <Image source={{ uri: user.photoURL }} style={styles.avatar} />
+                  ) : (
+                    <View
+                      style={[
+                        styles.initialsCircle,
+                        { backgroundColor: rank.color + '30', borderColor: rank.color + '55' },
+                      ]}
+                    >
+                      <Text style={[styles.initials, { color: rank.color }]}>{initials}</Text>
+                    </View>
+                  )}
+
+                  {/* Name + rank badge + optional YOU pill */}
+                  <View style={styles.nameCol}>
+                    <View style={styles.nameRow}>
+                      <Text
+                        style={[
+                          styles.userName,
+                          isMe && { color: colors.primary },
+                          position <= 3 && styles.podiumName,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {displayName}
+                      </Text>
+                      {isMe && (
+                        <View style={styles.youBadge}>
+                          <Text style={styles.youBadgeText}>YOU</Text>
+                        </View>
+                      )}
+                    </View>
+                    <RankBadgePill rank={rank} small />
+                  </View>
+
+                  {/* Point total — weekly tab shows weeklyPoints; rank color always from all-time totalPoints */}
+                  <Text style={[styles.pts, { color: rank.color }]}>
+                    {displayPts}
+                  </Text>
+
+                  {/* Tap affordance — only shown for other players */}
+                  {!isMe && (
+                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── Rank Tiers ───────────────────────────────────────────── */}
+        <Text style={styles.sectionTitle}>Rank Tiers</Text>
+        <View style={styles.listCard}>
+          {RANKS.map((rank, index) => (
+            <View
+              key={rank.name}
+              style={[
+                styles.tierRow,
+                index < RANKS.length - 1 && styles.rowBorder,
+              ]}
+            >
+              <Text style={styles.tierIcon}>{rank.icon}</Text>
+              <Text style={[styles.tierName, { color: rank.color }]}>{rank.name}</Text>
+              <Text style={styles.tierRange}>
+                {rank.nextRankAt
+                  ? `${rank.minPoints}–${rank.nextRankAt - 1} pts`
+                  : `${rank.minPoints}+ pts`}
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* ── How to Earn Points ───────────────────────────────────── */}
+        <Text style={styles.sectionTitle}>How to Earn Points</Text>
+        <View style={styles.listCard}>
+          {ACTION_LABELS.map((item, index) => {
+            const iconColor = item.iconColor ?? colors.primary;
+            return (
+              <View
+                key={item.action}
+                style={[
+                  styles.actionRow,
+                  index < ACTION_LABELS.length - 1 && styles.rowBorder,
+                ]}
+              >
+                {/* Icon inside a tinted circle */}
+                <View style={[styles.actionIconCircle, { backgroundColor: iconColor + '20' }]}>
+                  <Ionicons name={item.ionicon} size={17} color={iconColor} />
+                </View>
+
+                {/* Label + optional note */}
+                <View style={styles.actionInfo}>
+                  <Text style={styles.actionLabel}>{item.label}</Text>
+                  {item.note && (
+                    <Text style={styles.actionNote}>{item.note}</Text>
+                  )}
+                </View>
+
+                {/* Points badge */}
+                <View style={[styles.ptsBadge, { backgroundColor: iconColor + '18' }]}>
+                  <Text style={[styles.ptsBadgeText, { color: iconColor }]}>
+                    +{item.points} pts
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
 
         {/* ── Why Rank Matters ─────────────────────────────────────── */}
@@ -376,184 +582,6 @@ export default function LeaderboardScreen({ navigation }) {
               <View style={styles.comingSoonPill}>
                 <Text style={styles.comingSoonText}>Coming Soon</Text>
               </View>
-            </View>
-          ))}
-        </View>
-
-        {/* ── Leaderboard list ─────────────────────────────────────── */}
-        <View style={styles.tabRow}>
-          <TouchableOpacity
-            style={[styles.tabPill, activeTab === 'allTime' && styles.tabPillActive]}
-            onPress={() => setActiveTab('allTime')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabPillText, activeTab === 'allTime' && styles.tabPillTextActive]}>
-              All Time
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabPill, activeTab === 'thisWeek' && styles.tabPillActive]}
-            onPress={() => setActiveTab('thisWeek')}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabPillText, activeTab === 'thisWeek' && styles.tabPillTextActive]}>
-              This Week
-            </Text>
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.sectionTitle}>Top Players</Text>
-
-        {displayLoading ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        ) : displayUsers.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.emptyText}>
-              {activeTab === 'allTime'
-                ? 'No rankings yet. Be the first to earn points!'
-                : 'No weekly scores yet. Check back after your next run!'}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.listCard}>
-            {displayUsers.map((user, index) => {
-              const position = index + 1;
-              const isMe = user.id === currentUid;
-              const rank = getUserRank(user.totalPoints || 0);
-              const initials = (user.name || 'U')
-                .split(' ')
-                .map((w) => w[0])
-                .join('')
-                .slice(0, 2)
-                .toUpperCase();
-
-              return (
-                <TouchableOpacity
-                  key={user.id}
-                  // Own row is not tappable — disabled suppresses press and opacity flash
-                  disabled={isMe}
-                  activeOpacity={isMe ? 1 : 0.7}
-                  onPress={() => navigation.push('UserProfile', { userId: user.id })}
-                  style={[
-                    styles.row,
-                    isMe && styles.rowHighlight,
-                    index < displayUsers.length - 1 && styles.rowBorder,
-                  ]}
-                >
-                  {/* Rank position — Ionicons trophy (colored) for top 3, number otherwise */}
-                  <View style={styles.positionWrap}>
-                    {position <= 3 ? (
-                      <Ionicons
-                        name="trophy"
-                        size={18}
-                        color={TROPHY_COLORS[position]}
-                      />
-                    ) : (
-                      <Text style={[styles.posNum, isMe && { color: colors.primary }]}>
-                        {position}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Avatar — photo or initials circle */}
-                  {user.photoURL ? (
-                    <Image source={{ uri: user.photoURL }} style={styles.avatar} />
-                  ) : (
-                    <View
-                      style={[
-                        styles.initialsCircle,
-                        { backgroundColor: rank.color + '30', borderColor: rank.color + '55' },
-                      ]}
-                    >
-                      <Text style={[styles.initials, { color: rank.color }]}>{initials}</Text>
-                    </View>
-                  )}
-
-                  {/* Name + rank badge */}
-                  <View style={styles.nameCol}>
-                    <Text
-                      style={[styles.userName, isMe && { color: colors.primary }]}
-                      numberOfLines={1}
-                    >
-                      {user.name || 'Anonymous'}{isMe ? ' (You)' : ''}
-                    </Text>
-                    <RankBadgePill rank={rank} small />
-                  </View>
-
-                  {/* Point total — weekly tab shows weeklyPoints; rank color always from all-time totalPoints */}
-                  <Text style={[styles.pts, { color: rank.color }]}>
-                    {(activeTab === 'allTime'
-                      ? user.totalPoints  || 0
-                      : user.weeklyPoints || 0
-                    ).toLocaleString()}
-                  </Text>
-
-                  {/* Tap affordance — only shown for other players */}
-                  {!isMe && (
-                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
-        {/* ── How to Earn Points ───────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>How to Earn Points</Text>
-        <View style={styles.listCard}>
-          {ACTION_LABELS.map((item, index) => {
-            const iconColor = item.iconColor ?? colors.primary;
-            return (
-              <View
-                key={item.action}
-                style={[
-                  styles.actionRow,
-                  index < ACTION_LABELS.length - 1 && styles.rowBorder,
-                ]}
-              >
-                {/* Icon inside a tinted circle */}
-                <View style={[styles.actionIconCircle, { backgroundColor: iconColor + '20' }]}>
-                  <Ionicons name={item.ionicon} size={17} color={iconColor} />
-                </View>
-
-                {/* Label + optional note */}
-                <View style={styles.actionInfo}>
-                  <Text style={styles.actionLabel}>{item.label}</Text>
-                  {item.note && (
-                    <Text style={styles.actionNote}>{item.note}</Text>
-                  )}
-                </View>
-
-                {/* Points badge */}
-                <View style={[styles.ptsBadge, { backgroundColor: iconColor + '18' }]}>
-                  <Text style={[styles.ptsBadgeText, { color: iconColor }]}>
-                    +{item.points} pts
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* ── Rank Tiers ───────────────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>Rank Tiers</Text>
-        <View style={styles.listCard}>
-          {RANKS.map((rank, index) => (
-            <View
-              key={rank.name}
-              style={[
-                styles.tierRow,
-                index < RANKS.length - 1 && styles.rowBorder,
-              ]}
-            >
-              <Text style={styles.tierIcon}>{rank.icon}</Text>
-              <Text style={[styles.tierName, { color: rank.color }]}>{rank.name}</Text>
-              <Text style={styles.tierRange}>
-                {rank.nextRankAt
-                  ? `${rank.minPoints}–${rank.nextRankAt - 1} pts`
-                  : `${rank.minPoints}+ pts`}
-              </Text>
             </View>
           ))}
         </View>
@@ -663,7 +691,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
     marginTop: SPACING.xs,
   },
   listCard: {
@@ -687,8 +715,13 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     gap: SPACING.sm,
   },
+  firstPlaceRow: {
+    paddingVertical: SPACING.sm + 5,
+  },
   rowHighlight: {
     backgroundColor: colors.primary + '12',
+    borderLeftWidth: 2,
+    borderLeftColor: colors.primary,
   },
   positionWrap: {
     width: 28,
@@ -720,10 +753,31 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     flex: 1,
     gap: 3,
   },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  youBadge: {
+    backgroundColor: colors.primary + '20',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  youBadgeText: {
+    fontSize: FONT_SIZES.xs - 1,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+    letterSpacing: 0.6,
+  },
   userName: {
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textPrimary,
+  },
+  podiumName: {
+    fontSize: FONT_SIZES.body + 1,
+    fontWeight: FONT_WEIGHTS.bold,
   },
   pts: {
     fontSize: FONT_SIZES.body,
@@ -736,14 +790,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 3,
+    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-    gap: SPACING.sm,
+    gap: SPACING.xs + 2,
   },
   actionIconCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
@@ -807,16 +861,16 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   perksRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 2,
     paddingHorizontal: SPACING.md,
-    gap: SPACING.sm,
+    gap: SPACING.xs,
   },
   perksInfo: {
     flex: 1,
-    gap: 2,
+    gap: 1,
   },
   perksDesc: {
-    fontSize: FONT_SIZES.xs,
+    fontSize: FONT_SIZES.xs - 1,
     color: colors.textSecondary,
   },
   currentBadge: {
@@ -880,7 +934,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   tabRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs,
   },
   tabPill: {
     flex: 1,

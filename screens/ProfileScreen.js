@@ -1077,8 +1077,8 @@ const getStyles = (colors, isDark) =>
     headerGradient: {
       marginHorizontal: -SPACING.md,
       paddingHorizontal: SPACING.md,
-      paddingTop: SPACING.md,
-      paddingBottom: SPACING.xs,
+      paddingTop: 40,
+      paddingBottom: 28,
       borderRadius: RADIUS.lg,
       marginBottom: SPACING.lg,
     },
@@ -1594,7 +1594,8 @@ editBadge: {
       paddingVertical: SPACING.xs + 2,
       borderRadius: RADIUS.full,
       borderWidth: 1.5,
-      marginTop: SPACING.sm,
+      marginTop: SPACING.xs,
+      marginBottom: 2,
       gap: SPACING.xs,
       // iOS shadow
       shadowOffset: { width: 0, height: 0 },
@@ -1613,9 +1614,10 @@ editBadge: {
       fontWeight: FONT_WEIGHTS.medium,
     },
     rankProgressWrap: {
-      width: '70%',
+      width: '80%',
+      alignSelf: 'center',
       alignItems: 'center',
-      marginTop: SPACING.sm,
+      marginTop: 4,
     },
     rankProgressTrack: {
       width: '100%',
@@ -1631,7 +1633,7 @@ editBadge: {
     rankProgressLabel: {
       fontSize: FONT_SIZES.xs,
       color: colors.textMuted,
-      marginTop: 4,
+      marginTop: 2,
     },
     leaderboardLink: {
       flexDirection: 'row',
