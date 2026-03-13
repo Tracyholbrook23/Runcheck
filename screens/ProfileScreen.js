@@ -73,6 +73,7 @@ import { Image } from 'react-native';
 import { registerPushToken } from '../utils/notifications';
 import { getUserRank, getProgressToNextRank, RANKS } from '../utils/badges';
 import { awardPoints } from '../services/pointsService';
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 /**
  * AnimatedCourtBadge — Pulsing green dot + player count for a My Courts row.
@@ -118,6 +119,40 @@ function AnimatedCourtBadge({ count, colors }) {
       <Text style={{ fontSize: FONT_SIZES.small, fontWeight: FONT_WEIGHTS.bold, color: colors.success }}>
         {count}
       </Text>
+    </View>
+  );
+}
+
+/**
+ * GymThumbnail — Renders a gym's image as a small rounded thumbnail,
+ * falling back to the given icon if no image is available.
+ *
+ * Resolution order: GYM_LOCAL_IMAGES[gym.id] → gym.imageUrl → fallback icon.
+ * Keeps the same 36×36 footprint as the old icon tile so rows don't shift.
+ *
+ * @param {{ gym: object, fallbackIcon: string, iconColor: string, style: object }} props
+ */
+function GymThumbnail({ gym, fallbackIcon, iconColor, style }) {
+  const source = GYM_LOCAL_IMAGES[gym.id]
+    ? GYM_LOCAL_IMAGES[gym.id]
+    : gym.imageUrl
+    ? { uri: gym.imageUrl }
+    : null;
+
+  if (source) {
+    return (
+      <Image
+        source={source}
+        style={[{ width: 36, height: 36, borderRadius: RADIUS.sm }, style]}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  // Fallback — same icon tile as before
+  return (
+    <View style={[{ width: 36, height: 36, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' }, style]}>
+      <Ionicons name={fallbackIcon} size={18} color={iconColor} />
     </View>
   );
 }
@@ -694,9 +729,12 @@ export default function ProfileScreen({ navigation }) {
                 }
                 style={styles.courtRow}
               >
-                <View style={[styles.courtIcon, { backgroundColor: '#6366F118' }]}>
-                  <Ionicons name="home" size={18} color="#6366F1" />
-                </View>
+                <GymThumbnail
+                  gym={homeGym}
+                  fallbackIcon="home"
+                  iconColor="#6366F1"
+                  style={!homeGym.imageUrl && !GYM_LOCAL_IMAGES[homeGym.id] ? { backgroundColor: '#6366F118' } : null}
+                />
                 <View style={styles.courtInfo}>
                   <Text style={styles.courtName} numberOfLines={1}>{homeGym.name}</Text>
                   <Text style={styles.courtMeta}>{homeGym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
@@ -727,9 +765,12 @@ export default function ProfileScreen({ navigation }) {
                   index < followedGymsList.length - 1 && styles.courtRowBorder,
                 ]}
               >
-                <View style={styles.courtIcon}>
-                  <Ionicons name="basketball-outline" size={18} color={colors.primary} />
-                </View>
+                <GymThumbnail
+                  gym={gym}
+                  fallbackIcon="basketball-outline"
+                  iconColor={colors.primary}
+                  style={!gym.imageUrl && !GYM_LOCAL_IMAGES[gym.id] ? styles.courtIcon : null}
+                />
                 <View style={styles.courtInfo}>
                   <Text style={styles.courtName} numberOfLines={1}>{gym.name}</Text>
                   <Text style={styles.courtMeta}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
