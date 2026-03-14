@@ -324,5 +324,5 @@ RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, g
 - `config/firebase.js` — exports `db`, `auth`, `storage`
 - `config/env.js` — environment variables
 - `serviceAccountKey.json` — firebase-admin key for migration scripts only (never import in app code)
-- `firestore.rules` — Firestore security rules (all collections). Deploy with `firebase deploy --only firestore:rules`. Added 2026-03-12; previously rules were managed exclusively via the Firebase console.
-- `firebase.json` — Firebase CLI config pointing to `firestore.rules`
+- ~~`firestore.rules`~~ — **Removed from this repo.** Firestore security rules live in the backend repo (`~/Desktop/runcheck-backend/firestore.rules`). Deploy from there: `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`
+- ~~`firebase.json`~~ — **Removed from this repo.** Firebase CLI config lives in the backend repo (`~/Desktop/runcheck-backend/firebase.json`). The backend repo's `.firebaserc` binds to project `runcheck-567a3`.

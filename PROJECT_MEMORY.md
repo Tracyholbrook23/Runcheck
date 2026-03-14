@@ -151,8 +151,8 @@ const getRunEnergyLabel = (count) => {
 | `services/runService.js` | **New file** — full runs MVP: `startOrJoinRun`, `joinExistingRun`, `leaveRun`, `subscribeToGymRuns`, `subscribeToUserRunsAtGym`, `subscribeToRunParticipants` |
 | `hooks/useGymRuns.js` | **New file** — composes two Firestore subscriptions; exposes `{ runs, loading, joinedRunIds, userParticipants }` |
 | `screens/RunDetailsScreen.js` | Added runs section (run cards, Start a Run modal with day/time picker, Join/Leave handlers); new styles block |
-| `firestore.rules` | **New file** — Firestore security rules for all collections including `runs` and `runParticipants` |
-| `firebase.json` | **New file** — Firebase CLI config pointing to `firestore.rules` for `firebase deploy --only firestore:rules` |
+
+> **Note:** `firestore.rules` and `firebase.json` were originally added to this repo on 2026-03-12 but have since been **removed**. Firestore security rules and Firebase CLI config live exclusively in the backend repo (`~/Desktop/runcheck-backend`). See BACKEND_MEMORY.md § Config & Environment.
 
 ## Start a Run / Join a Run — Architecture Notes
 - **Collections**: `runs/{autoId}` and `runParticipants/{runId}_{userId}` (compound key)
@@ -246,6 +246,7 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - `[RunDetails] missing profiles (will show placeholder): [...]`
 
 ## Known Issues / Risks
+- **Firestore rules live in the backend repo only** — `~/Desktop/runcheck-backend/firestore.rules` is the single source of truth. This frontend repo no longer contains `firestore.rules` or `firebase.json`. All rule changes must be made in the backend repo and deployed with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`.
 - GPS distance enforcement is commented out in both `usePresence.js` and `presenceService.js` — must be re-enabled before launch
 - Auto-expiry is client-side only; a Cloud Function is needed to expire presences server-side without deducting points
 - No composite Firestore index for `activity` collection query (`createdAt >= X, orderBy createdAt`) — may need manual index creation for scale

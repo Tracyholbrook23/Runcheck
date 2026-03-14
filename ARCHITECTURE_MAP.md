@@ -211,7 +211,6 @@ Zone assignments are based on file content, service dependencies, and the data m
 |------|------|
 | `config/firebase.js` | Firebase app initialization; exports `db`, `auth`, `storage` |
 | `config/env.js` | Environment variable access |
-| `firebase.json` | Firebase CLI config (Firestore rules path, emulator config) |
 | `.env` | Local environment secrets (never commit) |
 | `.env.example` | Template for required environment variables |
 
