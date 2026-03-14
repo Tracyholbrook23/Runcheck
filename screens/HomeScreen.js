@@ -313,6 +313,8 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const MEDAL_ICONS = ['🥇', '🥈', '🥉'];
+  const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
+  const currentUid = auth.currentUser?.uid;
 
   // Sum of all per-gym real-time counts — shown in the LIVE banner.
   const totalActive = Object.values(liveCountMap).reduce((s, n) => s + n, 0);
@@ -610,7 +612,9 @@ const HomeScreen = ({ navigation }) => {
           {showWinnersCelebration && (
             <BlurView intensity={60} tint="dark" style={styles.celebrationCard}>
               <View style={styles.celebrationHeader}>
-                <Ionicons name="trophy" size={22} color="#FFD700" />
+                <View style={styles.celebrationTrophyCircle}>
+                  <Ionicons name="trophy" size={20} color="#FFD700" />
+                </View>
                 <View style={styles.celebrationHeaderText}>
                   <Text style={styles.celebrationTitle}>Last Week's Winners</Text>
                   {winnersWeekOf && (
@@ -621,19 +625,68 @@ const HomeScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              {weeklyWinners.map((w, i) => (
-                <View key={w.uid} style={styles.celebrationRow}>
-                  <Text style={styles.celebrationMedal}>{MEDAL_ICONS[i] ?? ''}</Text>
-                  <Text style={styles.celebrationName} numberOfLines={1}>
-                    {w.name}
-                  </Text>
-                  <Text style={styles.celebrationPts}>{w.weeklyPoints} pts</Text>
-                </View>
-              ))}
+              {weeklyWinners.map((w, i) => {
+                const isMe = w.uid === currentUid;
+                const trophyColor = TROPHY_COLORS[w.place] ?? 'rgba(255,255,255,0.5)';
+                const initials = (w.name || 'U')
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase();
+
+                return (
+                  <TouchableOpacity
+                    key={w.uid}
+                    disabled={isMe}
+                    activeOpacity={isMe ? 1 : 0.7}
+                    onPress={() => navigation.push('UserProfile', { userId: w.uid })}
+                    style={[
+                      styles.celebrationRow,
+                      isMe && styles.celebrationRowMe,
+                    ]}
+                  >
+                    <Text style={styles.celebrationMedal}>{MEDAL_ICONS[i] ?? ''}</Text>
+
+                    {/* Avatar — photo or initials circle with trophy-color tint */}
+                    {w.photoURL ? (
+                      <Image
+                        source={{ uri: w.photoURL }}
+                        style={[styles.celebrationAvatar, { borderColor: trophyColor + '55' }]}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.celebrationInitialsCircle,
+                          { backgroundColor: trophyColor + '20', borderColor: trophyColor + '55' },
+                        ]}
+                      >
+                        <Text style={[styles.celebrationInitials, { color: trophyColor }]}>
+                          {initials}
+                        </Text>
+                      </View>
+                    )}
+
+                    <View style={styles.celebrationNameCol}>
+                      <View style={styles.celebrationNameRow}>
+                        <Text style={styles.celebrationName} numberOfLines={1}>
+                          {w.name}
+                        </Text>
+                        {isMe && (
+                          <View style={styles.celebrationYouBadge}>
+                            <Text style={styles.celebrationYouText}>YOU</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.celebrationPts}>{w.weeklyPoints} pts</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
 
               <TouchableOpacity
                 style={styles.celebrationLink}
-                onPress={() => goToTab('Leaderboard')}
+                onPress={() => navigation.navigate('Leaderboard')}
                 activeOpacity={0.7}
               >
                 <Text style={styles.celebrationLinkText}>View Leaderboard →</Text>
@@ -1167,13 +1220,32 @@ actionCard: {
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(255,215,0,0.25)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#FFD700',
     marginTop: SPACING.md,
+    // Subtle gold glow
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 4,
   },
   celebrationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.sm,
     marginBottom: SPACING.sm,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,215,0,0.15)',
+  },
+  celebrationTrophyCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,215,0,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   celebrationHeaderText: {
     flex: 1,
@@ -1191,26 +1263,74 @@ actionCard: {
   celebrationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 5,
+    paddingVertical: SPACING.xs + 2,
+    paddingHorizontal: SPACING.xxs,
+    gap: SPACING.sm,
+    borderRadius: RADIUS.sm,
+  },
+  celebrationRowMe: {
+    backgroundColor: 'rgba(255,215,0,0.08)',
   },
   celebrationMedal: {
     fontSize: FONT_SIZES.body,
-    width: 28,
+    width: 24,
+    textAlign: 'center',
+  },
+  celebrationAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+  },
+  celebrationInitialsCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  celebrationInitials: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  celebrationNameCol: {
+    flex: 1,
+  },
+  celebrationNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
   },
   celebrationName: {
-    flex: 1,
     fontSize: FONT_SIZES.body,
     color: '#FFFFFF',
     fontWeight: FONT_WEIGHTS.semibold,
+    flexShrink: 1,
+  },
+  celebrationYouBadge: {
+    backgroundColor: 'rgba(255,215,0,0.20)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  celebrationYouText: {
+    fontSize: 10,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFD700',
+    letterSpacing: 0.5,
   },
   celebrationPts: {
     fontSize: FONT_SIZES.xs,
     color: 'rgba(255,255,255,0.4)',
+    marginTop: 1,
   },
   celebrationLink: {
     marginTop: SPACING.sm,
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,215,0,0.15)',
   },
   celebrationLinkText: {
     fontSize: FONT_SIZES.small,
