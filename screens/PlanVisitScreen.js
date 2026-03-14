@@ -40,9 +40,13 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile, useLivePresenceMap } from '../hooks';
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { subscribeToAllUpcomingRuns } from '../services/runService';
 import { auth, db } from '../config/firebase';
 import { addDoc, updateDoc, collection, serverTimestamp, Timestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
@@ -114,6 +118,34 @@ const getTimeSlotsForDay = (dayObj) => {
 
 
 /**
+ * GymThumbnail — Small rounded gym image, falling back to an icon.
+ * Matches the same pattern used in ProfileScreen and CheckInScreen.
+ */
+function GymThumbnail({ gym, fallbackIcon, iconColor, style }) {
+  const source = GYM_LOCAL_IMAGES[gym?.id]
+    ? GYM_LOCAL_IMAGES[gym.id]
+    : gym?.imageUrl
+    ? { uri: gym.imageUrl }
+    : null;
+
+  if (source) {
+    return (
+      <Image
+        source={source}
+        style={[{ width: 36, height: 36, borderRadius: RADIUS.sm }, style]}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View style={[{ width: 36, height: 36, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' }, style]}>
+      <Ionicons name={fallbackIcon} size={18} color={iconColor} />
+    </View>
+  );
+}
+
+/**
  * PlanVisitScreen — Three-step gym scheduling wizard.
  *
  * @param {object} props
@@ -154,6 +186,34 @@ export default function PlanVisitScreen({ navigation }) {
 
   const { gyms, loading: gymsLoading } = useGyms();
   const { countMap } = useLivePresenceMap();
+
+  // ── Community runs — all upcoming runs across all gyms ──────────────────
+  const [communityRuns, setCommunityRuns] = useState([]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToAllUpcomingRuns((runs) => {
+      setCommunityRuns(runs);
+    });
+    return unsubscribe;
+  }, []);
+
+  /**
+   * formatRunTime — Formats a run's Firestore Timestamp for display.
+   * Context-aware: "Today 6:30 PM", "Tomorrow 9:00 AM", "Mon, Jan 13 7:00 PM".
+   */
+  const formatRunTime = (startTime) => {
+    const date = startTime?.toDate();
+    if (!date) return '';
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const isTomorrow = date.toDateString() === tomorrow.toDateString();
+    const time = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (isToday) return `Today ${time}`;
+    if (isTomorrow) return `Tomorrow ${time}`;
+    return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ` ${time}`;
+  };
 
   const loading = schedulesLoading || gymsLoading;
 
@@ -288,44 +348,124 @@ export default function PlanVisitScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <ScrollView contentContainerStyle={styles.scroll}>
-              <View style={styles.titleRow}>
-                <View>
-                  <Text style={styles.title}>Plan a Visit</Text>
-                  <Text style={styles.subtitle}>Schedule when you plan to play</Text>
-                </View>
+          <LinearGradient
+            colors={['#3D1E00', '#1A0A00', colors.background]}
+            locations={[0, 0.55, 1]}
+            style={styles.headerGradient}
+          >
+            <View style={styles.titleRow}>
+              <View>
+                <Text style={styles.title}>Plan a Visit</Text>
+                <Text style={styles.subtitle}>Schedule when you plan to play</Text>
               </View>
+            </View>
+          </LinearGradient>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <ScrollView contentContainerStyle={styles.scrollBody}>
 
               {schedules.length > 0 ? (
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Upcoming Visits</Text>
-                  {schedules.map((schedule) => (
-                    <View key={schedule.id} style={styles.intentCard}>
-                      <View style={styles.intentIconWrap}>
-                        <Ionicons name="calendar" size={20} color={colors.primary} />
+                  {schedules.map((schedule) => {
+                    const scheduleGym = gyms.find((g) => g.id === schedule.gymId);
+                    return (
+                      <View key={schedule.id} style={styles.intentCard}>
+                        <GymThumbnail
+                          gym={scheduleGym || { id: schedule.gymId }}
+                          fallbackIcon="calendar"
+                          iconColor={colors.primary}
+                          style={!scheduleGym?.imageUrl && !GYM_LOCAL_IMAGES[schedule.gymId] ? styles.intentThumbFallback : null}
+                        />
+                        <View style={styles.intentInfo}>
+                          <Text style={styles.intentGym}>{schedule.gymName}</Text>
+                          <Text style={styles.intentTime}>{formatScheduleTime(schedule)}</Text>
+                          {scheduleGym && (
+                            <Text style={styles.intentMeta}>
+                              {scheduleGym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
+                            </Text>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          style={styles.cancelButton}
+                          onPress={() => handleCancelSchedule(schedule)}
+                        >
+                          <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </TouchableOpacity>
                       </View>
-                      <View style={styles.intentInfo}>
-                        <Text style={styles.intentGym}>{schedule.gymName}</Text>
-                        {/* formatScheduleTime converts the Firestore Timestamp to a readable label */}
-                        <Text style={styles.intentTime}>{formatScheduleTime(schedule)}</Text>
-                      </View>
-                      <TouchableOpacity
-                        style={styles.cancelButton}
-                        onPress={() => handleCancelSchedule(schedule)}
-                      >
-                        <Text style={styles.cancelButtonText}>Cancel</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
               ) : (
                 <View style={styles.emptyState}>
-                  <Ionicons name="calendar-outline" size={40} color={colors.textMuted} />
-                  <Text style={styles.emptyText}>No visits scheduled</Text>
-                  <Text style={styles.emptySubtext}>Plan ahead so others know you're coming</Text>
+                  <View style={styles.emptyIconWrap}>
+                    <Ionicons name="calendar-outline" size={36} color={colors.textMuted} />
+                  </View>
+                  <Text style={styles.emptyText}>No visits planned yet</Text>
+                  <Text style={styles.emptySubtext}>
+                    Schedule a visit so other players know you're coming
+                  </Text>
                 </View>
               )}
+
+              {/* ── Runs Being Planned ─────────────────────────────────────── */}
+              <View style={styles.section}>
+                <View style={styles.runsSectionHeader}>
+                  <Ionicons name="basketball-outline" size={15} color={colors.primary} style={{ marginRight: 5 }} />
+                  <Text style={styles.sectionTitle}>Runs Being Planned</Text>
+                </View>
+                {communityRuns.length > 0 ? (
+                  communityRuns.map((run) => {
+                    const runGym = gyms.find((g) => g.id === run.gymId);
+                    return (
+                      <TouchableOpacity
+                        key={run.id}
+                        style={styles.runCard}
+                        activeOpacity={0.7}
+                        onPress={() =>
+                          navigation.getParent()?.navigate('Runs', {
+                            screen: 'RunDetails',
+                            params: { gymId: run.gymId, gymName: run.gymName, players: 0 },
+                          })
+                        }
+                      >
+                        <GymThumbnail
+                          gym={runGym || { id: run.gymId }}
+                          fallbackIcon="basketball-outline"
+                          iconColor={colors.primary}
+                          style={!runGym?.imageUrl && !GYM_LOCAL_IMAGES[run.gymId] ? styles.runThumbFallback : null}
+                        />
+                        <View style={styles.runCardInfo}>
+                          <Text style={styles.runCardGym} numberOfLines={1}>{run.gymName}</Text>
+                          <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
+                          <View style={styles.runCardMetaRow}>
+                            {run.creatorName ? (
+                              <Text style={styles.runCardMeta} numberOfLines={1}>
+                                Started by {run.creatorName}
+                              </Text>
+                            ) : null}
+                            <Text style={styles.runCardPlayers}>
+                              {run.participantCount === 1
+                                ? '1 player going'
+                                : `${run.participantCount} players going`}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.viewRunButton}>
+                          <Text style={styles.viewRunButtonText}>View</Text>
+                          <Ionicons name="chevron-forward" size={12} color={colors.primary} />
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                ) : (
+                  <View style={styles.runsEmptyState}>
+                    <Text style={styles.runsEmptyText}>No runs planned yet</Text>
+                    <Text style={styles.runsEmptySubtext}>
+                      When someone starts a run, it'll show up here
+                    </Text>
+                  </View>
+                )}
+              </View>
 
               <TouchableOpacity style={styles.primaryButton} onPress={() => setStep(2)}>
                 <Ionicons name="add" size={20} color="#fff" style={{ marginRight: 6 }} />
@@ -343,14 +483,20 @@ export default function PlanVisitScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <ScrollView contentContainerStyle={styles.scroll}>
-              <View style={styles.titleRow}>
-                <View>
-                  <Text style={styles.title}>Select a Gym</Text>
-                  <Text style={styles.subtitle}>Where do you plan to play?</Text>
-                </View>
+          <LinearGradient
+            colors={['#3D1E00', '#1A0A00', colors.background]}
+            locations={[0, 0.55, 1]}
+            style={styles.headerGradient}
+          >
+            <View style={styles.titleRow}>
+              <View>
+                <Text style={styles.title}>Select a Gym</Text>
+                <Text style={styles.subtitle}>Where do you plan to play?</Text>
               </View>
+            </View>
+          </LinearGradient>
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <ScrollView contentContainerStyle={styles.scrollBody}>
 
               {gyms.map((gym) => (
                 <TouchableOpacity
@@ -410,14 +556,20 @@ export default function PlanVisitScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <LinearGradient
+        colors={['#3D1E00', '#1A0A00', colors.background]}
+        locations={[0, 0.55, 1]}
+        style={styles.headerGradient}
+      >
         <View style={styles.titleRow}>
           <View>
             <Text style={styles.title}>Select a Time</Text>
             <Text style={styles.subtitle}>When are you arriving at {selectedGym?.name}?</Text>
           </View>
         </View>
+      </LinearGradient>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
 
         {/*
          * Day Picker — horizontal scroll of 7 day chips.
@@ -509,6 +661,15 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  headerGradient: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
+  scrollBody: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.xl,
+  },
   scroll: {
     padding: SPACING.md,
     paddingTop: SPACING.lg,
@@ -523,17 +684,17 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.sm,
   },
   title: {
     fontSize: FONT_SIZES.h1,
     fontWeight: FONT_WEIGHTS.bold,
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
     marginTop: 2,
   },
   section: {
@@ -554,10 +715,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
+    gap: SPACING.sm,
     ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   },
-  intentIconWrap: {
-    marginRight: SPACING.sm,
+  intentThumbFallback: {
+    backgroundColor: colors.primary + '18',
   },
   intentInfo: {
     flex: 1,
@@ -572,6 +734,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.primary,
     marginTop: 2,
   },
+  intentMeta: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
   cancelButton: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -581,13 +748,96 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
   },
+  // ── Runs Being Planned ──────────────────────────────────
+  runsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  runCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  runThumbFallback: {
+    backgroundColor: colors.primary + '18',
+  },
+  runCardInfo: {
+    flex: 1,
+  },
+  runCardGym: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  runCardTime: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    marginTop: 2,
+  },
+  runCardMetaRow: {
+    marginTop: 3,
+  },
+  runCardMeta: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+  },
+  runCardPlayers: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+    marginTop: 1,
+  },
+  viewRunButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADIUS.full,
+    backgroundColor: colors.primary + '15',
+    gap: 2,
+  },
+  viewRunButtonText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.primary,
+  },
+  runsEmptyState: {
+    paddingVertical: SPACING.lg,
+    alignItems: 'center',
+  },
+  runsEmptyText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  runsEmptySubtext: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 3,
+  },
   emptyState: {
     backgroundColor: colors.surface,
     borderRadius: RADIUS.lg,
-    padding: SPACING.xl,
+    paddingVertical: SPACING.xl + SPACING.sm,
+    paddingHorizontal: SPACING.lg,
     alignItems: 'center',
     marginBottom: SPACING.lg,
     ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: RADIUS.lg,
+    backgroundColor: colors.primary + '12',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
   },
   emptyText: {
     fontSize: FONT_SIZES.body,
@@ -600,6 +850,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: SPACING.xs,
     textAlign: 'center',
+    lineHeight: 20,
   },
   gymCard: {
     flexDirection: 'row',

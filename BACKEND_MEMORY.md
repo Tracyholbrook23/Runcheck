@@ -200,6 +200,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 - **`subscribeToGymRuns(gymId, callback)`** — real-time; filters `status == 'upcoming'`, grace window `startTime >= now - 30 min`.
 - **`subscribeToUserRunsAtGym(userId, gymId, callback)`** — real-time; user's own participant docs at a specific gym (`userId + gymId + status == 'going'`).
 - **`subscribeToRunParticipants(runId, callback)`** — real-time; all participants in a run (for future "who's going" list).
+- **`subscribeToAllUpcomingRuns(callback)`** — real-time; all upcoming runs across all gyms (no `gymId` filter). Filters `status == 'upcoming'`, grace window `startTime >= now - 30 min`, `participantCount > 0`. Used by PlanVisitScreen "Runs Being Planned" section.
 - Internal `joinRun` uses `runTransaction`: reads participant doc first; `increment(1)` only fires if `!alreadyJoined`.
 
 ### `reviewService.js`
@@ -274,6 +275,7 @@ RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, g
 8.  runs:            gymId ASC, status ASC, startTime ASC   ← subscribeToGymRuns + startOrJoinRun
 9.  runParticipants: userId ASC, gymId ASC, status ASC      ← subscribeToUserRunsAtGym
 10. runParticipants: runId ASC, status ASC, joinedAt ASC    ← subscribeToRunParticipants
+11. runs:            status ASC, startTime ASC              ← subscribeToAllUpcomingRuns (cross-gym)
 ```
 
 ---

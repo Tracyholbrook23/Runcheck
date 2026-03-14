@@ -396,6 +396,53 @@ export const subscribeToGymRuns = (gymId, callback) => {
 };
 
 /**
+ * subscribeToAllUpcomingRuns — Real-time subscription to upcoming runs across
+ * ALL gyms. Same filtering logic as subscribeToGymRuns (grace window, empty-
+ * run exclusion) but without the gymId constraint.
+ *
+ * Used by PlanVisitScreen to show community runs being planned.
+ *
+ * NOTE: This query requires a Firestore composite index on:
+ *   runs: status ASC, startTime ASC
+ * If you see an "index required" error, create this index in the Firebase
+ * console or add it to firestore.indexes.json.
+ *
+ * @param {(runs: object[]) => void} callback
+ * @returns {() => void} Unsubscribe function
+ */
+export const subscribeToAllUpcomingRuns = (callback) => {
+  const runsRef = collection(db, 'runs');
+  const q = query(
+    runsRef,
+    where('status', '==', 'upcoming'),
+    orderBy('startTime', 'asc')
+  );
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const now = new Date();
+      const graceCutoff = new Date(now.getTime() - 30 * 60 * 1000);
+
+      const runs = snapshot.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((run) => {
+          const st = run.startTime?.toDate();
+          if (!st || st < graceCutoff) return false;
+          if ((run.participantCount ?? 0) <= 0) return false;
+          return true;
+        });
+
+      callback(runs);
+    },
+    (err) => {
+      console.error('[runService] subscribeToAllUpcomingRuns error:', err);
+      callback([]);
+    }
+  );
+};
+
+/**
  * subscribeToUserRunsAtGym — Real-time subscription to participant docs for
  * the current user at a specific gym.
  *

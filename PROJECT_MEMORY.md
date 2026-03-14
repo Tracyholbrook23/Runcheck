@@ -114,10 +114,19 @@ const getRunEnergyLabel = (count) => {
 - Check In tab: repurposed as session status screen (see Navigation Structure); gym picker removed
 - Find a Run (ViewRunsScreen): gym search bar with local-only filter against name + address; input sanitized (strip non-`[a-zA-Z0-9 '.-&]`, max 50 chars)
 - **Start a Run / Join a Run MVP**: any user can start a group run at a gym; others can join with one tap; merge rule prevents duplicate runs within ±60 min at the same gym; runs display participant count and who's going; grace window keeps runs visible 30 min after startTime so late arrivals can still join
+- **UI polish pass (2026-03-13)**: Consistent LinearGradient headers across CheckInScreen, ViewRunsScreen, PlanVisitScreen using `['#3D1E00', '#1A0A00', colors.background]` with `locations={[0, 0.55, 1]}`; GymThumbnail pattern (local image → imageUrl → fallback icon) replicated from ProfileScreen; RunCheck Logo on CheckInScreen empty state
 - **Run accountability (RC-006)**: `evaluateRunReward` awards `+10 pts` for genuine run follow-through; late-cancel penalties apply; solo farming blocked; creator-presence legitimacy check; idempotency via `pointsAwarded.runs[runId]`
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 
-## Files Modified Recently (2026-03-13 session)
+## Files Modified Recently (2026-03-13 session — UI polish + Runs Being Planned)
+| File | What changed |
+|---|---|
+| `screens/CheckInScreen.js` | UI polish: LinearGradient header, Logo component (medium), "Your Gyms" → "Your Courts", GymThumbnail pattern matching ProfileScreen |
+| `screens/ViewRunsScreen.js` | UI polish: LinearGradient header wrapping title + search bar, white title/subtitle text |
+| `screens/PlanVisitScreen.js` | UI polish: LinearGradient on all 3 wizard steps, GymThumbnail on intent cards, improved empty state. **New feature**: "Runs Being Planned" section showing community runs across all gyms via `subscribeToAllUpcomingRuns`; run cards with gym thumbnail, time, creator, participant count, "View" button → RunDetailsScreen |
+| `services/runService.js` | Added `subscribeToAllUpcomingRuns(callback)` — real-time subscription to all upcoming runs across all gyms (no gymId filter), 30-min grace window, filters out runs with 0 participants |
+
+## Files Modified Recently (2026-03-13 session — Reviews)
 | File | What changed |
 |---|---|
 | `services/reviewService.js` | **New file** — `checkReviewEligibility(uid, gymId)` → `{ canReview, hasVerifiedRun }`; `submitReview(...)` with one-active-review guard, review doc write to `gyms/{gymId}/reviews`, awaited `awardPoints` call |
@@ -145,7 +154,7 @@ const getRunEnergyLabel = (count) => {
 - **`leaveRun`**: transaction deletes participant doc + `increment(-1)` on `participantCount`; no-op if user isn't in the run
 - **Grace window**: `subscribeToGymRuns` shows runs whose `startTime >= now - 30 min`; late joiners use `joinExistingRun`, not `startOrJoinRun`
 - **Activity feed**: `'started a run at'` is written fire-and-forget on run creation. `'joined a run at'` writes exist in the code but are **flagged for removal** before commit — they would cause feed spam when multiple users join the same run (see Known Issues)
-- **Plan a Visit is untouched** — `scheduleService`, `PlanVisitScreen`, reliability, and no-show logic are completely separate
+- **Plan a Visit — now shows community runs** — `PlanVisitScreen` subscribes to `subscribeToAllUpcomingRuns` (Zone 1 overlap) and displays a "Runs Being Planned" section separate from personal scheduled visits. Personal visits still use `scheduleService`/`useSchedules`
 
 ## Files Modified Recently (2026-03-11 session)
 | File | What changed |

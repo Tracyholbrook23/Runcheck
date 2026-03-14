@@ -13,7 +13,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Service Layer
 | File | Role |
 |------|------|
-| `services/runService.js` | Core logic: `startOrJoinRun`, `joinExistingRun`, `leaveRun`, `subscribeToGymRuns`, `subscribeToUserRunsAtGym`, `subscribeToRunParticipants` |
+| `services/runService.js` | Core logic: `startOrJoinRun`, `joinExistingRun`, `leaveRun`, `subscribeToGymRuns`, `subscribeToUserRunsAtGym`, `subscribeToRunParticipants`, `subscribeToAllUpcomingRuns` |
 
 ### Hook Layer
 | File | Role |
@@ -255,6 +255,7 @@ The following files serve multiple zones and should be treated carefully when ma
 |------|-------|----------------|
 | `services/runService.js` | Zone 1 + Zone 2 | Writes activity docs as a side effect of run creation/join |
 | `screens/HomeScreen.js` | Zone 2 + Zone 4 | Owns the activity feed query (Zone 2) AND the main dashboard shell (Zone 4) |
+| `screens/PlanVisitScreen.js` | Zone 1 + Zone 4 | Subscribes to `subscribeToAllUpcomingRuns` (Zone 1) for "Runs Being Planned" section; navigates to RunDetailsScreen. Primary home is Zone 4. |
 | `services/presenceService.js` | Zone 2 + Zone 5 | Writes activity docs (Zone 2) AND owns check-in/check-out logic (Zone 5 / shared) |
 | `hooks/useGymPresences.js` | Zone 1 + Zone 4 | Used by RunDetailsScreen (Zone 1) and presence display in HomeScreen (Zone 4) |
 | `hooks/useGymSchedules.js` | Zone 1 + Zone 4 | Used by RunDetailsScreen (Zone 1) for scheduled visit counts |
@@ -273,5 +274,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-12_
+_Last updated: 2026-03-13_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._
