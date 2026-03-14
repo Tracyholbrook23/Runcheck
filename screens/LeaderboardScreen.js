@@ -48,6 +48,7 @@ import {
   ACTION_LABELS,
   RANKS,
 } from '../utils/badges';
+import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 
 // ─── Trophy colors for top-3 positions ───────────────────────────────────────
 const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
@@ -196,6 +197,9 @@ export default function LeaderboardScreen({ navigation }) {
   const [weeklyLoading,  setWeeklyLoading]  = useState(true);
   const currentUid = auth.currentUser?.uid;
 
+  // Weekly winners — fetches most recent weeklyWinners doc once on mount
+  const { winners: weeklyWinners, weekOf: winnersWeekOf } = useWeeklyWinners();
+
   // Reset scroll position when screen mounts
   useEffect(() => {
     scrollRef.current?.scrollTo({ y: 0, animated: false });
@@ -254,6 +258,14 @@ export default function LeaderboardScreen({ navigation }) {
   const ptsToNext        = currentRank.nextRankAt ? currentRank.nextRankAt - currentPoints : 0;
   const myPosition       = allTimeUsers.findIndex((u) => u.id === currentUid) + 1;
 
+  // Format "2026-03-09" → "Mar 9" for the winners card subtitle
+  const formatWeekOf = (weekOfStr) => {
+    if (!weekOfStr) return '';
+    const [y, m, d] = weekOfStr.split('-').map(Number);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[m - 1]} ${d}`;
+  };
+
   // Active list driven by tab selection
   const displayUsers   = activeTab === 'allTime' ? allTimeUsers   : weeklyUsers;
   const displayLoading = activeTab === 'allTime' ? allTimeLoading : weeklyLoading;
@@ -310,6 +322,95 @@ export default function LeaderboardScreen({ navigation }) {
             <Text style={styles.progressLabel}>Max rank achieved</Text>
           )}
         </View>
+
+        {/* ── Last Week's Winners ───────────────────────────────────── */}
+        {weeklyWinners.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>Last Week's Winners</Text>
+            <View style={styles.listCard}>
+              {/* Subtitle — week of date */}
+              <View style={styles.winnersHeader}>
+                <Ionicons name="trophy" size={16} color="#FFD700" />
+                <Text style={styles.winnersSubtitle}>Week of {formatWeekOf(winnersWeekOf)}</Text>
+              </View>
+
+              {weeklyWinners.map((w, index) => {
+                const trophyColor = TROPHY_COLORS[w.place] ?? colors.textMuted;
+                const initials = (w.name || 'U')
+                  .split(' ')
+                  .map((part) => part[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase();
+                const isMe = w.uid === currentUid;
+
+                return (
+                  <TouchableOpacity
+                    key={w.uid}
+                    disabled={isMe}
+                    activeOpacity={isMe ? 1 : 0.7}
+                    onPress={() => navigation.push('UserProfile', { userId: w.uid })}
+                    style={[
+                      styles.winnersRow,
+                      isMe && styles.rowHighlight,
+                      index < weeklyWinners.length - 1 && styles.rowBorder,
+                    ]}
+                  >
+                    {/* Place trophy */}
+                    <View style={styles.positionWrap}>
+                      <Ionicons
+                        name="trophy"
+                        size={w.place === 1 ? 22 : 18}
+                        color={trophyColor}
+                      />
+                    </View>
+
+                    {/* Avatar */}
+                    {w.photoURL ? (
+                      <Image source={{ uri: w.photoURL }} style={styles.avatar} />
+                    ) : (
+                      <View
+                        style={[
+                          styles.initialsCircle,
+                          { backgroundColor: trophyColor + '20', borderColor: trophyColor + '55' },
+                        ]}
+                      >
+                        <Text style={[styles.initials, { color: trophyColor }]}>{initials}</Text>
+                      </View>
+                    )}
+
+                    {/* Name + optional YOU badge */}
+                    <View style={styles.nameCol}>
+                      <View style={styles.nameRow}>
+                        <Text
+                          style={[styles.userName, isMe && { color: colors.primary }]}
+                          numberOfLines={1}
+                        >
+                          {w.name || 'Anonymous'}
+                        </Text>
+                        {isMe && (
+                          <View style={styles.youBadge}>
+                            <Text style={styles.youBadgeText}>YOU</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    {/* Points — in trophy color */}
+                    <Text style={[styles.pts, { color: trophyColor }]}>
+                      {(w.weeklyPoints || 0).toLocaleString()}
+                    </Text>
+
+                    {/* Tap affordance */}
+                    {!isMe && (
+                      <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
 
         {/* ── Leaderboard list ─────────────────────────────────────── */}
         <View style={styles.tabRow}>
@@ -723,6 +824,31 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderLeftWidth: 2,
     borderLeftColor: colors.primary,
   },
+
+  // ── Last Week's Winners card ──────────────────────────────────────────────
+  winnersHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm + 2,
+    paddingBottom: SPACING.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  winnersSubtitle: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  winnersRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+
   positionWrap: {
     width: 28,
     alignItems: 'center',

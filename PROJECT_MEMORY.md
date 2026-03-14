@@ -117,6 +117,15 @@ const getRunEnergyLabel = (count) => {
 - **UI polish pass (2026-03-13)**: Consistent LinearGradient headers across CheckInScreen, ViewRunsScreen, PlanVisitScreen using `['#3D1E00', '#1A0A00', colors.background]` with `locations={[0, 0.55, 1]}`; GymThumbnail pattern (local image → imageUrl → fallback icon) replicated from ProfileScreen; RunCheck Logo on CheckInScreen empty state
 - **Run accountability (RC-006)**: `evaluateRunReward` awards `+10 pts` for genuine run follow-through; late-cancel penalties apply; solo farming blocked; creator-presence legitimacy check; idempotency via `pointsAwarded.runs[runId]`
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
+- **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook; LeaderboardScreen "Last Week's Winners" card with trophy icons, avatars, points; reset script saves top 3 then batch-deletes `weeklyPoints`
+
+## Files Modified Recently (2026-03-14 session — Weekly Winners)
+| File | What changed |
+|---|---|
+| `scripts/weeklyReset.js` | Saves top 3 winners (was 1st only); `winners` array + `firstPlace` convenience field; podium logging with tie warnings |
+| `services/weeklyWinnersService.js` | **New file** — `getLatestWeeklyWinners()` reads most recent `weeklyWinners` doc |
+| `hooks/useWeeklyWinners.js` | **New file** — React hook wrapping `getLatestWeeklyWinners`, one-shot fetch on mount |
+| `screens/LeaderboardScreen.js` | "Last Week's Winners" card: trophy icons, avatars, names, weekly points; tappable rows navigate to UserProfile; card hidden when no data |
 
 ## Files Modified Recently (2026-03-13 session — UI polish + Runs Being Planned)
 | File | What changed |
@@ -267,12 +276,29 @@ Key design decisions:
 - Player rank tiers always derive from `totalPoints`.
 - The weekly leaderboard only changes the ordering and displayed points.
 
-Weekly winners are stored in:
-weeklyWinners/{YYYY-MM-DD}
+### Weekly Winners (Top 3)
+Weekly winners (up to 3) are stored in:
+`weeklyWinners/{YYYY-MM-DD}`
 Document structure:
-{ uid, name, photoURL, weeklyPoints, weekOf, recordedAt}
+```js
+{
+  weekOf, recordedAt,
+  firstPlace: { uid, name, photoURL, weeklyPoints },   // convenience field
+  winners: [
+    { uid, name, photoURL, weeklyPoints, place: 1 },
+    { uid, name, photoURL, weeklyPoints, place: 2 },
+    { uid, name, photoURL, weeklyPoints, place: 3 },
+  ]
+}
+```
 
-A reset script (`scripts/weeklyReset.js`) records the winner and clears `weeklyPoints` for the next competition cycle.
+**Read layer**: `weeklyWinnersService.js` → `getLatestWeeklyWinners()` fetches the most recent doc. `useWeeklyWinners` hook wraps it for React screens.
+
+**Display**: LeaderboardScreen shows a "Last Week's Winners" card (below My Rank, above tab toggle) with gold/silver/bronze trophies, avatars, names, and weekly points. Card is hidden when no winner data exists.
+
+**Reset script** (`scripts/weeklyReset.js`): saves top 3 winners then batch-deletes `weeklyPoints` for all users. Manual execution only (not automated). Dry-run by default; use `COMMIT=true` to write.
+
+**Not yet automated** — no cron job or Cloud Function scheduler. Must run manually each week.
 
 ## Clips Feature
 

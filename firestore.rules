@@ -11,6 +11,7 @@ rules_version = '2';
 //   activity         Activity feed events (HomeScreen)
 //   runs             Group runs — Start a Run / Join a Run (MVP)
 //   runParticipants  Per-user membership in a run, compound key {runId}_{userId}
+//   weeklyWinners    Weekly leaderboard podium snapshots — admin-write, client-read
 //
 // Deployment:
 //   firebase deploy --only firestore:rules
@@ -45,6 +46,16 @@ service cloud.firestore {
     // Gym directory is read-only from client code. Seeding / admin updates
     // happen via the Firebase console or admin SDK (serviceAccountKey).
     match /gyms/{gymId} {
+      allow read:  if isAuthed();
+      allow write: if false;
+    }
+
+
+    // ── weeklyWinners/{weekId} ────────────────────────────────────────────────
+    // Weekly leaderboard podium snapshots. Written exclusively by the admin
+    // reset script (scripts/weeklyReset.js) via firebase-admin, which bypasses
+    // security rules. Client code is read-only (weeklyWinnersService.js).
+    match /weeklyWinners/{weekId} {
       allow read:  if isAuthed();
       allow write: if false;
     }

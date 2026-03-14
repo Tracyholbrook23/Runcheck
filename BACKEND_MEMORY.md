@@ -140,6 +140,30 @@ Firebase-only backend. No custom server. Logic lives in:
 > One active review per user per gym enforced at submit time in `reviewService.submitReview` via `getDocs` existence check.
 > `verifiedAttendee` reflects the **run-completion path only** — session-only check-in reviewers get `verifiedAttendee: false`. This is intentional; see RC-007.
 
+### `weeklyWinners/{YYYY-MM-DD}`   ← one doc per weekly reset
+```js
+{
+  weekOf: string,                 // "YYYY-MM-DD", mirrors doc ID
+  recordedAt: Timestamp,          // when the reset script ran
+  firstPlace: {                   // convenience shortcut for quick reads
+    uid: string,
+    name: string,
+    photoURL: string | null,
+    weeklyPoints: number,
+  },
+  winners: [                      // up to 3 entries, ordered by place
+    {
+      uid: string,
+      name: string,
+      photoURL: string | null,
+      weeklyPoints: number,
+      place: 1 | 2 | 3,
+    },
+  ],
+}
+```
+> Written exclusively by `scripts/weeklyReset.js` (manual, not automated). Read on client by `weeklyWinnersService.js`. The `firstPlace` field is a convenience duplicate of `winners[0]` for lightweight reads that only need the top winner.
+
 ---
 
 ## Services
@@ -215,6 +239,9 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 - `calculateReliabilityScore(data)` — local fallback calculation for display
 - ⚠️ Reliability writes (`updateReliabilityOnAttend`, `updateReliabilityOnNoShow`, etc.) are **deprecated on client** — Cloud Functions own these now
 
+### `weeklyWinnersService.js` — READ-ONLY on client
+- **`getLatestWeeklyWinners()`** → `Promise<{ id, weekOf, recordedAt, firstPlace, winners } | null>`: queries `weeklyWinners` ordered by `weekOf` desc, limit 1. Returns `null` when no winners have been recorded yet.
+
 ---
 
 ## Hooks
@@ -232,6 +259,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useLocation()` | `{ location, error, loading }` | Expo Location |
 | `useGymRuns(gymId)` | `{ runs, loading, joinedRunIds, userParticipants }` | `subscribeToGymRuns` + `subscribeToUserRunsAtGym` |
 | `useLivePresenceMap()` | `{ presenceMap, countMap }` | Single `presence` subscription (status==active, limit 200); client-side `expiresAt` guard; deduplicates by `odId` per gym. **Canonical source** for all-gym player counts — use `countMap[gymId]` everywhere, never `gym.currentPresenceCount`. |
+| `useWeeklyWinners()` | `{ winners, weekOf, loading }` | `getLatestWeeklyWinners` (one-shot fetch on mount) |
 
 ---
 

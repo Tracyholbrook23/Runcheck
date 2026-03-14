@@ -1,26 +1,37 @@
 /**
- * weeklyReset.js — Weekly Leaderboard Winner & Reset
+ * weeklyReset.js — Weekly Leaderboard Top-3 Winners & Reset
  *
- * Determines the weekly winner from weeklyPoints, writes a snapshot of that
- * winner to `weeklyWinners/{YYYY-MM-DD}`, then removes the `weeklyPoints`
- * field from every user who had one — resetting the weekly competition.
+ * Determines the top 3 weekly winners from weeklyPoints, writes a snapshot
+ * to `weeklyWinners/{YYYY-MM-DD}`, then removes the `weeklyPoints` field
+ * from every user who had one — resetting the weekly competition.
  *
  * ── SAFE BY DEFAULT ──────────────────────────────────────────────────────────
  * Dry-run mode is the DEFAULT. No Firestore writes occur unless you explicitly
- * pass COMMIT=true. Always run a dry run first to confirm the winner is correct
- * before committing.
+ * pass COMMIT=true. Always run a dry run first to confirm the winners are
+ * correct before committing.
  *
  * ── Usage ────────────────────────────────────────────────────────────────────
  *   Dry run (simulate only, no writes):
  *     node scripts/weeklyReset.js
  *
- *   Commit (write winner doc + reset weeklyPoints):
+ *   Commit (write winners doc + reset weeklyPoints):
  *     COMMIT=true node scripts/weeklyReset.js
  *
  * ── Winner selection ─────────────────────────────────────────────────────────
+ *   Up to 3 winners are saved (1st, 2nd, 3rd). Fewer if < 3 users earned pts.
  *   1. Primary metric   : weeklyPoints (highest wins)
  *   2. Tiebreaker       : totalPoints  (highest all-time breaks the tie)
  *   3. Full tie         : first Firestore result (non-deterministic; logged)
+ *
+ * ── Document shape ───────────────────────────────────────────────────────────
+ *   weeklyWinners/{YYYY-MM-DD}:
+ *     weekOf, recordedAt,
+ *     firstPlace: { uid, name, photoURL, weeklyPoints },   ← convenience field
+ *     winners: [
+ *       { uid, name, photoURL, weeklyPoints, place: 1 },
+ *       { uid, name, photoURL, weeklyPoints, place: 2 },
+ *       { uid, name, photoURL, weeklyPoints, place: 3 },
+ *     ]
  *
  * ── Reset behaviour ──────────────────────────────────────────────────────────
  * The weeklyPoints field is DELETED (not set to 0) so that users with no
@@ -29,10 +40,10 @@
  * call from pointsService.js will recreate the field from scratch.
  *
  * ── Re-run safety ────────────────────────────────────────────────────────────
- * If the commit run is interrupted after writing the winner doc but before all
- * batches complete, re-running on the SAME CALENDAR DAY is safe — the winner
+ * If the commit run is interrupted after writing the winners doc but before all
+ * batches complete, re-running on the SAME CALENDAR DAY is safe — the winners
  * doc is overwritten with the same data and remaining batches are retried.
- * If you re-run on a DIFFERENT day, the winner doc ID will differ.  To avoid
+ * If you re-run on a DIFFERENT day, the winners doc ID will differ.  To avoid
  * this, use the WEEK_OF env var to pin the doc ID:
  *   COMMIT=true WEEK_OF=2026-03-09 node scripts/weeklyReset.js
  */
@@ -143,42 +154,49 @@ async function weeklyReset() {
     process.exit(0);
   }
 
-  // ── Step 3: Sort and determine winner ─────────────────────────────────────
+  // ── Step 3: Sort and determine top 3 ─────────────────────────────────────
   // Primary: weeklyPoints desc.  Tiebreaker: totalPoints desc.
   candidates.sort((a, b) => {
     if (b.weeklyPoints !== a.weeklyPoints) return b.weeklyPoints - a.weeklyPoints;
     return b.totalPoints - a.totalPoints;
   });
 
-  const winner   = candidates[0];
-  const runnerUp = candidates[1] ?? null;
+  const PODIUM_SIZE = 3;
+  const PLACE_LABELS = ['1st', '2nd', '3rd'];
+  const PLACE_ICONS  = ['🥇', '🥈', '🥉'];
 
-  const tiedOnWeekly = runnerUp !== null && runnerUp.weeklyPoints === winner.weeklyPoints;
-  const tiedOnBoth   = tiedOnWeekly && runnerUp.totalPoints === winner.totalPoints;
+  // Build the podium — up to 3 entries, fewer if not enough candidates
+  const podium = candidates.slice(0, PODIUM_SIZE).map((c, i) => ({
+    uid:          c.id,
+    name:         c.name,
+    photoURL:     c.photoURL,
+    weeklyPoints: c.weeklyPoints,
+    place:        i + 1,
+  }));
 
-  console.log('🏆  Step 2/4 — Winner determination');
-  console.log(`     Name        : ${winner.name}`);
-  console.log(`     User ID     : ${winner.id}`);
-  console.log(`     Weekly pts  : ${winner.weeklyPoints}`);
-  console.log(`     All-time pts: ${winner.totalPoints}`);
+  console.log(`🏆  Step 2/4 — Top ${podium.length} winner${podium.length !== 1 ? 's' : ''}`);
+  podium.forEach((w, i) => {
+    console.log(`     ${PLACE_ICONS[i]}  ${PLACE_LABELS[i].padEnd(4)} ${w.name.padEnd(22)} ${String(w.weeklyPoints).padStart(5)} weekly pts   (${w.uid})`);
+  });
 
-  if (tiedOnBoth) {
-    console.log('');
-    console.log(`     ⚠️  FULL TIE: ${winner.name} and ${runnerUp.name} have identical`);
-    console.log('        weeklyPoints AND totalPoints. Winner is the first result');
-    console.log('        returned by Firestore — this is non-deterministic.');
-    console.log('        Consider manually overriding before committing.');
-  } else if (tiedOnWeekly) {
-    console.log('');
-    console.log(`     ⚡ Tie on weeklyPoints with ${runnerUp.name}.`);
-    console.log(`        Tiebreaker: totalPoints — ${winner.name} wins (${winner.totalPoints} vs ${runnerUp.totalPoints}).`);
+  // Tie warnings for adjacent podium positions
+  for (let i = 0; i < podium.length - 1; i++) {
+    const a = candidates[i];
+    const b = candidates[i + 1];
+    if (a.weeklyPoints === b.weeklyPoints && a.totalPoints === b.totalPoints) {
+      console.log(`     ⚠️  FULL TIE between ${PLACE_LABELS[i]} (${a.name}) and ${PLACE_LABELS[i + 1]} (${b.name}).`);
+      console.log('        Both weeklyPoints AND totalPoints are identical. Order is non-deterministic.');
+    } else if (a.weeklyPoints === b.weeklyPoints) {
+      console.log(`     ⚡ Tie on weeklyPoints between ${PLACE_LABELS[i]} and ${PLACE_LABELS[i + 1]}.`);
+      console.log(`        Tiebreaker: totalPoints — ${a.name} (${a.totalPoints}) beats ${b.name} (${b.totalPoints}).`);
+    }
   }
   console.log('');
 
   // ── Users to be reset (full list) ─────────────────────────────────────────
   console.log(`🔄  Step 3/4 — Users scheduled for weeklyPoints reset (${candidates.length} total)`);
   candidates.forEach(({ name, id, weeklyPoints }, i) => {
-    const marker = i === 0 ? '👑' : '  ';
+    const marker = i < PODIUM_SIZE ? PLACE_ICONS[i] : '  ';
     console.log(`  ${marker} ${name.padEnd(26)} ${String(weeklyPoints).padStart(5)} weekly pts   (${id})`);
   });
   console.log('');
@@ -194,12 +212,16 @@ async function weeklyReset() {
 
     if (existSnap.exists) {
       const prev = existSnap.data();
+      const prevFirst = prev.firstPlace ?? prev;  // backward compat with old single-winner docs
       console.log(`     ⚠️  Doc ${weekOfId} already exists.`);
-      console.log(`        Previous winner on record: ${prev.name ?? '(unknown)'} — ${prev.weeklyPoints ?? '?'} pts`);
+      console.log(`        Previous 1st place on record: ${prevFirst.name ?? '(unknown)'} — ${prevFirst.weeklyPoints ?? '?'} pts`);
+      if (prev.winners) {
+        console.log(`        Winners array has ${prev.winners.length} entries.`);
+      }
       if (DRY_RUN) {
         console.log('        (Dry run — existing doc will not be touched.)\n');
       } else {
-        console.log('        Will overwrite with new winner data.\n');
+        console.log('        Will overwrite with new winners data.\n');
       }
     } else {
       console.log('     No existing doc — safe to write.\n');
@@ -213,7 +235,7 @@ async function weeklyReset() {
   if (DRY_RUN) {
     console.log(DIVIDER);
     console.log('🏁  Dry run complete — no changes were made.\n');
-    console.log('    If the winner above looks correct, run:');
+    console.log('    If the winners above look correct, run:');
     console.log('    COMMIT=true node scripts/weeklyReset.js\n');
     process.exit(0);
   }
@@ -221,20 +243,27 @@ async function weeklyReset() {
   // ══ COMMIT PATH ════════════════════════════════════════════════════════════
 
   // ── Write the weeklyWinners doc ───────────────────────────────────────────
-  console.log(`✍️   Committing winner → ${WEEKLY_WINNERS_COLL}/${weekOfId} ...`);
+  console.log(`✍️   Committing ${podium.length} winner(s) → ${WEEKLY_WINNERS_COLL}/${weekOfId} ...`);
+
+  const first = podium[0];
 
   try {
     await db.collection(WEEKLY_WINNERS_COLL).doc(weekOfId).set({
-      uid:          winner.id,
-      name:         winner.name,
-      photoURL:     winner.photoURL,
-      weeklyPoints: winner.weeklyPoints,
       weekOf:       weekOfId,          // string "YYYY-MM-DD", mirrors doc ID
       recordedAt:   Timestamp.now(),
+      // Convenience shortcut for quick reads that only need 1st place
+      firstPlace: {
+        uid:          first.uid,
+        name:         first.name,
+        photoURL:     first.photoURL,
+        weeklyPoints: first.weeklyPoints,
+      },
+      // Full podium — up to 3 entries ordered by place
+      winners: podium,
     });
-    console.log('     ✔  Winner doc written.\n');
+    console.log('     ✔  Winners doc written.\n');
   } catch (err) {
-    console.error('❌  Failed to write winner doc:', err.message);
+    console.error('❌  Failed to write winners doc:', err.message);
     console.error('     ABORTING — weeklyPoints have NOT been reset (data is safe).');
     console.error('     Fix the error above, then re-run to retry.');
     process.exit(1);
@@ -283,8 +312,10 @@ async function weeklyReset() {
 
   console.log(`     Mode        : COMMIT`);
   console.log(`     Week of     : ${weekOfId}`);
-  console.log(`     Winner      : ${winner.name} — ${winner.weeklyPoints} weekly pts`);
-  console.log(`     Winner doc  : ${WEEKLY_WINNERS_COLL}/${weekOfId}  ✔ written`);
+  podium.forEach((w, i) => {
+    console.log(`     ${PLACE_ICONS[i]} ${PLACE_LABELS[i].padEnd(4)}      : ${w.name} — ${w.weeklyPoints} weekly pts`);
+  });
+  console.log(`     Winners doc : ${WEEKLY_WINNERS_COLL}/${weekOfId}  ✔ written`);
   console.log(`     Users reset : ${resetCount}`);
 
   if (errorCount > 0) {
