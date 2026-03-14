@@ -9,20 +9,17 @@
     "description": "Find and join basketball pickup games nearby in real-time. Check in at gyms, see who's playing, and build your reliability score.",
     "privacy": "unlisted",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/logo/runcheck-logo-full.png",
       "resizeMode": "contain",
       "backgroundColor": "#1A1A2E"
     },
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.runcheck.app",
       "runtimeVersion": "1.0.0",
       "icon": "./assets/icon.png"
     },
-
     "android": {
       "package": "com.runcheck.app",
       "adaptiveIcon": {
@@ -40,26 +37,23 @@
         "policy": "appVersion"
       }
     },
-
     "web": {
       "favicon": "./assets/favicon.png"
     },
-
     "plugins": [
       [
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow RunCheck to use your location to check in at nearby gyms."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
-
     "extra": {
       "eas": {
         "projectId": "bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d"
       }
     },
-
     "updates": {
       "url": "https://u.expo.dev/bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d"
     }

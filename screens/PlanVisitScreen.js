@@ -21,7 +21,6 @@
  *
  * Helper functions:
  *   - `getAvailableDays` — builds the 7-day array with display labels
- *   - `getTimeSlotsForDay` — builds 30-min time slots, skipping past times
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -42,6 +41,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile, useLivePresenceMap } from '../hooks';
@@ -77,44 +77,6 @@ const getAvailableDays = () => {
   return days;
 };
 
-/**
- * getTimeSlotsForDay — Generates 30-minute time slots for a given day.
- *
- * Covers 6:00 AM to 10:00 PM in 30-minute increments. When the day is
- * today, any slot that has already passed is filtered out so users can't
- * schedule in the past.
- *
- * Each slot contains:
- *   - `date`     — Full JavaScript Date for the slot's start time
- *   - `label`    — Formatted time string (e.g. "6:30 PM")
- *   - `timeSlot` — ISO string used as a unique key and for Firestore writes
- *
- * @param {{ dateObj: Date } | null} dayObj — The selected day object from `getAvailableDays`.
- * @returns {{ date: Date, label: string, timeSlot: string }[]} Array of available time slots.
- */
-const getTimeSlotsForDay = (dayObj) => {
-  if (!dayObj) return [];
-  const slots = [];
-  const now = new Date();
-  const isToday = dayObj.dateObj.toDateString() === now.toDateString();
-  for (let hour = 6; hour <= 22; hour++) {
-    for (let min = 0; min < 60; min += 30) {
-      const date = new Date(dayObj.dateObj);
-      date.setHours(hour, min, 0, 0);
-      // Skip past time slots when the selected day is today
-      if (isToday && date <= now) continue;
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      const displayMin = min === 0 ? '00' : '30';
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      slots.push({
-        date,
-        label: `${displayHour}:${displayMin} ${ampm}`,
-        timeSlot: date.toISOString(),
-      });
-    }
-  }
-  return slots;
-};
 
 
 /**
@@ -157,6 +119,7 @@ export default function PlanVisitScreen({ navigation }) {
   const [selectedGym, setSelectedGym] = useState(null);
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [step, setStep] = useState(1);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -170,10 +133,6 @@ export default function PlanVisitScreen({ navigation }) {
   }, [navigation]);
 
   const availableDays = getAvailableDays();
-
-  // Recompute time slots whenever the selected day changes.
-  // Returns an empty array until a day is chosen.
-  const timeSlots = selectedDay ? getTimeSlotsForDay(selectedDay) : [];
 
   const {
     schedules,
@@ -553,6 +512,52 @@ export default function PlanVisitScreen({ navigation }) {
   }
 
   // ─── Step 3: Select Time ────────────────────────────────────────────────────
+
+  /**
+   * handleTimeChange — Called when the native time picker value changes.
+   * Builds a selectedSlot object in the same shape the rest of the flow expects
+   * ({ date, label, timeSlot }) so handleCreateSchedule needs no changes.
+   */
+  const handleTimeChange = (event, pickedDate) => {
+    // On Android, dismiss fires with type 'dismissed'
+    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (event.type === 'dismissed' || !pickedDate) return;
+
+    // Combine selected day + picked time
+    const combined = new Date(selectedDay.dateObj);
+    combined.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
+
+    // Prevent selecting a time in the past when the day is today
+    const now = new Date();
+    if (combined <= now) {
+      Alert.alert('Invalid Time', 'Please select a future time.');
+      return;
+    }
+
+    const displayHour = combined.getHours() > 12 ? combined.getHours() - 12 : combined.getHours() === 0 ? 12 : combined.getHours();
+    const displayMin = combined.getMinutes() === 0 ? '00' : String(combined.getMinutes()).padStart(2, '0');
+    const ampm = combined.getHours() >= 12 ? 'PM' : 'AM';
+    const label = `${displayHour}:${displayMin} ${ampm}`;
+
+    setSelectedSlot({ date: combined, label, timeSlot: combined.toISOString() });
+  };
+
+  /** Default picker date: selected time if already set, or next round hour on selected day */
+  const pickerDefault = (() => {
+    if (selectedSlot?.date) return selectedSlot.date;
+    if (!selectedDay) return new Date();
+    const d = new Date(selectedDay.dateObj);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) {
+      // Next full hour from now
+      d.setHours(now.getHours() + 1, 0, 0, 0);
+    } else {
+      d.setHours(9, 0, 0, 0); // default 9 AM for future days
+    }
+    return d;
+  })();
+
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -571,11 +576,7 @@ export default function PlanVisitScreen({ navigation }) {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <ScrollView contentContainerStyle={styles.scrollBody} showsVerticalScrollIndicator={false}>
 
-        {/*
-         * Day Picker — horizontal scroll of 7 day chips.
-         * Selecting a day clears the time slot so users can't carry over
-         * an invalid selection from a previous day.
-         */}
+        {/* Day Picker — horizontal scroll of 7 day chips */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -586,7 +587,7 @@ export default function PlanVisitScreen({ navigation }) {
             <TouchableOpacity
               key={day.key}
               style={[styles.dayChip, selectedDay?.key === day.key && styles.dayChipSelected]}
-              onPress={() => { setSelectedDay(day); setSelectedSlot(null); }}
+              onPress={() => { setSelectedDay(day); setSelectedSlot(null); setShowTimePicker(false); }}
             >
               <Text style={[styles.dayChipLabel, selectedDay?.key === day.key && styles.dayChipLabelSelected]}>
                 {day.label}
@@ -598,31 +599,82 @@ export default function PlanVisitScreen({ navigation }) {
           ))}
         </ScrollView>
 
-        {/* Time Slots — shown only after a day is selected */}
+        {/* Time Selection — native picker */}
         {!selectedDay ? (
           <View style={styles.selectDayPrompt}>
             <Ionicons name="calendar-outline" size={36} color={colors.textMuted} />
-            <Text style={styles.selectDayText}>Select a day above to see available times</Text>
-          </View>
-        ) : timeSlots.length === 0 ? (
-          // Edge case: user selected today but it's already past 10 PM
-          <View style={styles.selectDayPrompt}>
-            <Text style={styles.selectDayText}>No more times available for today</Text>
+            <Text style={styles.selectDayText}>Select a day above to choose a time</Text>
           </View>
         ) : (
-          // 2-column grid of 30-minute time slot cards
-          <View style={styles.slotsContainer}>
-            {timeSlots.map((slot) => (
-              <TouchableOpacity
-                key={slot.timeSlot}
-                style={[styles.slotCard, selectedSlot?.timeSlot === slot.timeSlot && styles.slotCardSelected]}
-                onPress={() => setSelectedSlot(slot)}
-              >
-                <Text style={[styles.slotText, selectedSlot?.timeSlot === slot.timeSlot && styles.slotTextSelected]}>
-                  {slot.label}
+          <View style={styles.timePickerSection}>
+            <Text style={styles.timePickerLabel}>Arrival Time</Text>
+
+            <TouchableOpacity
+              style={[styles.timePickerButton, selectedSlot ? styles.timePickerButtonSelected : styles.timePickerButtonEmpty]}
+              onPress={() => setShowTimePicker(!showTimePicker)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.timePickerIconWrap, selectedSlot && styles.timePickerIconWrapSelected]}>
+                <Ionicons
+                  name="time-outline"
+                  size={20}
+                  color={selectedSlot ? colors.primary : colors.textMuted}
+                />
+              </View>
+              <View style={styles.timePickerTextWrap}>
+                {selectedSlot ? (
+                  <Text style={styles.timePickerSelectedTime}>{selectedSlot.label}</Text>
+                ) : (
+                  <>
+                    <Text style={styles.timePickerPlaceholder}>Tap to choose a time</Text>
+                    <Text style={styles.timePickerHint}>Opens the time picker</Text>
+                  </>
+                )}
+              </View>
+              <Ionicons
+                name={showTimePicker ? 'chevron-up' : 'chevron-down'}
+                size={20}
+                color={selectedSlot ? colors.primary : colors.textSecondary}
+              />
+            </TouchableOpacity>
+
+            {/* Native picker — inline on iOS, modal on Android */}
+            {showTimePicker && (
+              <View style={styles.pickerContainer}>
+                <DateTimePicker
+                  value={pickerDefault}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={handleTimeChange}
+                  minuteInterval={15}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                />
+                {Platform.OS === 'ios' && (
+                  <TouchableOpacity
+                    style={styles.pickerDoneButton}
+                    onPress={() => setShowTimePicker(false)}
+                  >
+                    <Text style={styles.pickerDoneText}>Done</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {/* Summary line — only shown after a time is selected */}
+            {selectedSlot && selectedDay && !showTimePicker && (
+              <View style={styles.timeSummary}>
+                <Ionicons name="checkmark-circle" size={16} color={colors.success} style={{ marginRight: SPACING.xs }} />
+                <Text style={styles.timeSummaryText}>
+                  {selectedDay.label === 'Today'
+                    ? 'Today'
+                    : selectedDay.label === 'Tomorrow'
+                    ? 'Tomorrow'
+                    : `${selectedDay.label}, ${selectedDay.dateStr}`}
+                  {' \u00B7 '}
+                  {selectedSlot.label}
                 </Text>
-              </TouchableOpacity>
-            ))}
+              </View>
+            )}
           </View>
         )}
 
@@ -950,33 +1002,98 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textMuted,
     textAlign: 'center',
   },
-  slotsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+  // ── Time Picker ──────────────────────────────────────────
+  timePickerSection: {
+    marginBottom: SPACING.lg,
   },
-  slotCard: {
-    width: '48%',
+  timePickerLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+  },
+  timePickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+    paddingVertical: SPACING.md + 4,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.sm,
+  },
+  timePickerButtonEmpty: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.textMuted + '50',
+  },
+  timePickerButtonSelected: {
+    borderColor: colors.primary,
+    borderWidth: 1.5,
+    backgroundColor: colors.primary + '10',
+  },
+  timePickerIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: RADIUS.sm,
+    backgroundColor: colors.textMuted + '15',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  slotCardSelected: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-    backgroundColor: colors.primary + '15',
+  timePickerIconWrapSelected: {
+    backgroundColor: colors.primary + '18',
   },
-  slotText: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textPrimary,
+  timePickerTextWrap: {
+    flex: 1,
+  },
+  timePickerPlaceholder: {
+    fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.medium,
+    color: colors.textSecondary,
   },
-  slotTextSelected: {
-    color: colors.primary,
+  timePickerHint: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  timePickerSelectedTime: {
+    fontSize: FONT_SIZES.h3,
     fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+  },
+  pickerContainer: {
+    marginTop: SPACING.sm,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  pickerDoneButton: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  pickerDoneText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.primary,
+  },
+  timeSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    backgroundColor: colors.success + '12',
+    borderRadius: RADIUS.sm,
+    alignSelf: 'flex-start',
+  },
+  timeSummaryText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.success,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   buttonRow: {
     flexDirection: 'row',
