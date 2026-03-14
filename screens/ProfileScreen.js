@@ -981,12 +981,13 @@ export default function ProfileScreen({ navigation }) {
               />
               <Text style={styles.settingText}>Dark Mode</Text>
             </View>
-            {/* Switch is wired directly to ThemeContext's toggleTheme */}
+            {/* Switch disabled — dark mode is forced for this development phase */}
             <Switch
               value={isDark}
               onValueChange={toggleTheme}
               trackColor={{ false: colors.border, true: colors.primary }}
               thumbColor="#FFFFFF"
+              disabled
               testID="dark-mode-toggle"
             />
           </View>

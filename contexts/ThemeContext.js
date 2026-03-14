@@ -60,17 +60,18 @@ export function ThemeProvider({ children }) {
   /**
    * toggleTheme — Flips between dark and light mode.
    *
-   * Uses the functional form of setState to guarantee the correct
-   * previous value and writes the new preference to AsyncStorage
-   * in the same callback so the state update and persistence are atomic.
+   * TEMPORARILY DISABLED: Dark mode is forced for this phase of development.
+   * Light mode is not yet polished enough for release. To re-enable theme
+   * switching, restore the original function body below.
+   *
+   * Original implementation:
+   *   setIsDark((prev) => {
+   *     const next = !prev;
+   *     AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light').catch(() => {});
+   *     return next;
+   *   });
    */
-  const toggleTheme = () => {
-    setIsDark((prev) => {
-      const next = !prev;
-      AsyncStorage.setItem(THEME_KEY, next ? 'dark' : 'light').catch(() => {});
-      return next;
-    });
-  };
+  const toggleTheme = () => {};
 
   // Derive design tokens from the current mode
   const colors = isDark ? COLORS_DARK : COLORS;
