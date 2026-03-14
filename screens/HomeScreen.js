@@ -609,90 +609,145 @@ const HomeScreen = ({ navigation }) => {
           </View>
 
           {/* Weekly Winners Celebration — visible for 24h after each reset */}
-          {showWinnersCelebration && (
-            <BlurView intensity={60} tint="dark" style={styles.celebrationCard}>
-              <View style={styles.celebrationHeader}>
-                <View style={styles.celebrationTrophyCircle}>
-                  <Ionicons name="trophy" size={20} color="#FFD700" />
-                </View>
-                <View style={styles.celebrationHeaderText}>
-                  <Text style={styles.celebrationTitle}>Last Week's Winners</Text>
-                  {winnersWeekOf && (
-                    <Text style={styles.celebrationSubtitle}>
-                      Week of {formatWeekOf(winnersWeekOf)}
-                    </Text>
-                  )}
-                </View>
-              </View>
+          {showWinnersCelebration && (() => {
+            const champion = weeklyWinners[0];
+            const runnersUp = weeklyWinners.slice(1);
+            const championIsMe = champion?.uid === currentUid;
+            const championInitials = (champion?.name || 'U')
+              .split(' ')
+              .map((part) => part[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase();
 
-              {weeklyWinners.map((w, i) => {
-                const isMe = w.uid === currentUid;
-                const trophyColor = TROPHY_COLORS[w.place] ?? 'rgba(255,255,255,0.5)';
-                const initials = (w.name || 'U')
-                  .split(' ')
-                  .map((part) => part[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase();
+            return (
+              <BlurView intensity={60} tint="dark" style={styles.celebrationCard}>
+                {/* ── Header ────────────────────────────────────────────── */}
+                <View style={styles.celebrationHeader}>
+                  <View style={styles.celebrationTrophyCircle}>
+                    <Ionicons name="trophy" size={20} color="#FFD700" />
+                  </View>
+                  <View style={styles.celebrationHeaderText}>
+                    <Text style={styles.celebrationTitle}>Last Week's Winners</Text>
+                  </View>
+                </View>
 
-                return (
+                {/* ── Hero: 1st Place ───────────────────────────────────── */}
+                {champion && (
                   <TouchableOpacity
-                    key={w.uid}
-                    disabled={isMe}
-                    activeOpacity={isMe ? 1 : 0.7}
-                    onPress={() => navigation.push('UserProfile', { userId: w.uid })}
-                    style={[
-                      styles.celebrationRow,
-                      isMe && styles.celebrationRowMe,
-                    ]}
+                    disabled={championIsMe}
+                    activeOpacity={championIsMe ? 1 : 0.7}
+                    onPress={() => navigation.push('UserProfile', { userId: champion.uid })}
+                    style={styles.heroSection}
                   >
-                    <Text style={styles.celebrationMedal}>{MEDAL_ICONS[i] ?? ''}</Text>
+                    <Text style={styles.heroLabel}>WEEKLY CHAMPION</Text>
 
-                    {/* Avatar — photo or initials circle with trophy-color tint */}
-                    {w.photoURL ? (
-                      <Image
-                        source={{ uri: w.photoURL }}
-                        style={[styles.celebrationAvatar, { borderColor: trophyColor + '55' }]}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.celebrationInitialsCircle,
-                          { backgroundColor: trophyColor + '20', borderColor: trophyColor + '55' },
-                        ]}
-                      >
-                        <Text style={[styles.celebrationInitials, { color: trophyColor }]}>
-                          {initials}
-                        </Text>
-                      </View>
-                    )}
-
-                    <View style={styles.celebrationNameCol}>
-                      <View style={styles.celebrationNameRow}>
-                        <Text style={styles.celebrationName} numberOfLines={1}>
-                          {w.name}
-                        </Text>
-                        {isMe && (
-                          <View style={styles.celebrationYouBadge}>
-                            <Text style={styles.celebrationYouText}>YOU</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.celebrationPts}>{w.weeklyPoints} pts</Text>
+                    {/* Large gold-ringed avatar */}
+                    <View style={styles.heroAvatarRing}>
+                      {champion.photoURL ? (
+                        <Image
+                          source={{ uri: champion.photoURL }}
+                          style={styles.heroAvatar}
+                        />
+                      ) : (
+                        <View style={styles.heroInitialsCircle}>
+                          <Text style={styles.heroInitials}>{championInitials}</Text>
+                        </View>
+                      )}
                     </View>
-                  </TouchableOpacity>
-                );
-              })}
 
-              <TouchableOpacity
-                style={styles.celebrationLink}
-                onPress={() => navigation.navigate('Leaderboard')}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.celebrationLinkText}>View Leaderboard →</Text>
-              </TouchableOpacity>
-            </BlurView>
-          )}
+                    <View style={styles.heroNameRow}>
+                      <Text style={styles.heroName} numberOfLines={1}>
+                        {champion.name}
+                      </Text>
+                      {championIsMe && (
+                        <View style={styles.celebrationYouBadge}>
+                          <Text style={styles.celebrationYouText}>YOU</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <Text style={styles.heroPlacePts}>
+                      1st Place · {champion.weeklyPoints} pts
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* ── Runners-up: 2nd & 3rd ─────────────────────────────── */}
+                {runnersUp.length > 0 && (
+                  <View style={styles.runnersUpSection}>
+                    {runnersUp.map((w, i) => {
+                      const isMe = w.uid === currentUid;
+                      const trophyColor = TROPHY_COLORS[w.place] ?? 'rgba(255,255,255,0.5)';
+                      const placeLabel = w.place === 2 ? '2nd' : '3rd';
+                      const initials = (w.name || 'U')
+                        .split(' ')
+                        .map((part) => part[0])
+                        .join('')
+                        .slice(0, 2)
+                        .toUpperCase();
+
+                      return (
+                        <TouchableOpacity
+                          key={w.uid}
+                          disabled={isMe}
+                          activeOpacity={isMe ? 1 : 0.7}
+                          onPress={() => navigation.push('UserProfile', { userId: w.uid })}
+                          style={[
+                            styles.runnerRow,
+                            isMe && styles.runnerRowMe,
+                          ]}
+                        >
+                          <Text style={styles.runnerMedal}>
+                            {MEDAL_ICONS[i + 1] ?? ''}
+                          </Text>
+
+                          {w.photoURL ? (
+                            <Image
+                              source={{ uri: w.photoURL }}
+                              style={[styles.runnerAvatar, { borderColor: trophyColor + '55' }]}
+                            />
+                          ) : (
+                            <View
+                              style={[
+                                styles.runnerInitialsCircle,
+                                { backgroundColor: trophyColor + '20', borderColor: trophyColor + '55' },
+                              ]}
+                            >
+                              <Text style={[styles.runnerInitials, { color: trophyColor }]}>
+                                {initials}
+                              </Text>
+                            </View>
+                          )}
+
+                          <Text style={styles.runnerName} numberOfLines={1}>
+                            {w.name}
+                          </Text>
+                          {isMe && (
+                            <View style={styles.celebrationYouBadge}>
+                              <Text style={styles.celebrationYouText}>YOU</Text>
+                            </View>
+                          )}
+                          <Text style={styles.runnerPts}>
+                            {placeLabel} · {w.weeklyPoints} pts
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* ── View Leaderboard link ──────────────────────────────── */}
+                <TouchableOpacity
+                  style={styles.celebrationLink}
+                  onPress={() => navigation.navigate('Leaderboard')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.celebrationLinkText}>View Leaderboard →</Text>
+                </TouchableOpacity>
+              </BlurView>
+            );
+          })()}
 
           {/* Live Runs Near You — horizontal scroll of gyms with active players */}
           <View style={styles.sectionHeader}>
@@ -1213,7 +1268,7 @@ actionCard: {
     marginBottom: SPACING.sm,
   },
 
-  // Weekly Winners celebration card
+  // Weekly Winners celebration card — outer shell
   celebrationCard: {
     borderRadius: RADIUS.md,
     padding: SPACING.md,
@@ -1223,13 +1278,14 @@ actionCard: {
     borderLeftWidth: 3,
     borderLeftColor: '#FFD700',
     marginTop: SPACING.md,
-    // Subtle gold glow
     shadowColor: '#FFD700',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 4,
   },
+
+  // ── Header row ────────────────────────────────────────────
   celebrationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1260,7 +1316,73 @@ actionCard: {
     color: 'rgba(255,255,255,0.5)',
     marginTop: 1,
   },
-  celebrationRow: {
+
+  // ── Hero section: 1st place (centered, prominent) ─────────
+  heroSection: {
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+  },
+  heroLabel: {
+    fontSize: 11,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFD700',
+    letterSpacing: 1.5,
+    marginBottom: SPACING.sm,
+  },
+  heroAvatarRing: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 2,
+    borderColor: '#FFD700',
+    backgroundColor: 'rgba(255,215,0,0.10)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
+  heroAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  heroInitialsCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(255,215,0,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heroInitials: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFD700',
+  },
+  heroNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: 2,
+  },
+  heroName: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    flexShrink: 1,
+  },
+  heroPlacePts: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 2,
+  },
+
+  // ── Runners-up section: 2nd & 3rd (horizontal rows) ───────
+  runnersUpSection: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(255,215,0,0.12)',
+    paddingTop: SPACING.xs,
+  },
+  runnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.xs + 2,
@@ -1268,46 +1390,44 @@ actionCard: {
     gap: SPACING.sm,
     borderRadius: RADIUS.sm,
   },
-  celebrationRowMe: {
+  runnerRowMe: {
     backgroundColor: 'rgba(255,215,0,0.08)',
   },
-  celebrationMedal: {
+  runnerMedal: {
     fontSize: FONT_SIZES.body,
     width: 24,
     textAlign: 'center',
   },
-  celebrationAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  runnerAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1.5,
   },
-  celebrationInitialsCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  runnerInitialsCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  celebrationInitials: {
+  runnerInitials: {
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.bold,
   },
-  celebrationNameCol: {
+  runnerName: {
     flex: 1,
-  },
-  celebrationNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  celebrationName: {
     fontSize: FONT_SIZES.body,
     color: '#FFFFFF',
     fontWeight: FONT_WEIGHTS.semibold,
-    flexShrink: 1,
   },
+  runnerPts: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.4)',
+  },
+
+  // ── Shared: YOU badge (used by both hero and runner rows) ──
   celebrationYouBadge: {
     backgroundColor: 'rgba(255,215,0,0.20)',
     borderRadius: RADIUS.full,
@@ -1320,11 +1440,8 @@ actionCard: {
     color: '#FFD700',
     letterSpacing: 0.5,
   },
-  celebrationPts: {
-    fontSize: FONT_SIZES.xs,
-    color: 'rgba(255,255,255,0.4)',
-    marginTop: 1,
-  },
+
+  // ── Footer link ───────────────────────────────────────────
   celebrationLink: {
     marginTop: SPACING.sm,
     alignItems: 'center',
