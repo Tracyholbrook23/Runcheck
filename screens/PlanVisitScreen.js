@@ -46,7 +46,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile, useLivePresenceMap } from '../hooks';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
-import { subscribeToAllUpcomingRuns } from '../services/runService';
+import { subscribeToAllUpcomingRuns, startOrJoinRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
 import { addDoc, updateDoc, collection, serverTimestamp, Timestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
@@ -120,6 +120,7 @@ export default function PlanVisitScreen({ navigation }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
+  const [startingRun, setStartingRun] = useState(false);
   const [step, setStep] = useState(1);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -221,17 +222,10 @@ export default function PlanVisitScreen({ navigation }) {
         console.error('Activity write error (plan):', err);
       }
 
-      const dayDesc = selectedDay?.label === 'Today' ? 'today' : `on ${selectedDay?.label}, ${selectedDay?.dateStr}`;
-
-      Alert.alert(
-        'Visit Scheduled!',
-        `You're planning to visit ${selectedGym.name} ${dayDesc} at ${selectedSlot.label}. Check in when you arrive to earn +15 pts!`,
-        [{ text: 'OK', onPress: () => setStep(1) }]
-      );
-      // Reset all selections so the wizard is clean for the next use
-      setSelectedGym(null);
-      setSelectedSlot(null);
-      setSelectedDay(null);
+      // Show the confirmation screen instead of a native alert.
+      // Selections are NOT cleared here — Step 4 needs them for display.
+      // They are reset when the user taps "Done" on the confirmation screen.
+      setStep(4);
     } catch (error) {
       Alert.alert('Error', error.message);
     }
@@ -511,35 +505,153 @@ export default function PlanVisitScreen({ navigation }) {
     );
   }
 
+  // ─── Step 4: Visit Scheduled — Confirmation + Start a Run prompt ────────────
+  if (step === 4) {
+    /** Build the day label for display */
+    const dayLabel = selectedDay?.label === 'Today'
+      ? 'Today'
+      : selectedDay?.label === 'Tomorrow'
+      ? 'Tomorrow'
+      : `${selectedDay?.label}, ${selectedDay?.dateStr}`;
+
+    return (
+      <SafeAreaView style={styles.safe}>
+        <LinearGradient
+          colors={['#3D1E00', '#1A0A00', colors.background]}
+          locations={[0, 0.55, 1]}
+          style={styles.headerGradient}
+        >
+          <View style={styles.titleRow}>
+            <View>
+              <Text style={styles.title}>Visit Scheduled</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={styles.confirmationBody}>
+          {/* Success icon */}
+          <View style={styles.confirmationIconWrap}>
+            <Ionicons name="checkmark-circle" size={48} color={colors.success} />
+          </View>
+
+          {/* Gym + time summary */}
+          <Text style={styles.confirmationGym}>{selectedGym?.name}</Text>
+          <Text style={styles.confirmationTime}>
+            {dayLabel} {'\u00B7'} {selectedSlot?.label}
+          </Text>
+
+          {/* Start a Run prompt */}
+          <View style={styles.confirmationPrompt}>
+            <Text style={styles.confirmationPromptTitle}>Want others to join you?</Text>
+            <Text style={styles.confirmationPromptDesc}>
+              Starting a run lets nearby players see your session and hop in.
+            </Text>
+          </View>
+
+          {/* Action buttons */}
+          <TouchableOpacity
+            style={[styles.confirmationPrimaryButton, startingRun && styles.buttonDisabled]}
+            activeOpacity={0.7}
+            disabled={startingRun}
+            onPress={async () => {
+              if (!selectedGym || !selectedSlot) return;
+              setStartingRun(true);
+              try {
+                // Create the run using the same service RunDetailsScreen uses.
+                // startOrJoinRun handles the merge rule — if a run already exists
+                // within ±60 min at this gym, the user joins it instead.
+                await startOrJoinRun(
+                  selectedGym.id,
+                  selectedGym.name,
+                  selectedSlot.date
+                );
+
+                // Navigate to RunDetailsScreen so the user sees their new run
+                navigation.getParent()?.navigate('Runs', {
+                  screen: 'RunDetails',
+                  params: {
+                    gymId: selectedGym.id,
+                    gymName: selectedGym.name,
+                    players: 0,
+                  },
+                });
+
+                // Reset wizard state so it's clean when the user returns
+                setSelectedGym(null);
+                setSelectedSlot(null);
+                setSelectedDay(null);
+                setStep(1);
+              } catch (err) {
+                Alert.alert('Error', err.message || 'Could not start run. Please try again.');
+              } finally {
+                setStartingRun(false);
+              }
+            }}
+          >
+            {startingRun ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="basketball-outline" size={18} color="#FFFFFF" style={{ marginRight: SPACING.xs }} />
+                <Text style={styles.confirmationPrimaryText}>Start a Run</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.confirmationSecondaryButton}
+            activeOpacity={0.7}
+            onPress={() => {
+              setSelectedGym(null);
+              setSelectedSlot(null);
+              setSelectedDay(null);
+              setStep(1);
+            }}
+          >
+            <Text style={styles.confirmationSecondaryText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   // ─── Step 3: Select Time ────────────────────────────────────────────────────
 
   /**
-   * handleTimeChange — Called when the native time picker value changes.
-   * Builds a selectedSlot object in the same shape the rest of the flow expects
-   * ({ date, label, timeSlot }) so handleCreateSchedule needs no changes.
+   * buildSlotFromDate — Combines the selected day with a given time and returns
+   * a selectedSlot object ({ date, label, timeSlot }). Returns null if the
+   * resulting time is in the past (today only).
    */
-  const handleTimeChange = (event, pickedDate) => {
-    // On Android, dismiss fires with type 'dismissed'
-    if (Platform.OS === 'android') setShowTimePicker(false);
-    if (event.type === 'dismissed' || !pickedDate) return;
-
-    // Combine selected day + picked time
+  const buildSlotFromDate = (timeDate) => {
+    if (!selectedDay || !timeDate) return null;
     const combined = new Date(selectedDay.dateObj);
-    combined.setHours(pickedDate.getHours(), pickedDate.getMinutes(), 0, 0);
+    combined.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
 
-    // Prevent selecting a time in the past when the day is today
-    const now = new Date();
-    if (combined <= now) {
-      Alert.alert('Invalid Time', 'Please select a future time.');
-      return;
-    }
+    // Prevent past times when the day is today
+    if (combined <= new Date()) return null;
 
     const displayHour = combined.getHours() > 12 ? combined.getHours() - 12 : combined.getHours() === 0 ? 12 : combined.getHours();
     const displayMin = combined.getMinutes() === 0 ? '00' : String(combined.getMinutes()).padStart(2, '0');
     const ampm = combined.getHours() >= 12 ? 'PM' : 'AM';
     const label = `${displayHour}:${displayMin} ${ampm}`;
 
-    setSelectedSlot({ date: combined, label, timeSlot: combined.toISOString() });
+    return { date: combined, label, timeSlot: combined.toISOString() };
+  };
+
+  /**
+   * handleTimeChange — Called when the native time picker value changes.
+   * Delegates to buildSlotFromDate so the slot shape stays consistent.
+   */
+  const handleTimeChange = (event, pickedDate) => {
+    if (Platform.OS === 'android') setShowTimePicker(false);
+    if (event.type === 'dismissed' || !pickedDate) return;
+
+    const slot = buildSlotFromDate(pickedDate);
+    if (!slot) {
+      Alert.alert('Invalid Time', 'Please select a future time.');
+      return;
+    }
+    setSelectedSlot(slot);
   };
 
   /** Default picker date: selected time if already set, or next round hour on selected day */
@@ -611,7 +723,16 @@ export default function PlanVisitScreen({ navigation }) {
 
             <TouchableOpacity
               style={[styles.timePickerButton, selectedSlot ? styles.timePickerButtonSelected : styles.timePickerButtonEmpty]}
-              onPress={() => setShowTimePicker(!showTimePicker)}
+              onPress={() => {
+                const opening = !showTimePicker;
+                setShowTimePicker(opening);
+                // Auto-select the default time when opening the picker so
+                // Confirm is enabled immediately without requiring a scroll.
+                if (opening && !selectedSlot) {
+                  const slot = buildSlotFromDate(pickerDefault);
+                  if (slot) setSelectedSlot(slot);
+                }
+              }}
               activeOpacity={0.7}
             >
               <View style={[styles.timePickerIconWrap, selectedSlot && styles.timePickerIconWrapSelected]}>
@@ -1094,6 +1215,76 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.success,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  // ── Step 4: Confirmation ─────────────────────────────────
+  confirmationBody: {
+    flex: 1,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.xl,
+  },
+  confirmationIconWrap: {
+    marginBottom: SPACING.md,
+  },
+  confirmationGym: {
+    fontSize: FONT_SIZES.h2,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  confirmationTime: {
+    fontSize: FONT_SIZES.body,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+    marginTop: SPACING.xs,
+  },
+  confirmationPrompt: {
+    marginTop: SPACING.xl,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  confirmationPromptTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+  },
+  confirmationPromptDesc: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+    lineHeight: 20,
+  },
+  confirmationPrimaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    marginTop: SPACING.xl,
+    alignSelf: 'stretch',
+    marginHorizontal: SPACING.md,
+  },
+  confirmationPrimaryText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FFFFFF',
+  },
+  confirmationSecondaryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.sm,
+    alignSelf: 'stretch',
+    marginHorizontal: SPACING.md,
+  },
+  confirmationSecondaryText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: colors.textSecondary,
   },
   buttonRow: {
     flexDirection: 'row',
