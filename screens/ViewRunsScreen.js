@@ -30,6 +30,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms, useProfile, useLivePresenceMap } from '../hooks';
@@ -197,37 +198,44 @@ export default function ViewRunsScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Header row — title/subtitle on the left, map icon on the right */}
-        <View style={styles.titleRow}>
-  <View>
-    <Text style={styles.title}>Find a Run</Text>
-    <Text style={styles.subtitle}>See who's playing right now</Text>
-  </View>
-  <TouchableOpacity onPress={() => navigation.navigate('GymMap')}>
-    <Ionicons name="map-outline" size={24} color={colors.textPrimary} />
-  </TouchableOpacity>
-</View>
-
-        {/* ── Search bar ────────────────────────────────────────────────── */}
-        <View style={styles.searchBar}>
-          <Ionicons name="search-outline" size={16} color={colors.textMuted} style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search gyms"
-            placeholderTextColor={colors.textMuted}
-            value={searchQuery}
-            onChangeText={(text) => setSearchQuery(sanitizeSearch(text))}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
-            autoCorrect={false}
-            autoCapitalize="words"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+        {/* Header gradient — covers title row and search bar */}
+        <LinearGradient
+          colors={['#3D1E00', '#1A0A00', colors.background]}
+          locations={[0, 0.55, 1]}
+          style={styles.headerGradient}
+        >
+          {/* Header row — title/subtitle on the left, map icon on the right */}
+          <View style={styles.titleRow}>
+            <View>
+              <Text style={styles.title}>Find a Run</Text>
+              <Text style={styles.subtitle}>See who's playing right now</Text>
+            </View>
+            <TouchableOpacity onPress={() => navigation.navigate('GymMap')}>
+              <Ionicons name="map-outline" size={24} color="#FFFFFF" />
             </TouchableOpacity>
-          )}
-        </View>
+          </View>
+
+          {/* ── Search bar ────────────────────────────────────────────────── */}
+          <View style={styles.searchBar}>
+            <Ionicons name="search-outline" size={16} color={colors.textMuted} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search gyms"
+              placeholderTextColor={colors.textMuted}
+              value={searchQuery}
+              onChangeText={(text) => setSearchQuery(sanitizeSearch(text))}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+              autoCorrect={false}
+              autoCapitalize="words"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </LinearGradient>
 
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -376,7 +384,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   container: {
     flex: 1,
-    padding: SPACING.md,
+  },
+  headerGradient: {
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
   },
   centered: {
     flex: 1,
@@ -397,12 +409,12 @@ loadingText: {
   title: {
     fontSize: FONT_SIZES.h1,
     fontWeight: FONT_WEIGHTS.bold,
-    color: colors.textPrimary,
+    color: '#FFFFFF',
     letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: FONT_SIZES.body,
-    color: colors.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
   },
   // ── Search bar ────────────────────────────────────────────────────
   searchBar: {
@@ -431,6 +443,7 @@ loadingText: {
     paddingVertical: 0, // remove default Android padding
   },
   scroll: {
+    paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.lg,
   },
   emptyState: {
