@@ -162,7 +162,7 @@ Firebase-only backend. No custom server. Logic lives in:
   ],
 }
 ```
-> Written exclusively by `scripts/weeklyReset.js` (manual, not automated). Read on client by `weeklyWinnersService.js`. The `firstPlace` field is a convenience duplicate of `winners[0]` for lightweight reads that only need the top winner.
+> Written by the `weeklyReset` Cloud Function (automated every Monday 00:05 CT) and optionally by `scripts/weeklyReset.js` (manual backup/admin tool). Read on client by `weeklyWinnersService.js`. The `firstPlace` field is a convenience duplicate of `winners[0]` for lightweight reads that only need the top winner.
 
 ---
 
@@ -259,7 +259,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useLocation()` | `{ location, error, loading }` | Expo Location |
 | `useGymRuns(gymId)` | `{ runs, loading, joinedRunIds, userParticipants }` | `subscribeToGymRuns` + `subscribeToUserRunsAtGym` |
 | `useLivePresenceMap()` | `{ presenceMap, countMap }` | Single `presence` subscription (status==active, limit 200); client-side `expiresAt` guard; deduplicates by `odId` per gym. **Canonical source** for all-gym player counts — use `countMap[gymId]` everywhere, never `gym.currentPresenceCount`. |
-| `useWeeklyWinners()` | `{ winners, weekOf, loading }` | `getLatestWeeklyWinners` (one-shot fetch on mount) |
+| `useWeeklyWinners()` | `{ winners, weekOf, recordedAt, loading }` | `getLatestWeeklyWinners` (one-shot fetch on mount). `recordedAt` used by HomeScreen to show a 24-hour celebration card after each weekly reset. |
 
 ---
 

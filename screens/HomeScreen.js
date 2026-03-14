@@ -50,6 +50,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { usePresence, useGyms, useLivePresenceMap } from '../hooks';
+import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
@@ -124,6 +125,13 @@ const HomeScreen = ({ navigation }) => {
   } = usePresence();
 
   const { gyms } = useGyms();
+
+  // Weekly winners — used for the 24-hour celebration card after each reset.
+  const {
+    winners: weeklyWinners,
+    weekOf: winnersWeekOf,
+    recordedAt: winnersRecordedAt,
+  } = useWeeklyWinners();
 
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
@@ -283,6 +291,28 @@ const HomeScreen = ({ navigation }) => {
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
   };
+
+  // ── Weekly Winners celebration card visibility ─────────────────────────
+  // Show for 24 hours after winners are recorded, then auto-hide.
+  const CELEBRATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const showWinnersCelebration = (() => {
+    if (weeklyWinners.length === 0) return false;
+    if (!winnersRecordedAt) return false;
+    const recordedMs = winnersRecordedAt.toDate
+      ? winnersRecordedAt.toDate().getTime()
+      : new Date(winnersRecordedAt).getTime();
+    return Date.now() - recordedMs < CELEBRATION_WINDOW_MS;
+  })();
+
+  /** Converts "2026-03-09" → "Mar 9" for the celebration card subtitle. */
+  const formatWeekOf = (weekOfStr) => {
+    if (!weekOfStr) return '';
+    const [, m, d] = weekOfStr.split('-').map(Number);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${months[m - 1]} ${d}`;
+  };
+
+  const MEDAL_ICONS = ['🥇', '🥈', '🥉'];
 
   // Sum of all per-gym real-time counts — shown in the LIVE banner.
   const totalActive = Object.values(liveCountMap).reduce((s, n) => s + n, 0);
@@ -575,6 +605,41 @@ const HomeScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* Weekly Winners Celebration — visible for 24h after each reset */}
+          {showWinnersCelebration && (
+            <BlurView intensity={60} tint="dark" style={styles.celebrationCard}>
+              <View style={styles.celebrationHeader}>
+                <Ionicons name="trophy" size={22} color="#FFD700" />
+                <View style={styles.celebrationHeaderText}>
+                  <Text style={styles.celebrationTitle}>Last Week's Winners</Text>
+                  {winnersWeekOf && (
+                    <Text style={styles.celebrationSubtitle}>
+                      Week of {formatWeekOf(winnersWeekOf)}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+              {weeklyWinners.map((w, i) => (
+                <View key={w.uid} style={styles.celebrationRow}>
+                  <Text style={styles.celebrationMedal}>{MEDAL_ICONS[i] ?? ''}</Text>
+                  <Text style={styles.celebrationName} numberOfLines={1}>
+                    {w.name}
+                  </Text>
+                  <Text style={styles.celebrationPts}>{w.weeklyPoints} pts</Text>
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={styles.celebrationLink}
+                onPress={() => goToTab('Leaderboard')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.celebrationLinkText}>View Leaderboard →</Text>
+              </TouchableOpacity>
+            </BlurView>
+          )}
 
           {/* Live Runs Near You — horizontal scroll of gyms with active players */}
           <View style={styles.sectionHeader}>
@@ -1093,6 +1158,64 @@ actionCard: {
     letterSpacing: 0.2,
     marginTop: SPACING.xl,
     marginBottom: SPACING.sm,
+  },
+
+  // Weekly Winners celebration card
+  celebrationCard: {
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,215,0,0.25)',
+    marginTop: SPACING.md,
+  },
+  celebrationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  celebrationHeaderText: {
+    flex: 1,
+  },
+  celebrationTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+  },
+  celebrationSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 1,
+  },
+  celebrationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+  celebrationMedal: {
+    fontSize: FONT_SIZES.body,
+    width: 28,
+  },
+  celebrationName: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    color: '#FFFFFF',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  celebrationPts: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.4)',
+  },
+  celebrationLink: {
+    marginTop: SPACING.sm,
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  celebrationLinkText: {
+    fontSize: FONT_SIZES.small,
+    color: '#FFD700',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 
   // Hot Courts horizontal scroll

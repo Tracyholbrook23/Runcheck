@@ -229,7 +229,8 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `scripts/testFirestore.js` | Ad-hoc Firestore query testing |
 | `scripts/testFunctions.js` | Ad-hoc Cloud Function call testing |
 | `scripts/verifyGymCoordinates.js` | Verifies gym location data |
-| `scripts/weeklyReset.js` | Weekly stat reset (run server-side or as a script) |
+| `scripts/weeklyReset.js` | Weekly stat reset — manual admin backup (dry-run by default; `COMMIT=true` to write) |
+| `runcheck-backend/functions/src/weeklyReset.ts` | **Automated** weekly reset Cloud Function — runs every Monday 00:05 CT via Cloud Scheduler; saves top 3 winners + batch-resets `weeklyPoints` |
 | `seedProductionGyms.js` | Production gym seed (root-level script) |
 
 ### Test Layer
