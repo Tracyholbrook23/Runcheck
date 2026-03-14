@@ -14,6 +14,7 @@ import React, { useEffect, useMemo } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
@@ -21,9 +22,40 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { usePresence, useGyms, useProfile } from '../hooks';
+import { Logo } from '../components';
+import { usePresence, useGyms, useProfile, useLivePresenceMap } from '../hooks';
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+
+/**
+ * GymThumbnail — Small rounded gym image, falling back to an icon.
+ * Matches the same pattern used in ProfileScreen's My Courts section.
+ */
+function GymThumbnail({ gym, fallbackIcon, iconColor, style }) {
+  const source = GYM_LOCAL_IMAGES[gym.id]
+    ? GYM_LOCAL_IMAGES[gym.id]
+    : gym.imageUrl
+    ? { uri: gym.imageUrl }
+    : null;
+
+  if (source) {
+    return (
+      <Image
+        source={source}
+        style={[{ width: 36, height: 36, borderRadius: RADIUS.sm }, style]}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  return (
+    <View style={[{ width: 36, height: 36, borderRadius: RADIUS.sm, justifyContent: 'center', alignItems: 'center' }, style]}>
+      <Ionicons name={fallbackIcon} size={18} color={iconColor} />
+    </View>
+  );
+}
 
 /**
  * CheckInScreen — Session status screen.
@@ -38,6 +70,7 @@ export default function CheckInScreen({ navigation }) {
 
   const { followedGyms } = useProfile();
   const { gyms } = useGyms();
+  const { countMap: liveCountMap } = useLivePresenceMap();
 
   const {
     presence,
@@ -117,10 +150,16 @@ export default function CheckInScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.container}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.screenTitle}>Check In</Text>
-          </View>
+          {/* Header with gradient */}
+          <LinearGradient
+            colors={['#3D1E00', '#1A0A00', colors.background]}
+            locations={[0, 0.55, 1]}
+            style={styles.headerGradient}
+          >
+            <View style={styles.header}>
+              <Text style={styles.screenTitle}>Check In</Text>
+            </View>
+          </LinearGradient>
 
           <View style={styles.body}>
             {/* Live status pill */}
@@ -180,15 +219,21 @@ export default function CheckInScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.screenTitle}>Check In</Text>
-        </View>
+        {/* Header with gradient */}
+        <LinearGradient
+          colors={['#3D1E00', '#1A0A00', colors.background]}
+          locations={[0, 0.55, 1]}
+          style={styles.headerGradient}
+        >
+          <View style={styles.header}>
+            <Text style={styles.screenTitle}>Check In</Text>
+          </View>
+        </LinearGradient>
 
         <View style={styles.body}>
-          {/* Icon */}
+          {/* Logo */}
           <View style={styles.iconWrap}>
-            <Ionicons name="basketball-outline" size={48} color={colors.textMuted} />
+            <Logo size="medium" />
           </View>
 
           <Text style={styles.notCheckedTitle}>Not Checked In</Text>
@@ -210,23 +255,36 @@ export default function CheckInScreen({ navigation }) {
 
           {/* Followed gym quick-nav shortcuts */}
           {followedGymItems.length > 0 && (
-            <View style={styles.shortcutsSection}>
-              <Text style={styles.shortcutsLabel}>Your Gyms</Text>
-              {followedGymItems.map((gym) => (
+            <View style={styles.courtsCard}>
+              <Text style={styles.courtsCardTitle}>Your Courts</Text>
+              {followedGymItems.map((gym, index) => (
                 <TouchableOpacity
                   key={gym.id}
-                  style={styles.gymShortcut}
-                  activeOpacity={0.75}
+                  activeOpacity={0.7}
                   onPress={() =>
                     navigation.getParent()?.navigate('Runs', {
                       screen: 'RunDetails',
                       params: { gymId: gym.id, gymName: gym.name, players: 0 },
                     })
                   }
+                  style={[
+                    styles.courtRow,
+                    index < followedGymItems.length - 1 && styles.courtRowBorder,
+                  ]}
                 >
-                  <Ionicons name="location-outline" size={16} color={colors.primary} style={{ marginRight: SPACING.xs }} />
-                  <Text style={styles.gymShortcutText}>{gym.name}</Text>
-                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                  <GymThumbnail
+                    gym={gym}
+                    fallbackIcon="basketball-outline"
+                    iconColor={colors.primary}
+                    style={!gym.imageUrl && !GYM_LOCAL_IMAGES[gym.id] ? styles.courtIcon : null}
+                  />
+                  <View style={styles.courtInfo}>
+                    <Text style={styles.courtName} numberOfLines={1}>{gym.name}</Text>
+                    <Text style={styles.courtMeta}>{gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}</Text>
+                  </View>
+                  <View style={styles.courtChevron}>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -260,17 +318,17 @@ const getStyles = (colors, isDark) =>
     },
 
     // ── Header ────────────────────────────────────────────
+    headerGradient: {
+      paddingTop: SPACING.lg,
+      paddingBottom: SPACING.xl * 4,
+    },
     header: {
       paddingHorizontal: SPACING.lg,
-      paddingTop: SPACING.lg,
-      paddingBottom: SPACING.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
     },
     screenTitle: {
       fontSize: FONT_SIZES.h2,
       fontWeight: FONT_WEIGHTS.bold,
-      color: colors.textPrimary,
+      color: '#FFFFFF',
       letterSpacing: -0.3,
     },
 
@@ -278,7 +336,8 @@ const getStyles = (colors, isDark) =>
     body: {
       flex: 1,
       paddingHorizontal: SPACING.lg,
-      paddingTop: SPACING.xl,
+      paddingTop: SPACING.sm,
+      marginTop: -SPACING.xl * 3,
       alignItems: 'center',
     },
 
@@ -329,10 +388,9 @@ const getStyles = (colors, isDark) =>
 
     // ── Not-checked-in state ──────────────────────────────
     iconWrap: {
-      width: 88,
-      height: 88,
+      width: 136,
+      height: 136,
       borderRadius: RADIUS.xl,
-      backgroundColor: colors.surfaceLight,
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: SPACING.lg,
@@ -399,34 +457,57 @@ const getStyles = (colors, isDark) =>
       paddingHorizontal: SPACING.md,
     },
 
-    // ── Followed gym shortcuts ────────────────────────────
-    shortcutsSection: {
+    // ── Courts card (matches ProfileScreen My Courts) ─────
+    courtsCard: {
       width: '100%',
-      marginTop: SPACING.lg,
-    },
-    shortcutsLabel: {
-      fontSize: FONT_SIZES.xs,
-      fontWeight: FONT_WEIGHTS.semibold,
-      color: colors.textMuted,
-      textTransform: 'uppercase',
-      letterSpacing: 1,
-      marginBottom: SPACING.xs,
-    },
-    gymShortcut: {
-      flexDirection: 'row',
-      alignItems: 'center',
       backgroundColor: colors.surface,
       borderRadius: RADIUS.md,
-      paddingVertical: SPACING.md,
-      paddingHorizontal: SPACING.md,
-      marginBottom: SPACING.xs,
-      borderWidth: 1,
-      borderColor: colors.border,
+      padding: SPACING.md,
+      marginTop: SPACING.lg,
+      ...(isDark
+        ? { borderWidth: 0 }
+        : { borderWidth: 1, borderColor: colors.border }),
     },
-    gymShortcutText: {
+    courtsCardTitle: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: SPACING.sm,
+    },
+    courtRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: SPACING.sm,
+      gap: SPACING.sm,
+    },
+    courtRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    courtIcon: {
+      width: 36,
+      height: 36,
+      borderRadius: RADIUS.sm,
+      backgroundColor: colors.primary + '18',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    courtInfo: {
       flex: 1,
+    },
+    courtName: {
       fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
       color: colors.textPrimary,
-      fontWeight: FONT_WEIGHTS.medium,
+    },
+    courtMeta: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    courtChevron: {
+      paddingLeft: SPACING.xs,
     },
   });
