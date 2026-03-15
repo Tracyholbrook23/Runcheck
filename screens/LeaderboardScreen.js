@@ -1,18 +1,19 @@
 /**
  * LeaderboardScreen.js — Community Rankings & Point Guide
  *
- * Displays two stacked sections:
+ * Displays stacked sections:
  *
  *  1. Leaderboard — Top 20 users ordered by totalPoints (Firestore query).
  *     Each row shows: rank number (trophy icon for top 3), initials avatar or
  *     photo, display name, rank badge pill, and point total.
  *     The signed-in user's row is highlighted so they can spot themselves.
  *
- *  2. How to Earn Points — A card showing each action with an Ionicons icon
- *     inside a colored circle, the action label, and a styled points badge.
+ *  2. Rank Tiers — Unified tappable list of all 6 tiers. Tapping a row opens
+ *     a bottom-sheet modal with full description, player-facing perks, and
+ *     next-rank progression.
  *
- *  3. Rank Tiers — A card listing each tier with its colored dot indicator,
- *     name, and point range.
+ *  3. How to Earn Points — A card showing each action with an Ionicons icon
+ *     inside a colored circle, the action label, and a styled points badge.
  *
  * The Firestore query uses onSnapshot for real-time updates so the board
  * stays live without a manual refresh.
@@ -25,7 +26,7 @@
  *     instead of emoji so they render consistently across platforms.
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -36,6 +37,9 @@ import {
   ActivityIndicator,
   Image,
   Animated,
+  Modal,
+  Pressable,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SHADOWS } from '../constants/theme';
@@ -45,21 +49,39 @@ import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestor
 import { RANKS } from '../config/ranks';
 import { ACTION_LABELS } from '../config/points';
 import { getUserRank, getProgressToNextRank, getNextRank } from '../utils/rankHelpers';
-import { getRankPerksForDisplay } from '../utils/perkHelpers';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 
 // ─── Trophy colors for top-3 positions ───────────────────────────────────────
 const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
 
-// ─── Rank perk descriptions — flavor copy per tier ───────────────────────────
-// Communicates reputation, trust, and progression for each tier.
-const RANK_DESCRIPTIONS = {
-  Bronze:   "You're in the game. Start building your rep.",
-  Silver:   'Community recognized. Players know you show up.',
-  Gold:     'Elite status. Your name carries weight on the court.',
-  Platinum: "Top tier. RunCheck's most trusted hoopers.",
-  Diamond:  'Legendary grinder. The court respects your dedication.',
-  Legend:   'Hall of Fame. You are RunCheck royalty.',
+// ─── Rank copy — short taglines for the list, full descriptions for the modal ─
+const RANK_TAGLINES = {
+  Bronze:   'Just getting started.',
+  Silver:   'Players know you show up.',
+  Gold:     'Reliable hooper.',
+  Platinum: 'Most trusted on the court.',
+  Diamond:  'The court respects your grind.',
+  Legend:   'RunCheck royalty.',
+};
+
+const RANK_FULL_DESCRIPTIONS = {
+  Bronze:   "You're in the game. Keep showing up and build your reputation.",
+  Silver:   'The community recognizes you. You show up consistently and players respect that.',
+  Gold:     'Elite status. Your name carries weight on the court and your presence matters.',
+  Platinum: "Top tier. You're one of RunCheck's most trusted hoopers.",
+  Diamond:  'Legendary grinder. Your dedication to the game sets you apart from everyone else.',
+  Legend:   'Hall of Fame. You are RunCheck royalty — the best of the best.',
+};
+
+// ─── Player-facing perk labels per tier (no developer-facing IDs) ────────────
+// Keyed by rank id. Bronze intentionally empty.
+const RANK_PERKS_DISPLAY = {
+  bronze:   [],
+  silver:   ['Player Spotlight eligibility', 'Private run access'],
+  gold:     ['Player Spotlight eligibility', 'Private run access', 'Trusted player recognition'],
+  platinum: ['Player Spotlight eligibility', 'Expanded private run access', 'Trusted player recognition', 'Profile glow effect'],
+  diamond:  ['Player Spotlight eligibility', 'Priority private run access', 'Trusted player recognition', 'Profile glow effect'],
+  legend:   ['Player Spotlight eligibility', 'Top-tier private run access', 'Trusted player recognition', 'Profile glow effect', 'Hall of Fame recognition'],
 };
 
 // ─── RankBadgePill ────────────────────────────────────────────────────────────
@@ -203,6 +225,8 @@ export default function LeaderboardScreen({ navigation }) {
   const [allTimeLoading, setAllTimeLoading] = useState(true);
   const [weeklyUsers,    setWeeklyUsers]    = useState([]);
   const [weeklyLoading,  setWeeklyLoading]  = useState(true);
+  const [selectedRank,   setSelectedRank]   = useState(null);   // rank object for bottom sheet
+  const modalSlide = useRef(new Animated.Value(0)).current;
   const currentUid = auth.currentUser?.uid;
 
   // Weekly winners — fetches most recent weeklyWinners doc once on mount
@@ -273,6 +297,19 @@ export default function LeaderboardScreen({ navigation }) {
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     return `${months[m - 1]} ${d}`;
   };
+
+  // ── Rank detail bottom sheet helpers ──────────────────────────────────────
+  const openRankSheet = useCallback((rank) => {
+    setSelectedRank(rank);
+    modalSlide.setValue(0);
+    Animated.timing(modalSlide, { toValue: 1, duration: 280, useNativeDriver: true }).start();
+  }, []);
+
+  const closeRankSheet = useCallback(() => {
+    Animated.timing(modalSlide, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+      setSelectedRank(null);
+    });
+  }, []);
 
   // Active list driven by tab selection
   const displayUsers   = activeTab === 'allTime' ? allTimeUsers   : weeklyUsers;
@@ -566,26 +603,38 @@ export default function LeaderboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ── Rank Tiers ───────────────────────────────────────────── */}
+        {/* ── Rank Tiers — unified tappable list ───────────────── */}
         <Text style={styles.sectionTitle}>Rank Tiers</Text>
         <View style={styles.listCard}>
-          {RANKS.map((rank, index) => (
-            <View
-              key={rank.name}
-              style={[
-                styles.tierRow,
-                index < RANKS.length - 1 && styles.rowBorder,
-              ]}
-            >
-              <Text style={styles.tierIcon}>{rank.icon}</Text>
-              <Text style={[styles.tierName, { color: rank.color }]}>{rank.name}</Text>
-              <Text style={styles.tierRange}>
-                {rank.nextRankAt
-                  ? `${rank.minPoints}–${rank.nextRankAt - 1} pts`
-                  : `${rank.minPoints}+ pts`}
-              </Text>
-            </View>
-          ))}
+          {RANKS.map((r, index) => {
+            const isCurrentRank = r.name === currentRank.name;
+            return (
+              <TouchableOpacity
+                key={r.name}
+                activeOpacity={0.7}
+                onPress={() => openRankSheet(r)}
+                style={[
+                  styles.tierRow,
+                  isCurrentRank && { backgroundColor: r.color + '18' },
+                  index < RANKS.length - 1 && styles.rowBorder,
+                ]}
+              >
+                <Text style={styles.tierIcon}>{r.icon}</Text>
+                <View style={styles.tierInfo}>
+                  <View style={styles.tierNameRow}>
+                    <Text style={[styles.tierName, { color: r.color }]}>{r.name}</Text>
+                    {isCurrentRank && (
+                      <View style={[styles.currentBadge, { borderColor: r.color + '60' }]}>
+                        <Text style={[styles.currentBadgeText, { color: r.color }]}>You</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.tierTagline}>{RANK_TAGLINES[r.name]}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* ── How to Earn Points ───────────────────────────────────── */}
@@ -620,41 +669,6 @@ export default function LeaderboardScreen({ navigation }) {
                     +{item.points} pts
                   </Text>
                 </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* ── Why Rank Matters ─────────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>Why Rank Matters</Text>
-        <View style={styles.listCard}>
-          {RANKS.map((r, index) => {
-            const isCurrentRank = r.name === currentRank.name;
-            const displayPerks = getRankPerksForDisplay(r);
-            return (
-              <View
-                key={r.name}
-                style={[
-                  styles.perksRow,
-                  isCurrentRank && { backgroundColor: r.color + '18' },
-                  index < RANKS.length - 1 && styles.rowBorder,
-                ]}
-              >
-                <Text style={styles.perksIcon}>{r.icon}</Text>
-                <View style={styles.perksInfo}>
-                  <Text style={[styles.tierName, { color: r.color }]}>{r.name}</Text>
-                  <Text style={styles.perksDesc}>{RANK_DESCRIPTIONS[r.name]}</Text>
-                  {displayPerks.length > 0 && (
-                    <Text style={styles.perksList}>
-                      {displayPerks.map((p) => p.label).join(' · ')}
-                    </Text>
-                  )}
-                </View>
-                {isCurrentRank && (
-                  <View style={[styles.currentBadge, { borderColor: r.color + '60' }]}>
-                    <Text style={[styles.currentBadgeText, { color: r.color }]}>You</Text>
-                  </View>
-                )}
               </View>
             );
           })}
@@ -703,6 +717,113 @@ export default function LeaderboardScreen({ navigation }) {
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
+
+      {/* ── Rank Detail Bottom Sheet ──────────────────────────────── */}
+      <Modal
+        visible={selectedRank !== null}
+        transparent
+        animationType="none"
+        onRequestClose={closeRankSheet}
+        statusBarTranslucent
+      >
+        <Pressable style={styles.sheetOverlay} onPress={closeRankSheet}>
+          <Animated.View
+            style={[
+              styles.sheetContainer,
+              {
+                transform: [{
+                  translateY: modalSlide.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [400, 0],
+                  }),
+                }],
+                opacity: modalSlide,
+              },
+            ]}
+          >
+            {/* Prevent taps inside the sheet from closing it */}
+            <Pressable onPress={(e) => e.stopPropagation()}>
+              {/* Drag handle */}
+              <View style={styles.sheetHandle} />
+
+              {selectedRank && (() => {
+                const r = selectedRank;
+                const isMyRank = r.name === currentRank.name;
+                const perks = RANK_PERKS_DISPLAY[r.id] || [];
+                const nextRank = getNextRank(r.minPoints);
+                // Show user's actual progress if this is their rank
+                const sheetProgress = isMyRank ? progress : null;
+
+                return (
+                  <View style={styles.sheetContent}>
+                    {/* ── Header: icon + name + point range ─── */}
+                    <Text style={styles.sheetIcon}>{r.icon}</Text>
+                    <Text style={[styles.sheetRankName, { color: r.color }]}>{r.name}</Text>
+                    <Text style={styles.sheetRange}>
+                      {r.nextRankAt
+                        ? `${r.minPoints.toLocaleString()} – ${(r.nextRankAt - 1).toLocaleString()} pts`
+                        : `${r.minPoints.toLocaleString()}+ pts`}
+                    </Text>
+
+                    {/* ── Full description ─── */}
+                    <Text style={styles.sheetDesc}>{RANK_FULL_DESCRIPTIONS[r.name]}</Text>
+
+                    {/* ── Perks section ─── */}
+                    <View style={styles.sheetDivider} />
+                    <Text style={styles.sheetSectionLabel}>
+                      {perks.length > 0 ? 'UNLOCKS' : 'UNLOCKS'}
+                    </Text>
+                    {perks.length > 0 ? (
+                      perks.map((perk, i) => (
+                        <View key={i} style={styles.sheetPerkRow}>
+                          <Text style={styles.sheetPerkBullet}>✦</Text>
+                          <Text style={styles.sheetPerkText}>{perk}</Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={styles.sheetNoPerk}>No unlocks yet — keep grinding!</Text>
+                    )}
+
+                    {/* ── Next rank / max rank ─── */}
+                    <View style={styles.sheetDivider} />
+                    {nextRank ? (
+                      <>
+                        <Text style={styles.sheetSectionLabel}>NEXT RANK</Text>
+                        <View style={styles.sheetNextRow}>
+                          <Text style={styles.sheetNextIcon}>{nextRank.icon}</Text>
+                          <Text style={[styles.sheetNextName, { color: nextRank.color }]}>
+                            {nextRank.name}
+                          </Text>
+                          <Text style={styles.sheetNextPts}>
+                            · {nextRank.minPoints.toLocaleString()} pts
+                          </Text>
+                        </View>
+                        {isMyRank && sheetProgress !== null && (
+                          <View style={styles.sheetProgressWrap}>
+                            <View style={styles.sheetProgressTrack}>
+                              <View
+                                style={[
+                                  styles.sheetProgressFill,
+                                  { width: `${Math.round(sheetProgress * 100)}%`, backgroundColor: r.color },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.sheetProgressLabel}>
+                              {ptsToNext > 0 ? `${ptsToNext.toLocaleString()} pts to ${nextRank.name}` : 'Almost there!'}
+                            </Text>
+                          </View>
+                        )}
+                      </>
+                    ) : (
+                      <Text style={styles.sheetMaxRank}>Max rank achieved 👑</Text>
+                    )}
+                  </View>
+                );
+              })()}
+            </Pressable>
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -966,58 +1087,35 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  // ── Tier ladder rows ──────────────────────────────────────────────────────
+  // ── Unified Rank Tiers — tappable rows ───────────────────────────────────
   tierRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.sm + 4,
     paddingHorizontal: SPACING.md,
-    gap: SPACING.md,
+    gap: SPACING.sm,
   },
-  tierDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    flexShrink: 0,
-  },
-  tierName: {
-    fontSize: FONT_SIZES.body,
-    fontWeight: FONT_WEIGHTS.bold,
-    width: 76,
-  },
-  tierRange: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
-  },
-
-  // ── Rank icon — replaces the small colored dot in the Rank Tiers section ────
   tierIcon: {
     fontSize: 22,
     width: 28,
     textAlign: 'center',
   },
-
-  // ── Why Rank Matters — perks rows ─────────────────────────────────────────
-  perksRow: {
+  tierInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  tierNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.xs + 2,
-    paddingHorizontal: SPACING.md,
-    gap: SPACING.xs,
+    gap: 8,
   },
-  perksInfo: {
-    flex: 1,
-    gap: 1,
+  tierName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
   },
-  perksDesc: {
-    fontSize: FONT_SIZES.xs - 1,
+  tierTagline: {
+    fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
-  },
-  perksList: {
-    fontSize: FONT_SIZES.xs - 1,
-    color: colors.textMuted,
-    marginTop: 2,
-    fontStyle: 'italic',
   },
   currentBadge: {
     borderWidth: 1,
@@ -1045,6 +1143,134 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
     textAlign: 'center',
+  },
+
+  // ── Rank Detail Bottom Sheet ───────────────────────────────────────────────
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sheetContainer: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: RADIUS.lg + 4,
+    borderTopRightRadius: RADIUS.lg + 4,
+    paddingBottom: SPACING.xl + SPACING.lg,
+    maxHeight: Dimensions.get('window').height * 0.7,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.textMuted + '40',
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  sheetContent: {
+    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+  },
+  sheetIcon: {
+    fontSize: 44,
+    marginBottom: SPACING.xs,
+  },
+  sheetRankName: {
+    fontSize: FONT_SIZES.subtitle + 2,
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 0.4,
+    marginBottom: 4,
+  },
+  sheetRange: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  sheetDesc: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  sheetDivider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: SPACING.md,
+  },
+  sheetSectionLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  sheetPerkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  sheetPerkBullet: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+  },
+  sheetPerkText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+  },
+  sheetNoPerk: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textMuted,
+    alignSelf: 'flex-start',
+    fontStyle: 'italic',
+  },
+  sheetNextRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.xs,
+  },
+  sheetNextIcon: {
+    fontSize: 18,
+  },
+  sheetNextName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  sheetNextPts: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+  },
+  sheetProgressWrap: {
+    width: '100%',
+    marginTop: SPACING.xs,
+  },
+  sheetProgressTrack: {
+    width: '100%',
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  sheetProgressFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
+  },
+  sheetProgressLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+  },
+  sheetMaxRank: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textMuted,
+    fontWeight: FONT_WEIGHTS.semibold,
+    alignSelf: 'flex-start',
   },
 
   // ── Rewards & Recognition rows ────────────────────────────────────────────

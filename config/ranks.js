@@ -8,8 +8,8 @@
  *   🥉 Bronze   —     0–199
  *   🥈 Silver   —   200–599
  *   ✨ Gold     —   600–1,499
- *   💎 Platinum — 1,500–3,499
- *   💠 Diamond  — 3,500–7,499
+ *   🔷 Platinum — 1,500–3,499
+ *   💎 Diamond  — 3,500–7,499
  *   👑 Legend   — 7,500+
  *
  * Each rank carries a `perks` array of perk IDs (defined in config/perks.js).
@@ -73,7 +73,7 @@ const RANKS = [
     minPoints: 1500,
     maxPoints: 3499,
     nextRankAt: 3500,
-    icon: '💎',
+    icon: '🔷',
     color: '#E8F4FD',
     glowColor: '#E8F4FD60',
     perks: ['player_spotlight_eligible', 'private_runs_weekly_2', 'profile_border', 'profile_glow'],
@@ -85,7 +85,7 @@ const RANKS = [
     minPoints: 3500,
     maxPoints: 7499,
     nextRankAt: 7500,
-    icon: '💠',
+    icon: '💎',
     color: '#B9F2FF',
     glowColor: '#B9F2FF60',
     perks: ['player_spotlight_eligible', 'private_runs_weekly_3', 'profile_border', 'profile_glow'],
