@@ -111,7 +111,12 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Utility Layer
 | File | Role |
 |------|------|
-| `utils/badges.js` | Single source of truth for rank tiers and point values (`POINT_VALUES`, `RANKS`, `getUserRank`) |
+| `config/ranks.js` | Single source of truth for rank tier definitions (`RANKS` — 6 tiers: Bronze→Legend, with perks) |
+| `config/points.js` | Single source of truth for point values (`POINT_VALUES`, `ACTION_LABELS`) |
+| `config/perks.js` | Perk definitions registry (`PERK_DEFINITIONS`, `PREMIUM_OVERRIDES`) |
+| `utils/rankHelpers.js` | Rank computation helpers (`getUserRank`, `getProgressToNextRank`, `getNextRank`, `getRankById`) |
+| `utils/perkHelpers.js` | Perk resolution helpers (`getUserPerks`, `hasPerk`, `getFeatureQuota`, `getRankPerksForDisplay`) |
+| `utils/badges.js` | **DEPRECATED** re-export shim — forwards to `config/ranks`, `config/points`, `utils/rankHelpers` |
 
 ### Key Firestore Collections
 - `users/{uid}` — profile, reliability sub-object, activePresence (denormalized)

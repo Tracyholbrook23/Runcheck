@@ -71,7 +71,8 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 import { registerPushToken } from '../utils/notifications';
-import { getUserRank, getProgressToNextRank, RANKS } from '../utils/badges';
+import { RANKS } from '../config/ranks';
+import { getUserRank, getProgressToNextRank } from '../utils/rankHelpers';
 import { awardPoints } from '../services/pointsService';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -210,10 +211,13 @@ export default function ProfileScreen({ navigation }) {
   const rankProgress = getProgressToNextRank(totalPoints);
   const pointsToNext = userRank.nextRankAt ? userRank.nextRankAt - totalPoints : 0;
 
-  // Platinum pulsing glow — scale between 1.0 and 1.05 on loop
+  // High-tier pulsing glow — scale between 1.0 and 1.05 on loop
+  // Applies to Platinum, Diamond, and Legend tiers
+  const HIGH_GLOW_TIERS = ['Platinum', 'Diamond', 'Legend'];
+  const hasHighGlow = HIGH_GLOW_TIERS.includes(userRank.name);
   const platinumPulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    if (userRank.name === 'Platinum') {
+    if (hasHighGlow) {
       const pulse = Animated.loop(
         Animated.sequence([
           Animated.timing(platinumPulse, { toValue: 1.05, duration: 1500, useNativeDriver: true }),
@@ -585,9 +589,9 @@ export default function ProfileScreen({ navigation }) {
                 backgroundColor: userRank.color + '22',
                 borderColor: userRank.color + '66',
                 shadowColor: userRank.glowColor,
-                // Platinum gets an extra-strong glow shadow
-                shadowRadius: userRank.name === 'Platinum' ? 18 : 8,
-                shadowOpacity: userRank.name === 'Platinum' ? 0.9 : 0.5,
+                // High tiers (Platinum+) get an extra-strong glow shadow
+                shadowRadius: hasHighGlow ? 18 : 8,
+                shadowOpacity: hasHighGlow ? 0.9 : 0.5,
               },
               { transform: [{ scale: platinumPulse }] },
             ]}
@@ -612,7 +616,7 @@ export default function ProfileScreen({ navigation }) {
                 {pointsToNext} pts to {RANKS[RANKS.indexOf(userRank) + 1]?.name ?? ''}
               </Text>
             ) : (
-              <Text style={styles.rankProgressLabel}>Max rank achieved 💎</Text>
+              <Text style={styles.rankProgressLabel}>Max rank achieved 👑</Text>
             )}
           </View>
 

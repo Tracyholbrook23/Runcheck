@@ -6,7 +6,7 @@
  * with an action string and receive back enough context to show a rank-up
  * celebration without doing their own Firestore reads.
  *
- * Point values come from `utils/badges.POINT_VALUES` so changing a reward
+ * Point values come from `config/points.POINT_VALUES` so changing a reward
  * only requires editing one file.
  *
  * Action idempotency:
@@ -25,7 +25,8 @@
 
 import { db } from '../config/firebase';
 import { doc, updateDoc, increment, getDoc, runTransaction, arrayUnion, arrayRemove, Timestamp } from 'firebase/firestore';
-import { POINT_VALUES, getUserRank } from '../utils/badges';
+import { POINT_VALUES } from '../config/points';
+import { getUserRank } from '../utils/rankHelpers';
 
 // ── Check-in reward cooldown ──────────────────────────────────────────────────
 // Prevents points farming by repeatedly checking in/out at the same gym.

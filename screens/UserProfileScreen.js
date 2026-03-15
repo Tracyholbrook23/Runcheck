@@ -42,7 +42,7 @@ import { useGyms } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import { getUserRank } from '../utils/badges';
+import { getUserRank } from '../utils/rankHelpers';
 
 /**
  * UserProfileScreen — Public view of another player's profile.

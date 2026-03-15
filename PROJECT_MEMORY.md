@@ -51,7 +51,7 @@ EAS_SKIP_AUTO_FINGERPRINT=1 eas build --platform ios --profile development
 - `Timestamp.now()` (not `serverTimestamp()`) for activity `createdAt` — required so docs appear immediately in `>=` inequality queries
 - `presenceService` is the single owner of activity feed writes on check-in; `CheckInScreen` does not write activity docs
 - `checkOut(isManual)` param gates point deduction and activity deletion — manual=true deducts 10 pts, auto-expiry=false keeps them
-- `RANKS` in `utils/badges.js` is the single source of truth for tier colors, thresholds, and glow values
+- `RANKS` in `config/ranks.js` is the single source of truth for tier definitions (thresholds, colors, glow, perks). `POINT_VALUES` in `config/points.js` owns point awards. `PERK_DEFINITIONS` in `config/perks.js` owns perk metadata. `utils/badges.js` is a deprecated re-export shim.
 - Skill level valid values are `['Casual', 'Competitive', 'Either']`; all screens normalize legacy values to `'Casual'`
 - **Single source of truth for player counts**: always derive from real-time `livePresenceMap` / `presences` — never from `gym.currentPresenceCount` (that's a stale Firestore counter)
 - **Deduplication**: a user can have two presence docs in edge cases; always dedup by `odId` using a `Set` before counting or rendering
@@ -103,7 +103,7 @@ const getRunEnergyLabel = (count) => {
 - Check-in flow: GPS validation (disabled for testing), presence write, activity feed write, points award
 - Check-out flow: manual deducts 10 pts + deletes activity entry; auto-expiry preserves points
 - Activity feed on HomeScreen with tappable rows navigating to UserProfileScreen
-- Badge/rank system: Bronze/Silver/Gold/Platinum with correct distinct colors
+- Badge/rank system: Bronze/Silver/Gold/Platinum/Diamond/Legend (6 tiers) with distinct colors and centralized perk config
 - Skill level migration script at `scripts/migrateSkillLevels.js`
 - UserProfileScreen and ProfileScreen normalize legacy skill level values
 - Live Runs section on HomeScreen: real-time cards with avatars, player count, energy label, empty state; gym photo background (opacity 0.30) + dark overlay; city label from `gym.city`; top LIVE banner removed (was redundant)

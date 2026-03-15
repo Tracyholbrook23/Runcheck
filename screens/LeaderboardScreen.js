@@ -42,25 +42,24 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SHADOWS } from '../constants
 import { useTheme } from '../contexts';
 import { auth, db } from '../config/firebase';
 import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import {
-  getUserRank,
-  getProgressToNextRank,
-  ACTION_LABELS,
-  RANKS,
-} from '../utils/badges';
+import { RANKS } from '../config/ranks';
+import { ACTION_LABELS } from '../config/points';
+import { getUserRank, getProgressToNextRank, getNextRank } from '../utils/rankHelpers';
+import { getRankPerksForDisplay } from '../utils/perkHelpers';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 
 // ─── Trophy colors for top-3 positions ───────────────────────────────────────
 const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
 
-// ─── Rank perk descriptions — display-only copy, no business logic ────────────
+// ─── Rank perk descriptions — flavor copy per tier ───────────────────────────
 // Communicates reputation, trust, and progression for each tier.
-// Do not derive rewards or unlock logic from this object.
-const RANK_PERKS = {
+const RANK_DESCRIPTIONS = {
   Bronze:   "You're in the game. Start building your rep.",
   Silver:   'Community recognized. Players know you show up.',
   Gold:     'Elite status. Your name carries weight on the court.',
   Platinum: "Top tier. RunCheck's most trusted hoopers.",
+  Diamond:  'Legendary grinder. The court respects your dedication.',
+  Legend:   'Hall of Fame. You are RunCheck royalty.',
 };
 
 // ─── RankBadgePill ────────────────────────────────────────────────────────────
@@ -72,13 +71,20 @@ const RANK_PERKS = {
  *   Silver   — Solid #A8A9AD pill, dark text, more prominent shine stripe.
  *   Gold     — Solid #FFD700 pill, dark text, animated ✦ sparkle (opacity pulse).
  *   Platinum — Solid #E8F4FD pill, dark text, scale-pulse glow shadow animation.
+ *   Diamond  — Solid #B9F2FF pill, dark text, scale-pulse glow shadow animation.
+ *   Legend   — Solid #FF4500 pill, white text, scale-pulse glow + ✦ sparkle.
  */
 function RankBadgePill({ rank, small = false }) {
   const pulseAnim   = useRef(new Animated.Value(1)).current;
   const sparkleAnim = useRef(new Animated.Value(0.3)).current;
 
+  // Tiers that get the pulse-glow animation
+  const hasPulse = rank.name === 'Platinum' || rank.name === 'Diamond' || rank.name === 'Legend';
+  // Tiers that get the sparkle animation
+  const hasSparkle = rank.name === 'Gold' || rank.name === 'Legend';
+
   useEffect(() => {
-    if (rank.name === 'Platinum') {
+    if (hasPulse) {
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, { toValue: 1.06, duration: 1400, useNativeDriver: true }),
@@ -89,7 +95,12 @@ function RankBadgePill({ rank, small = false }) {
       return () => loop.stop();
     }
 
-    if (rank.name === 'Gold') {
+    // Reset pulse when rank changes away from animated tiers
+    pulseAnim.setValue(1);
+  }, [rank.name]);
+
+  useEffect(() => {
+    if (hasSparkle) {
       const loop = Animated.loop(
         Animated.sequence([
           Animated.timing(sparkleAnim, { toValue: 1.0, duration: 650, useNativeDriver: true }),
@@ -100,15 +111,12 @@ function RankBadgePill({ rank, small = false }) {
       return () => loop.stop();
     }
 
-    // Reset both anims when rank changes away from animated tiers
-    pulseAnim.setValue(1);
     sparkleAnim.setValue(0.3);
   }, [rank.name]);
 
-  // Silver, Gold, and Platinum have light backgrounds — use dark text for contrast
-  const textColor = (rank.name === 'Silver' || rank.name === 'Gold' || rank.name === 'Platinum')
-    ? '#2A2A2A'
-    : '#FFFFFF';
+  // Light-background tiers use dark text for contrast; others use white
+  const DARK_TEXT_TIERS = ['Silver', 'Gold', 'Platinum', 'Diamond'];
+  const textColor = DARK_TEXT_TIERS.includes(rank.name) ? '#2A2A2A' : '#FFFFFF';
 
   const ph = small ? 7  : 10;
   const pv = small ? 3  : 5;
@@ -124,7 +132,7 @@ function RankBadgePill({ rank, small = false }) {
           paddingVertical: pv,
           transform: [{ scale: pulseAnim }],
         },
-        rank.name === 'Platinum' && {
+        hasPulse && {
           shadowColor:  rank.glowColor,
           shadowRadius: 12,
           shadowOpacity: 0.9,
@@ -147,8 +155,8 @@ function RankBadgePill({ rank, small = false }) {
         {rank.name}
       </Text>
 
-      {/* Animated sparkle character for Gold */}
-      {rank.name === 'Gold' && (
+      {/* Animated sparkle character for Gold and Legend */}
+      {hasSparkle && (
         <Animated.Text style={[badgeStyles.sparkle, { fontSize: small ? 7 : 9, opacity: sparkleAnim }]}>
           ✦
         </Animated.Text>
@@ -254,7 +262,7 @@ export default function LeaderboardScreen({ navigation }) {
   const currentPoints    = currentUserEntry?.totalPoints || 0;
   const currentRank      = getUserRank(currentPoints);
   const progress         = getProgressToNextRank(currentPoints);
-  const nextRankEntry    = RANKS[RANKS.indexOf(currentRank) + 1];
+  const nextRankEntry    = getNextRank(currentPoints);
   const ptsToNext        = currentRank.nextRankAt ? currentRank.nextRankAt - currentPoints : 0;
   const myPosition       = allTimeUsers.findIndex((u) => u.id === currentUid) + 1;
 
@@ -622,6 +630,7 @@ export default function LeaderboardScreen({ navigation }) {
         <View style={styles.listCard}>
           {RANKS.map((r, index) => {
             const isCurrentRank = r.name === currentRank.name;
+            const displayPerks = getRankPerksForDisplay(r);
             return (
               <View
                 key={r.name}
@@ -634,7 +643,12 @@ export default function LeaderboardScreen({ navigation }) {
                 <Text style={styles.perksIcon}>{r.icon}</Text>
                 <View style={styles.perksInfo}>
                   <Text style={[styles.tierName, { color: r.color }]}>{r.name}</Text>
-                  <Text style={styles.perksDesc}>{RANK_PERKS[r.name]}</Text>
+                  <Text style={styles.perksDesc}>{RANK_DESCRIPTIONS[r.name]}</Text>
+                  {displayPerks.length > 0 && (
+                    <Text style={styles.perksList}>
+                      {displayPerks.map((p) => p.label).join(' · ')}
+                    </Text>
+                  )}
                 </View>
                 {isCurrentRank && (
                   <View style={[styles.currentBadge, { borderColor: r.color + '60' }]}>
@@ -998,6 +1012,12 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   perksDesc: {
     fontSize: FONT_SIZES.xs - 1,
     color: colors.textSecondary,
+  },
+  perksList: {
+    fontSize: FONT_SIZES.xs - 1,
+    color: colors.textMuted,
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   currentBadge: {
     borderWidth: 1,

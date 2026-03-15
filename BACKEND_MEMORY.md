@@ -6,7 +6,9 @@ Firebase-only backend. No custom server. Logic lives in:
 - `services/` — Firestore read/write logic (client-side)
 - `hooks/` — React hooks that wrap services with real-time subscriptions
 - `config/firebase.js` — Firebase app init (db, auth, storage exports)
-- `utils/badges.js` — Single source of truth for rank tiers + point values
+- `config/ranks.js` — Single source of truth for rank tiers (6 tiers: Bronze→Legend)
+- `config/points.js` — Single source of truth for point values
+- `config/perks.js` — Perk definitions + premium overrides
 - Cloud Functions — handles server-side reliability scoring (separate deploy)
 
 ---
@@ -264,17 +266,18 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 ---
 
 ## Points & Ranks
-Defined in `utils/badges.js` — single source of truth.
+Ranks defined in `config/ranks.js`. Point values in `config/points.js`. Perk definitions in `config/perks.js`. Rank helpers in `utils/rankHelpers.js`. Perk helpers in `utils/perkHelpers.js`.
 ```js
 POINT_VALUES = {
   checkin: 10,
   checkinWithPlan: 15,    // bonus for honoring a schedule
-  planVisit: 5,
-  review: 3,
+  runComplete: 10,
+  review: 15,
   followGym: 2,
-  completeProfile: 20,
+  completeProfile: 10,
 }
-RANKS = [Bronze, Silver, Gold, Platinum]  // each has: name, minPoints, color, glow
+RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), Legend (7500)]
+// each has: id, label, name, minPoints, maxPoints, nextRankAt, icon, color, glowColor, perks[]
 ```
 `getUserRank(totalPoints)` → returns the RANKS entry the user currently belongs to.
 
