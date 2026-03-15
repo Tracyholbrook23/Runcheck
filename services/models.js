@@ -44,35 +44,41 @@
  * GYMS COLLECTION
  * Path: gyms/{gymId}
  *
- * {
- *   name: string,
- *   address: string,
- *   city: string,                    // e.g. "Pflugerville"
- *   state: string,                   // e.g. "TX"
- *   type: string,                    // "indoor" | "outdoor"
- *   notes: string,                   // Additional info about the gym
- *   imageUrl: string,                // Optional: URL to gym photo
+ * Document ID is a permanent kebab-case slug (e.g. "cowboys-fit-pflugerville").
+ * Once a gym has presence/schedule history, its ID must not change.
  *
- *   // Location for GPS validation
+ * {
+ *   // --- Admin-managed fields (set by seedProductionGyms.js) ---
+ *   name: string,
+ *   address: string,                  // Full street address including ZIP
+ *   city: string,                     // e.g. "Pflugerville"
+ *   state: string,                    // Two-letter code, e.g. "TX"
+ *   type: string,                     // "indoor" | "outdoor"
+ *   accessType: string,               // "paid" | "free"
+ *   status: string,                   // "active" | "hidden" | "archived"
+ *   notes: string,                    // Freeform info (can be empty string)
+ *   imageUrl: string,                 // Optional: HTTPS URL to gym photo
+ *
+ *   // Location for GPS validation and map pins.
+ *   // Coordinates must be building-level accurate — obtained by pin-drop in
+ *   // Google Maps, NOT from an address geocoder.
  *   location: {
  *     latitude: number,
  *     longitude: number
  *   },
- *   checkInRadiusMeters: number,     // Max distance for valid check-in (default: 50)
+ *   checkInRadiusMeters: number,      // Max distance for valid check-in (default: 100)
+ *   autoExpireMinutes: number,        // Session auto-expire (default: 120)
  *
- *   // Counts (updated by services)
- *   currentPresenceCount: number,
- *
- *   // Scheduled sessions by time slot
- *   scheduleCounts: {
+ *   // --- System-managed fields (set by services, NOT by seed script) ---
+ *   currentPresenceCount: number,     // Updated by presenceService on check-in/check-out
+ *   scheduleCounts: {                 // Updated by scheduleService per time slot
  *     "2024-02-01T18:00": number,
  *     // ... more time slots
  *   },
  *
- *   autoExpireMinutes: number,       // Default: 180 (3 hours)
- *
- *   createdAt: Timestamp,
- *   updatedAt: Timestamp
+ *   // --- Timestamps ---
+ *   createdAt: Timestamp,             // Set once on first seed
+ *   updatedAt: Timestamp              // Updated on every seed run
  * }
  */
 
@@ -170,6 +176,17 @@ export const formatSkillLevel = (skillLevel) => {
 export const GYM_TYPE = {
   INDOOR: 'indoor',
   OUTDOOR: 'outdoor',
+};
+
+export const GYM_STATUS = {
+  ACTIVE: 'active',
+  HIDDEN: 'hidden',
+  ARCHIVED: 'archived',
+};
+
+export const GYM_ACCESS_TYPE = {
+  PAID: 'paid',
+  FREE: 'free',
 };
 
 export const PRESENCE_STATUS = {

@@ -210,7 +210,9 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 
 ### `gymService.js`
 - `getAllGyms()`, `getGym(gymId)`, `subscribeToGyms(callback)`, `subscribeToGym(gymId, callback)`
-- `seedGyms()` — safe to re-run; only creates missing docs, never overwrites existing
+- `updateGymLocation(gymId, location, checkInRadius)` — admin utility for updating GPS coordinates
+- `getNearbyGyms(userLocation, maxDistanceMeters)` — client-side distance filter
+- `seedGyms()` — **DEPRECATED NO-OP** (as of 2026-03-15). Previously seeded gyms from a hardcoded array on every app launch and deleted non-seed gym docs. Now returns `[]` and logs a dev warning. Gym data is managed exclusively via `seedProductionGyms.js` (firebase-admin, `set({ merge: true })`). Retained as an empty export to avoid breaking `scripts/seedDatabase.js`.
 
 ### `scheduleService.js`
 - `createSchedule(odId, gymId, gymName, scheduledTime)` — max 5 active schedules per user, no overlapping times
@@ -251,7 +253,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 |---|---|---|
 | `useAuth` | `{ user, loading }` | Firebase Auth |
 | `useGym(gymId)` | `{ gym, loading }` | `subscribeToGym` |
-| `useGyms()` | `{ gyms, loading }` | `subscribeToGyms` |
+| `useGyms()` | `{ gyms, loading, error, getActivityLevel }` | `subscribeToGyms` (pure reader — no seeding) |
 | `useGymPresences(gymId)` | `{ presences, loading, count }` | `subscribeToGymPresences` |
 | `useGymSchedules(gymId)` | `{ schedules, loading }` | schedules query |
 | `usePresence()` | `{ activePresence, loading, checkIn, checkOut }` | `subscribeToUserPresence` |

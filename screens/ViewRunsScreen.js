@@ -6,7 +6,7 @@
  * to RunDetailsScreen for the full breakdown.
  *
  * Features:
- *   - Pull-to-refresh re-runs the gym seed/migration via `ensureGymsExist`
+ *   - Pull-to-refresh provides visual feedback (data is live via Firestore listener)
  *   - Activity level badge (Empty / Light / Active / Busy) with color coding
  *   - "Get Directions" shortcut opens Apple Maps / Google Maps via deep link
  *   - Map icon in the header navigates to GymMapScreen
@@ -55,7 +55,7 @@ import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
  * @returns {JSX.Element}
  */
 export default function ViewRunsScreen({ navigation }) {
-  const { gyms, loading, ensureGymsExist } = useGyms();
+  const { gyms, loading } = useGyms();
   const { followedGyms } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -110,13 +110,15 @@ export default function ViewRunsScreen({ navigation }) {
   /**
    * onRefresh — Pull-to-refresh handler.
    *
-   * Re-runs the gym seed to pick up any newly added gyms or updated GPS
-   * coordinates, then dismisses the refresh spinner.
+   * Toggles the refresh spinner briefly. The real-time Firestore listener
+   * in useGyms() already keeps data in sync, so no explicit data fetch is
+   * needed — the spinner gives the user visual feedback that a refresh
+   * was acknowledged.
    */
   const onRefresh = async () => {
     setRefreshing(true);
-    await ensureGymsExist();
-    setRefreshing(false);
+    // Small delay so the spinner is visible; data is already live via listener.
+    setTimeout(() => setRefreshing(false), 500);
   };
 
   /**
@@ -364,6 +366,16 @@ export default function ViewRunsScreen({ navigation }) {
               );
             })
           )}
+
+          {/* Request a Gym — entry point at the bottom of the gym list */}
+          <TouchableOpacity
+            style={styles.requestGymRow}
+            onPress={() => navigation.navigate('RequestGym')}
+          >
+            <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
+            <Text style={styles.requestGymText}>Don't see your gym? Request it</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </TouchableOpacity>
         </ScrollView>
       </View>
     </SafeAreaView>
@@ -445,6 +457,19 @@ loadingText: {
   scroll: {
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.lg,
+  },
+  requestGymRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: SPACING.lg,
+    marginTop: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  requestGymText: {
+    fontSize: FONT_SIZES.caption,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    color: colors.primary,
   },
   emptyState: {
     flex: 1,

@@ -47,6 +47,8 @@ import LeaderboardScreen from './screens/LeaderboardScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import ClipPlayerScreen from './screens/ClipPlayerScreen';
 import PremiumScreen from './screens/PremiumScreen';
+import RequestGymScreen from './screens/RequestGymScreen';
+import MyGymRequestsScreen from './screens/MyGymRequestsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -97,6 +99,7 @@ function RunsStack() {
       <Stack.Screen name="TrimClipScreen" component={TrimClipScreen} options={{ headerShown: false }} />
       <Stack.Screen name="GymReviews" component={GymReviewsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="RequestGym" component={RequestGymScreen} options={{ title: 'Request a Gym' }} />
     </Stack.Navigator>
   );
 }
@@ -143,6 +146,7 @@ function PlanStack() {
  * @returns {JSX.Element} Stack navigator with ProfileScreen.
  */
 function ProfileStack() {
+  const { themeStyles } = useTheme();
   return (
     <Stack.Navigator>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ headerShown: false }} />
@@ -150,6 +154,7 @@ function ProfileStack() {
       <Stack.Screen name="Premium" component={PremiumScreen} options={{ headerShown: false }} />
       {/* Required so leaderboard row taps can navigate to UserProfile from the Profile tab */}
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="MyGymRequests" component={MyGymRequestsScreen} options={{ title: 'My Gym Requests', ...themeStyles.NAV_HEADER }} />
     </Stack.Navigator>
   );
 }

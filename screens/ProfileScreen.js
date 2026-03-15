@@ -50,7 +50,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap } from '../hooks';
+import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -179,6 +179,7 @@ export default function ProfileScreen({ navigation }) {
   const { followedGyms, profile: liveProfile } = useProfile();
   // Real-time player counts — same canonical source used by HomeScreen and ViewRunsScreen.
   const { countMap: liveCountMap } = useLivePresenceMap();
+  const { count: gymRequestCount } = useMyGymRequests();
   const [profile, setProfile] = useState(null);
 
   // Derive the list of followed gym objects from the full gyms array.
@@ -972,6 +973,26 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
+        {/* ── My Gym Requests ──────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.gymRequestsRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('MyGymRequests')}
+        >
+          <View style={styles.gymRequestsLeft}>
+            <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+            <Text style={styles.gymRequestsLabel}>My Gym Requests</Text>
+          </View>
+          <View style={styles.gymRequestsRight}>
+            {gymRequestCount > 0 && (
+              <View style={styles.gymRequestsBadge}>
+                <Text style={styles.gymRequestsBadgeText}>{gymRequestCount}</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
         {/* ── Settings ──────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Settings</Text>
@@ -1330,6 +1351,48 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.body,
       color: colors.presenceTextBright,
       fontWeight: FONT_WEIGHTS.medium,
+    },
+    // Gym Requests link
+    gymRequestsRow: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      ...(isDark
+        ? { borderWidth: 0 }
+        : { borderWidth: 1, borderColor: colors.border }),
+    },
+    gymRequestsLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+    },
+    gymRequestsLabel: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.medium,
+      color: colors.textPrimary,
+    },
+    gymRequestsRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.xs,
+    },
+    gymRequestsBadge: {
+      backgroundColor: colors.primary,
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 6,
+    },
+    gymRequestsBadgeText: {
+      fontSize: 11,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#FFFFFF',
     },
     // Settings
     settingRow: {

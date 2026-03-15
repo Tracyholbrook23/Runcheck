@@ -14,7 +14,6 @@ const mockGyms = [
   },
 ];
 
-const mockEnsureGymsExist = jest.fn();
 const mockUseGyms = jest.fn();
 
 // Mock the hooks module
@@ -34,7 +33,6 @@ describe('ViewRunsScreen', () => {
     mockUseGyms.mockReturnValue({
       gyms: mockGyms,
       loading: false,
-      ensureGymsExist: mockEnsureGymsExist,
     });
   });
 
@@ -42,7 +40,6 @@ describe('ViewRunsScreen', () => {
     mockUseGyms.mockReturnValue({
       gyms: [],
       loading: true,
-      ensureGymsExist: mockEnsureGymsExist,
     });
 
     const { getByText } = renderWithTheme(

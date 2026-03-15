@@ -17,7 +17,6 @@ jest.mock('../../hooks', () => ({
   useGyms: () => ({
     gyms: mockGyms,
     loading: false,
-    ensureGymsExist: jest.fn(),
   }),
   useLocation: () => ({
     location: null,

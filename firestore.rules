@@ -1,0 +1,4 @@
+// Firestore security rules are managed in the runcheck-backend repository.
+// See: runcheck-backend/firestore.rules
+//
+// Deploy with: firebase deploy --only firestore:rules (from the backend repo)

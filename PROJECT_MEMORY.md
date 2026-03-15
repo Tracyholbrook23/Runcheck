@@ -119,6 +119,18 @@ const getRunEnergyLabel = (count) => {
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
 
+## Files Modified Recently (2026-03-15 session — Gym System Refactor: Firestore as Source of Truth)
+| File | What changed |
+|---|---|
+| `services/gymService.js` | `seedGyms()` converted to deprecated no-op — no longer writes to Firestore or deletes gym docs. Hardcoded gym array removed. Unused imports removed (`setDoc`, `deleteDoc`, `GYM_TYPE`, `DEFAULT_EXPIRE_MINUTES`). All read functions unchanged. |
+| `hooks/useGyms.js` | Removed `seedGyms()` import and mount call. Removed `ensureGymsExist` from hook return. Hook is now a pure Firestore reader. |
+| `screens/ViewRunsScreen.js` | Removed `ensureGymsExist` from destructured `useGyms()`. `onRefresh` simplified to a visual-only spinner (data is live via listener). |
+| `seedProductionGyms.js` | Promoted to single canonical admin seed script. Now contains all 5 gyms with complete, aligned fields. `autoExpireMinutes` aligned to 120. Added `state`, `accessType`, `notes`, `scheduleCounts` to all entries. |
+| `__tests__/screens/ViewRunsScreen.test.js` | Removed `ensureGymsExist` from mock `useGyms` return values. |
+| `__tests__/screens/CheckInScreen.test.js` | Removed `ensureGymsExist` from mock `useGyms` return values (3 occurrences). |
+| `__tests__/screens/GymMapScreen.test.js` | Removed `ensureGymsExist` from mock `useGyms` return value. |
+| `BACKEND_MEMORY.md` | Updated `gymService.js` docs to reflect deprecated `seedGyms` and new read-only architecture. Updated `useGyms` hook signature. |
+
 ## Files Modified Recently (2026-03-15 session — Rank System Refactor)
 | File | What changed |
 |---|---|

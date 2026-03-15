@@ -27,176 +27,62 @@ import {
   doc,
   getDoc,
   getDocs,
-  setDoc,
   updateDoc,
-  deleteDoc,
   query,
   orderBy,
   onSnapshot,
   serverTimestamp,
 } from 'firebase/firestore';
 
-import { DEFAULT_CHECK_IN_RADIUS_METERS, DEFAULT_EXPIRE_MINUTES, GYM_TYPE } from './models';
+import { DEFAULT_CHECK_IN_RADIUS_METERS, GYM_STATUS } from './models';
 
 /**
- * Seed initial gyms with GPS locations
- * Call once to populate database
+ * seedGyms — DEPRECATED NO-OP
  *
- * Safe to run multiple times — will only create documents that do not already
- * exist and will never overwrite existing documents or their location, placeId,
- * or address fields.
+ * This function previously seeded gym documents from a hardcoded array on every
+ * app launch and deleted any Firestore gym doc not in the seed list.
  *
- * @returns {Promise<Array>} Array of seeded gyms
+ * As of 2026-03-15, Firestore is the sole source of truth for gyms. Gym data is
+ * managed exclusively via the admin seed script (`seedProductionGyms.js`) using
+ * firebase-admin. The client is read-only.
+ *
+ * This export is retained as a no-op so that any remaining callers (e.g.
+ * `scripts/seedDatabase.js`) do not throw at import time. It will be removed
+ * in a future cleanup pass.
+ *
+ * @deprecated Use `node seedProductionGyms.js` to manage gym data.
+ * @returns {Promise<Array>} Always returns an empty array.
  */
 export const seedGyms = async () => {
-  // Pflugerville, TX gyms and courts
-  const gyms = [
-    {
-      id: 'cowboys-fit-pflugerville',
-      name: 'Cowboys Fit - Pflugerville',
-      address: '1401 Town Center Dr, Pflugerville, TX 78660',
-      city: 'Pflugerville',
-      state: 'TX',
-      type: GYM_TYPE.INDOOR,
-      accessType: 'paid',
-      notes: '57,000 sq ft facility with indoor basketball court, pool, and recovery lounge',
-      // No imageUrl — this gym uses a bundled local asset (assets/cowboyfitgym.png)
-      // resolved via GYM_LOCAL_IMAGES in HomeScreen.js instead of a remote URL.
-      location: {
-        latitude: 30.4692,
-        longitude: -97.5963,
-      },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
-      currentPresenceCount: 0,
-      scheduleCounts: {},
-      autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
-    },
-    {
-      id: 'clay-madsen-round-rock',
-      name: 'Clay Madsen Recreation Center',
-      address: '1600 Gattis School Rd, Round Rock, TX 78664',
-      city: 'Round Rock',
-      state: 'TX',
-      type: GYM_TYPE.INDOOR,
-      accessType: 'paid',
-      notes: '55,000 sq ft facility with two full-size gymnasiums, basketball courts, pool, racquetball courts',
-      imageUrl: 'https://s3-media0.fl.yelpcdn.com/bphoto/R1OXLFLx0N6gUT2rNfqLoA/o.jpg',
-      location: {
-        latitude: 30.4972,
-        longitude: -97.6609,
-      },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
-      currentPresenceCount: 0,
-      scheduleCounts: {},
-      autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
-    },
-    {
-      id: 'pan-american-recreation-center',
-      name: 'Pan American Recreation Center',
-      address: '2100 E 3rd St, Austin, TX 78702',
-      city: 'Austin',
-      state: 'TX',
-      type: GYM_TYPE.INDOOR,
-      accessType: 'free',
-      notes: '',
-      imageUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTlugK3VDdlosE9o97HH-NdRI89Eww_GHZaHQ&s',
-      location: { latitude: 30.2626, longitude: -97.7198 },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
-      currentPresenceCount: 0,
-      scheduleCounts: {},
-      autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
-    },
-    {
-      id: 'lifetime-austin-north',
-      name: 'Life Time Austin North',
-      address: '13725 Ranch Rd 620 N, Austin, TX 78717',
-      city: 'Austin',
-      state: 'TX',
-      type: GYM_TYPE.INDOOR,
-      accessType: 'paid',
-      notes: '',
-      imageUrl: 'https://media.lifetime.life/is/image/lifetimeinc/fso-gymnasium-01-1?crop=362,224,1360,1088&id=1701881564012&fit=crop,1&wid=390',
-      location: { latitude: 30.4572, longitude: -97.8147 },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
-      currentPresenceCount: 0,
-      scheduleCounts: {},
-      autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
-    },
-    {
-      id: 'golds-gym-hesters-crossing',
-      name: "Gold's Gym Hester's Crossing",
-      address: '2400 S I-35 Frontage Rd, Round Rock, TX 78681',
-      city: 'Round Rock',
-      state: 'TX',
-      type: GYM_TYPE.INDOOR,
-      accessType: 'paid',
-      notes: '',
-      imageUrl: 'https://res.cloudinary.com/ggus-dev/image/private/s--HzKSnHnn--/c_auto%2Cg_center%2Cw_1200%2Ch_800/v1/25fcf1e9/austin-hesters-crossing-basketball.webp?_a=BAAAV6DQ',
-      location: { latitude: 30.5085, longitude: -97.6789 },
-      checkInRadiusMeters: DEFAULT_CHECK_IN_RADIUS_METERS,
-      currentPresenceCount: 0,
-      scheduleCounts: {},
-      autoExpireMinutes: DEFAULT_EXPIRE_MINUTES,
-    },
-  ];
-
-  const gymsRef = collection(db, 'gyms');
-
-  for (const gym of gyms) {
-    const gymRef = doc(gymsRef, gym.id);
-    const existingGym = await getDoc(gymRef);
-
-    if (!existingGym.exists()) {
-      // Only create the document if it does not already exist.
-      // Never overwrite an existing document — location, placeId, and address
-      // may have been updated via the app and must not be clobbered by seed data.
-      await setDoc(gymRef, {
-        ...gym,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-      console.log(`Created gym: ${gym.name}`);
-    } else {
-      // Patch imageUrl onto existing documents that were seeded before this
-      // field was added. Only writes when the field is currently absent so it
-      // never clobbers a URL that was set intentionally through the app.
-      const existingData = existingGym.data();
-      if (!existingData.imageUrl && gym.imageUrl) {
-        await updateDoc(gymRef, { imageUrl: gym.imageUrl });
-        console.log(`Patched imageUrl for existing gym: ${gym.name}`);
-      } else {
-        console.log(`Skipped existing gym: ${gym.name}`);
-      }
-    }
+  if (__DEV__) {
+    console.warn(
+      '[gymService] seedGyms() is deprecated and no longer writes to Firestore. ' +
+      'Use the admin script `node seedProductionGyms.js` to manage gym data.'
+    );
   }
-
-  // Remove old gym documents that are no longer in the seed list
-  const validIds = new Set(gyms.map((g) => g.id));
-  const allDocs = await getDocs(collection(db, 'gyms'));
-  for (const gymDoc of allDocs.docs) {
-    if (!validIds.has(gymDoc.id)) {
-      await deleteDoc(doc(db, 'gyms', gymDoc.id));
-      console.log(`Removed old gym: ${gymDoc.id}`);
-    }
-  }
-
-  return gyms;
+  return [];
 };
 
 /**
- * Get all gyms
+ * Get all active gyms
  *
- * @returns {Promise<Array>} Array of all gyms
+ * Returns only gyms with status === 'active'. Filtering is done client-side
+ * to avoid requiring a Firestore composite index (status + name). At our
+ * current scale (< 50 gyms) this is negligible cost and zero risk.
+ *
+ * @returns {Promise<Array>} Array of active gyms
  */
 export const getAllGyms = async () => {
   const gymsRef = collection(db, 'gyms');
   const q = query(gymsRef, orderBy('name', 'asc'));
   const snapshot = await getDocs(q);
 
-  return snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(),
-  }));
+  return snapshot.docs
+    .map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }))
+    .filter((gym) => gym.status === GYM_STATUS.ACTIVE);
 };
 
 /**
@@ -217,9 +103,17 @@ export const getGym = async (gymId) => {
 };
 
 /**
- * Subscribe to all gyms (real-time updates)
+ * Subscribe to all active gyms (real-time updates)
  *
- * @param {Function} callback - Called with array of gyms
+ * Returns only gyms with status === 'active'. Filtering is done client-side
+ * to avoid requiring a Firestore composite index (status + name). At our
+ * current scale (< 50 gyms) this is negligible cost and zero risk.
+ *
+ * Note: subscribeToGym (single gym by ID) does NOT filter by status, so
+ * screens that already hold a gymId reference (e.g. RunDetailsScreen via a
+ * presence document) can still load the gym even if it's hidden/archived.
+ *
+ * @param {Function} callback - Called with array of active gyms
  * @returns {Function} Unsubscribe function
  */
 export const subscribeToGyms = (callback) => {
@@ -229,10 +123,12 @@ export const subscribeToGyms = (callback) => {
   return onSnapshot(
     q,
     (snapshot) => {
-      const gyms = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
+      const gyms = snapshot.docs
+        .map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }))
+        .filter((gym) => gym.status === GYM_STATUS.ACTIVE);
       callback(gyms);
     },
     (error) => {

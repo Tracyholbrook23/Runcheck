@@ -6,20 +6,16 @@
  * updated, etc.). Also exposes utility helpers that screens use to derive
  * activity level labels and colors without duplicating logic.
  *
- * On first mount the hook triggers `seedGyms()` to ensure all gym
- * documents have GPS coordinates populated — this is a one-time
- * setup/migration step that is safe to call repeatedly.
+ * The client is read-only — gym data is managed exclusively via the admin
+ * seed script (`seedProductionGyms.js`). Firestore is the sole source of
+ * truth for gym documents.
  *
  * @example
  * const { gyms, loading, getActivityLevel } = useGyms();
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import {
-  subscribeToGyms,
-  getAllGyms,
-  seedGyms,
-} from '../services/gymService';
+import { subscribeToGyms } from '../services/gymService';
 
 /**
  * useGyms — Hook for subscribing to the real-time gyms collection.
@@ -27,8 +23,7 @@ import {
  * @returns {{
  *   gyms: object[],              Array of gym documents from Firestore.
  *   loading: boolean,            True while the initial snapshot loads.
- *   error: string | null,        Last error from ensureGymsExist, if any.
- *   ensureGymsExist: () => Promise<void>,  Re-runs the gym seed/migration.
+ *   error: string | null,        Reserved for future use.
  *   getActivityLevel: (gym: object) => { level: string, label: string, color: string }
  * }}
  */
@@ -38,9 +33,6 @@ export const useGyms = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Ensure gym documents have location data before we need it for check-in
-    seedGyms().catch((err) => console.error('Error seeding gyms:', err));
-
     // Open a real-time Firestore listener; unsubscribe on unmount
     const unsubscribe = subscribeToGyms((gymData) => {
       setGyms(gymData);
@@ -48,21 +40,6 @@ export const useGyms = () => {
     });
 
     return unsubscribe;
-  }, []);
-
-  /**
-   * ensureGymsExist — Imperatively re-runs the gym seed/migration.
-   *
-   * Called by pull-to-refresh in ViewRunsScreen and on CheckInScreen mount
-   * to guarantee gym location data is present before a check-in attempt.
-   */
-  const ensureGymsExist = useCallback(async () => {
-    try {
-      // seedGyms is idempotent — safe to call multiple times
-      await seedGyms();
-    } catch (err) {
-      setError(err.message);
-    }
   }, []);
 
   /**
@@ -89,7 +66,6 @@ export const useGyms = () => {
     gyms,
     loading,
     error,
-    ensureGymsExist,
     getActivityLevel,
   };
 };

@@ -28,7 +28,6 @@ jest.mock('../../hooks', () => ({
   useGyms: jest.fn(() => ({
     gyms: mockGyms,
     loading: false,
-    ensureGymsExist: jest.fn(),
   })),
 }));
 
@@ -98,7 +97,7 @@ describe('CheckInScreen', () => {
   it('shows loading state when gyms are loading', () => {
     // Override mock for this test
     const hooks = require('../../hooks');
-    hooks.useGyms.mockReturnValue({ gyms: [], loading: true, ensureGymsExist: jest.fn() });
+    hooks.useGyms.mockReturnValue({ gyms: [], loading: true });
     hooks.usePresence.mockReturnValue({
       presence: null,
       loading: true,
@@ -115,7 +114,7 @@ describe('CheckInScreen', () => {
     expect(getByText('Loading gyms...')).toBeTruthy();
 
     // Reset mocks
-    hooks.useGyms.mockReturnValue({ gyms: mockGyms, loading: false, ensureGymsExist: jest.fn() });
+    hooks.useGyms.mockReturnValue({ gyms: mockGyms, loading: false });
     hooks.usePresence.mockReturnValue({
       presence: null,
       loading: false,

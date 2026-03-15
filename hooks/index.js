@@ -78,5 +78,8 @@ export { useGym } from './useGym';
 // User Profile
 export { useProfile } from './useProfile';
 
+// Gym Requests
+export { useMyGymRequests } from './useMyGymRequests';
+
 // Location
 export { useLocation } from './useLocation';
