@@ -88,6 +88,7 @@ function RunsStack() {
         component={ViewRunsScreen}
         options={{
           headerShown: false,
+          title: 'Runs',
         }}
       />
       <Stack.Screen name="GymMap" component={GymMapScreen} options={{ title: 'Gym Map' }} />

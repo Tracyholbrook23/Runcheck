@@ -41,7 +41,18 @@ export const openDirections = async (location, label) => {
     console.log('🗺️ [DIRECTIONS] Google Maps App:', googleAppUrl);
     console.log('🗺️ [DIRECTIONS] Google Maps Web:', googleWebUrl);
 
-    const googleMapsInstalled = await Linking.canOpenURL('comgooglemaps://');
+    let googleMapsInstalled = false;
+    try {
+      googleMapsInstalled = await Linking.canOpenURL('comgooglemaps://');
+    } catch (err) {
+      if (__DEV__) {
+        console.warn(
+          '⚠️ [DIRECTIONS] canOpenURL rejected for comgooglemaps:// — falling back to Apple Maps.',
+          'Add "comgooglemaps" to LSApplicationQueriesSchemes in app.json and rebuild.',
+          err
+        );
+      }
+    }
 
     if (googleMapsInstalled) {
       ActionSheetIOS.showActionSheetWithOptions(
