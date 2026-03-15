@@ -119,6 +119,20 @@ const getRunEnergyLabel = (count) => {
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
 
+## Files Modified Recently (2026-03-15 session — Rank System Refactor)
+| File | What changed |
+|---|---|
+| `config/ranks.js` | **New file** — Single source of truth for 6 rank tiers (Bronze→Legend) with thresholds, icons, colors, glow, perks arrays |
+| `config/points.js` | **New file** — `POINT_VALUES` and `ACTION_LABELS` extracted from former `utils/badges.js` |
+| `config/perks.js` | **New file** — `PERK_DEFINITIONS` registry (8 perks) + `PREMIUM_OVERRIDES` (tool/convenience only, no prestige cosmetics) |
+| `utils/rankHelpers.js` | **New file** — `getUserRank`, `getProgressToNextRank`, `getNextRank`, `getRankById` |
+| `utils/perkHelpers.js` | **New file** — `getUserPerks`, `hasPerk`, `getFeatureQuota`, `getRankPerksForDisplay` (display/config groundwork only) |
+| `utils/badges.js` | Replaced 178-line monolith with 19-line deprecated re-export shim forwarding to `config/ranks`, `config/points`, `utils/rankHelpers` |
+| `services/pointsService.js` | Imports updated to `config/points` + `utils/rankHelpers`; stale comment fixed; zero logic changes |
+| `screens/LeaderboardScreen.js` | Imports updated; `RANK_PERKS` → `RANK_DESCRIPTIONS` with Diamond/Legend entries; `RankBadgePill` extended for 6 tiers; "Why Rank Matters" shows perk labels via `getRankPerksForDisplay` |
+| `screens/ProfileScreen.js` | Imports updated; Platinum-only pulse glow extended to Diamond/Legend via `HIGH_GLOW_TIERS`; max rank emoji → 👑 |
+| `screens/UserProfileScreen.js` | Import updated to `utils/rankHelpers` |
+
 ## Files Modified Recently (2026-03-14 session — Weekly Winners + Automation)
 | File | What changed |
 |---|---|
@@ -237,7 +251,7 @@ const getRunEnergyLabel = (count) => {
 | `screens/CheckInScreen.js` | Replaced gym-picker form with status screen; removed DropDownPicker |
 | `screens/ViewRunsScreen.js` | Fixed player counts (liveCountMap subscription); run status labels; gym search bar |
 | `screens/HomeScreen.js` | Live Run card gym photo backgrounds + overlay + city label; removed top LIVE banner; fixed stale session bug (presence query now uses `PRESENCE_STATUS.ACTIVE` constant + client-side `expiresAt > now` filter, matching `subscribeToGymPresences` logic; added `PRESENCE_STATUS` import from `services/models`) |
-| `screens/LeaderboardScreen.js` | Leaderboard rows now tappable (`TouchableOpacity`, `disabled` on own row, chevron affordance for others); added `RANK_PERKS` display-only copy object; added "Why Rank Matters" card (4-tier list with icon, color, description, "You" badge on current tier); Rank Tiers section now shows `rank.icon` emoji instead of small colored dot; new styles: `tierIcon`, `perksRow`, `perksInfo`, `perksDesc`, `currentBadge`, `currentBadgeText` |
+| `screens/LeaderboardScreen.js` | Leaderboard rows now tappable (`TouchableOpacity`, `disabled` on own row, chevron affordance for others); added `RANK_PERKS` display-only copy object; added "Why Rank Matters" card (tier list with icon, color, description, "You" badge on current tier; later expanded to 6 tiers in rank refactor); Rank Tiers section now shows `rank.icon` emoji instead of small colored dot; new styles: `tierIcon`, `perksRow`, `perksInfo`, `perksDesc`, `currentBadge`, `currentBadgeText` |
 | `App.js` | Added `UserProfile` screen to `ProfileStack` so leaderboard row taps navigate correctly from the Profile tab entry point |
 
 ## Debug Logs (intentionally left in, remove after confirming)

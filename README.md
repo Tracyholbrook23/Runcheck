@@ -82,9 +82,9 @@ npm run test:coverage # Run tests with coverage report
 ├── services/       # Business logic (gym, presence, schedule, reliability)
 ├── hooks/          # Custom React hooks (useAuth, useLocation, usePresence, etc.)
 ├── contexts/       # React Context providers (Theme)
-├── config/         # Firebase and environment configuration
+├── config/         # Firebase config, rank tiers, point values, perk definitions
 ├── constants/      # Theme and branding constants
-├── utils/          # Utility functions (location helpers, maps directions)
+├── utils/          # Utility functions (rank helpers, perk helpers, location, maps)
 ├── assets/         # Images, icons, and splash screen
 └── __tests__/      # Test files
 ```
