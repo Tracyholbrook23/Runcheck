@@ -12,7 +12,7 @@
  * Gated by useIsAdmin — non-admin users see an Access Denied screen.
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { useIsAdmin } from '../hooks';
+import { db } from '../config/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +73,78 @@ export default function AdminToolsScreen({ navigation }) {
   const styles = getStyles(colors, isDark);
   const { isAdmin, loading: adminLoading } = useIsAdmin();
 
+  // Real-time overview counts
+  const [pendingGymRequests, setPendingGymRequests] = useState(0);
+  const [pendingReports, setPendingReports] = useState(0);
+  const [suspendedUsers, setSuspendedUsers] = useState(0);
+  const [resolvedToday, setResolvedToday] = useState(0);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const gymQ = query(
+      collection(db, 'gymRequests'),
+      where('status', '==', 'pending')
+    );
+    const unsubGym = onSnapshot(
+      gymQ,
+      (snap) => setPendingGymRequests(snap.size),
+      () => setPendingGymRequests(0)
+    );
+
+    const reportQ = query(
+      collection(db, 'reports'),
+      where('status', '==', 'pending')
+    );
+    const unsubReports = onSnapshot(
+      reportQ,
+      (snap) => setPendingReports(snap.size),
+      () => setPendingReports(0)
+    );
+
+    // Currently suspended: isSuspended === true AND suspensionEndsAt still
+    // in the future (or missing, meaning permanent). Client-side filter
+    // because Firestore can't express "endsAt > now OR endsAt is null".
+    const suspendedQ = query(
+      collection(db, 'users'),
+      where('isSuspended', '==', true)
+    );
+    const unsubSuspended = onSnapshot(
+      suspendedQ,
+      (snap) => {
+        const now = new Date();
+        const activeCount = snap.docs.filter((d) => {
+          const endsAt = d.data().suspensionEndsAt?.toDate?.();
+          return !endsAt || endsAt > now;
+        }).length;
+        setSuspendedUsers(activeCount);
+      },
+      () => setSuspendedUsers(0)
+    );
+
+    // Resolved reports today (since midnight local)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const resolvedQ = query(
+      collection(db, 'reports'),
+      where('status', '==', 'resolved'),
+      where('reviewedAt', '>=', todayStart)
+    );
+    const unsubResolved = onSnapshot(
+      resolvedQ,
+      (snap) => setResolvedToday(snap.size),
+      () => setResolvedToday(0)
+    );
+
+    return () => { unsubGym(); unsubReports(); unsubSuspended(); unsubResolved(); };
+  }, [isAdmin]);
+
+  // Map tool id → pending count
+  const pendingCounts = {
+    'gym-requests': pendingGymRequests,
+    'reports-moderation': pendingReports,
+  };
+
   const handlePress = (tool) => {
     if (!tool.active) return;
     if (tool.id === 'gym-requests') {
@@ -115,6 +189,26 @@ export default function AdminToolsScreen({ navigation }) {
           </Text>
         </View>
 
+        {/* Overview stats */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{pendingGymRequests}</Text>
+            <Text style={styles.statLabel}>Gym Requests</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{pendingReports}</Text>
+            <Text style={styles.statLabel}>Pending Reports</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{suspendedUsers}</Text>
+            <Text style={styles.statLabel}>Suspended</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statValue}>{resolvedToday}</Text>
+            <Text style={styles.statLabel}>Resolved Today</Text>
+          </View>
+        </View>
+
         {/* Tool rows */}
         {ADMIN_TOOLS.map((tool) => {
           const isActive = tool.active;
@@ -146,6 +240,13 @@ export default function AdminToolsScreen({ navigation }) {
                 {!isActive && (
                   <View style={styles.comingSoonBadge}>
                     <Text style={styles.comingSoonText}>Soon</Text>
+                  </View>
+                )}
+                {isActive && pendingCounts[tool.id] > 0 && (
+                  <View style={styles.pendingBadge}>
+                    <Text style={styles.pendingBadgeText}>
+                      {pendingCounts[tool.id]}
+                    </Text>
                   </View>
                 )}
                 {isActive && (
@@ -191,6 +292,36 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.body,
       color: colors.textSecondary,
       marginTop: SPACING.xxs,
+    },
+
+    // Overview stats row
+    statsRow: {
+      flexDirection: 'row',
+      gap: SPACING.sm,
+      marginBottom: SPACING.md,
+    },
+    statCard: {
+      flex: 1,
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
+      paddingVertical: SPACING.sm,
+      paddingHorizontal: SPACING.xs,
+      alignItems: 'center',
+      ...(isDark
+        ? { borderWidth: 0 }
+        : { borderWidth: 1, borderColor: colors.border }),
+    },
+    statValue: {
+      fontSize: FONT_SIZES.h3,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.primary,
+    },
+    statLabel: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.medium,
+      color: colors.textMuted,
+      marginTop: 2,
+      textAlign: 'center',
     },
 
     // Tool row (card-style, matches gymRequestsRow pattern)
@@ -262,5 +393,21 @@ const getStyles = (colors, isDark) =>
       fontSize: 11,
       fontWeight: FONT_WEIGHTS.semibold,
       color: colors.textMuted,
+    },
+
+    // Pending count badge
+    pendingBadge: {
+      backgroundColor: isDark ? '#451A03' : '#FEF3C7',
+      borderRadius: RADIUS.full,
+      minWidth: 22,
+      height: 22,
+      paddingHorizontal: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    pendingBadgeText: {
+      fontSize: 11,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: isDark ? '#FBBF24' : '#92400E',
     },
   });

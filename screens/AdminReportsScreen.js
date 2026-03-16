@@ -312,6 +312,10 @@ export default function AdminReportsScreen() {
 
   // Hide a reported clip (clip reports only)
   const [hidingClip, setHidingClip] = useState(null); // reportId currently hiding
+  // Remove a reported run (run reports only)
+  const [removingRun, setRemovingRun] = useState(null); // reportId currently removing
+  // Suspend a user (player, clip, run reports)
+  const [suspendingUser, setSuspendingUser] = useState(null); // reportId currently suspending
   const handleHideClip = useCallback((report) => {
     Alert.alert(
       'Hide Clip',
@@ -348,6 +352,94 @@ export default function AdminReportsScreen() {
       ]
     );
   }, [noteText]);
+
+  // Remove a reported run (run reports only)
+  const handleRemoveRun = useCallback((report) => {
+    Alert.alert(
+      'Remove Run',
+      'This will remove the run from all users. The report will be marked as resolved. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove Run',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingRun(report.id);
+            try {
+              const payload = {
+                runId: report.targetId,
+                reportId: report.id,
+              };
+              if (noteText.trim().length > 0) {
+                payload.reason = noteText.trim();
+              }
+              await callFunction('removeRun', payload);
+              setExpandedId(null);
+              setNoteText('');
+            } catch (err) {
+              console.error('removeRun error:', err);
+              Alert.alert(
+                'Remove Failed',
+                err?.message || 'Could not remove run. Please try again.'
+              );
+            } finally {
+              setRemovingRun(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [noteText]);
+
+  // Suspend a reported user (player reports, or clip/run reports with targetOwnerId)
+  const handleSuspendUser = useCallback((report) => {
+    // For player reports, the target IS the user; for clip/run, use targetOwnerId
+    const targetUserId = report.type === 'player' ? report.targetId : report.targetOwnerId;
+    const targetName =
+      report.type === 'player'
+        ? targetLabels[report.targetId] || report.targetId
+        : ownerNames[report.targetOwnerId] || report.targetOwnerId;
+
+    if (!targetUserId) {
+      Alert.alert('Cannot Suspend', 'No user ID available for this report.');
+      return;
+    }
+
+    Alert.alert(
+      'Suspend User',
+      `This will suspend ${targetName}. They will be unable to start runs or upload clips. The report will be marked as resolved. Continue?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Suspend User',
+          style: 'destructive',
+          onPress: async () => {
+            setSuspendingUser(report.id);
+            try {
+              const payload = {
+                userId: targetUserId,
+                reportId: report.id,
+              };
+              if (noteText.trim().length > 0) {
+                payload.reason = noteText.trim();
+              }
+              await callFunction('suspendUser', payload);
+              setExpandedId(null);
+              setNoteText('');
+            } catch (err) {
+              console.error('suspendUser error:', err);
+              Alert.alert(
+                'Suspend Failed',
+                err?.message || 'Could not suspend user. Please try again.'
+              );
+            } finally {
+              setSuspendingUser(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [noteText, targetLabels, ownerNames]);
 
   // ── Admin gate ────────────────────────────────────────────────────
   if (adminLoading) {
@@ -596,6 +688,44 @@ export default function AdminReportsScreen() {
                         <>
                           <Ionicons name="eye-off-outline" size={14} color="#DC2626" />
                           <Text style={styles.hideClipBtnText}>Hide Clip</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Remove Run — enforcement action, run reports only */}
+                  {report.type === 'run' && (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.removeRunBtn, { marginTop: SPACING.sm }]}
+                      onPress={() => handleRemoveRun(report)}
+                      disabled={removingRun === report.id}
+                      activeOpacity={0.7}
+                    >
+                      {removingRun === report.id ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <>
+                          <Ionicons name="close-circle-outline" size={14} color="#DC2626" />
+                          <Text style={styles.removeRunBtnText}>Remove Run</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Suspend User — enforcement action, player reports or clip/run with targetOwnerId */}
+                  {(report.type === 'player' || report.targetOwnerId) && (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.suspendUserBtn, { marginTop: SPACING.sm }]}
+                      onPress={() => handleSuspendUser(report)}
+                      disabled={suspendingUser === report.id}
+                      activeOpacity={0.7}
+                    >
+                      {suspendingUser === report.id ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <>
+                          <Ionicons name="ban-outline" size={14} color="#DC2626" />
+                          <Text style={styles.suspendUserBtnText}>Suspend User</Text>
                         </>
                       )}
                     </TouchableOpacity>
@@ -873,6 +1003,24 @@ const getStyles = (colors, isDark) =>
       borderColor: isDark ? '#7F1D1D' : '#FECACA',
     },
     hideClipBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#DC2626',
+    },
+    removeRunBtn: {
+      backgroundColor: isDark ? '#450A0A' : '#FEF2F2',
+      borderColor: isDark ? '#7F1D1D' : '#FECACA',
+    },
+    removeRunBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#DC2626',
+    },
+    suspendUserBtn: {
+      backgroundColor: isDark ? '#450A0A' : '#FEF2F2',
+      borderColor: isDark ? '#7F1D1D' : '#FECACA',
+    },
+    suspendUserBtnText: {
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.semibold,
       color: '#DC2626',

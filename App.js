@@ -160,7 +160,7 @@ function ProfileStack() {
       {/* Required so leaderboard row taps can navigate to UserProfile from the Profile tab */}
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="MyGymRequests" component={MyGymRequestsScreen} options={{ title: 'My Gym Requests', ...themeStyles.NAV_HEADER }} />
-      <Stack.Screen name="MyReports" component={MyReportsScreen} options={{ title: 'My Reports', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="MyReports" component={MyReportsScreen} options={{ title: 'My Reports', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminTools" component={AdminToolsScreen} options={{ title: 'Admin Tools', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequests" component={AdminGymRequestsScreen} options={{ title: 'Gym Requests', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequestDetail" component={AdminGymRequestDetailScreen} options={{ title: 'Request Detail', headerBackTitle: 'Requests', ...themeStyles.NAV_HEADER }} />

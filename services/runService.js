@@ -60,6 +60,30 @@ import {
   increment,
 } from 'firebase/firestore';
 
+/**
+ * assertNotSuspended — Reads the current user's doc and throws if the user
+ * is actively suspended. Supports timed suspensions: if `suspensionEndsAt`
+ * has passed, the user is no longer blocked.
+ *
+ * Called at the top of creation actions (start run, join run) so suspended
+ * users get a clear error before any writes.
+ */
+const assertNotSuspended = async () => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return; // auth check handled elsewhere
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return;
+
+  const data = snap.data();
+  if (data.isSuspended !== true) return;
+
+  // Check if suspension has expired
+  const endsAt = data.suspensionEndsAt?.toDate?.();
+  if (endsAt && endsAt <= new Date()) return; // expired — allow through
+
+  throw new Error('Your account is suspended. You cannot perform this action.');
+};
+
 // How far apart two runs can be (in ms) and still be merged.
 const MERGE_WINDOW_MS = 60 * 60 * 1000; // 60 minutes
 
@@ -174,6 +198,8 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Must be logged in to start or join a run');
 
+  await assertNotSuspended();
+
   // Validate startTime
   const now = new Date();
   if (startTime <= now) {
@@ -272,6 +298,8 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
 export const joinExistingRun = async (runId, gymId, gymName) => {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Not authenticated');
+
+  await assertNotSuspended();
 
   const userInfo = await fetchUserDisplayInfo();
   await joinRun(runId, gymId, userInfo);
@@ -383,6 +411,8 @@ export const subscribeToGymRuns = (gymId, callback) => {
           // Hide runs with no participants. Treat missing, zero, or negative
           // counts (possible from an unclamped increment(-1) retry) as empty.
           if ((run.participantCount ?? 0) <= 0) return false;
+          // Hide admin-removed runs
+          if (run.isRemoved) return false;
           return true;
         });
 
@@ -430,6 +460,8 @@ export const subscribeToAllUpcomingRuns = (callback) => {
           const st = run.startTime?.toDate();
           if (!st || st < graceCutoff) return false;
           if ((run.participantCount ?? 0) <= 0) return false;
+          // Hide admin-removed runs
+          if (run.isRemoved) return false;
           return true;
         });
 
