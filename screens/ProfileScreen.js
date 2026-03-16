@@ -206,6 +206,52 @@ export default function ProfileScreen({ navigation }) {
   const [reliability, setReliability] = useState(null);
   const [showReliabilityInfo, setShowReliabilityInfo] = useState(false);
 
+  // ── Admin workload badge (all 4 categories visible in Admin Tools) ───────
+  const [adminPendingTotal, setAdminPendingTotal] = useState(0);
+
+  useEffect(() => {
+    if (liveProfile?.isAdmin !== true) return;
+
+    let pendingGymReqs = 0;
+    let pendingReports = 0;
+    let activeSuspended = 0;
+    let hiddenClipsCount = 0;
+    const update = () => setAdminPendingTotal(pendingGymReqs + pendingReports + activeSuspended + hiddenClipsCount);
+
+    const gymQ = query(
+      collection(db, 'gymRequests'),
+      where('status', '==', 'pending')
+    );
+    const unsubGym = onSnapshot(gymQ, (snap) => { pendingGymReqs = snap.size; update(); }, () => {});
+
+    const reportQ = query(
+      collection(db, 'reports'),
+      where('status', '==', 'pending')
+    );
+    const unsubReports = onSnapshot(reportQ, (snap) => { pendingReports = snap.size; update(); }, () => {});
+
+    const suspendedQ = query(
+      collection(db, 'users'),
+      where('isSuspended', '==', true)
+    );
+    const unsubSuspended = onSnapshot(suspendedQ, (snap) => {
+      const now = new Date();
+      activeSuspended = snap.docs.filter((d) => {
+        const endsAt = d.data().suspensionEndsAt?.toDate?.();
+        return !endsAt || endsAt > now;
+      }).length;
+      update();
+    }, () => {});
+
+    const hiddenQ = query(
+      collection(db, 'gymClips'),
+      where('isHidden', '==', true)
+    );
+    const unsubHidden = onSnapshot(hiddenQ, (snap) => { hiddenClipsCount = snap.size; update(); }, () => {});
+
+    return () => { unsubGym(); unsubReports(); unsubSuspended(); unsubHidden(); };
+  }, [liveProfile?.isAdmin]);
+
   // ── Rank / badge data — derived from live Firestore totalPoints ──────────
   const totalPoints = liveProfile?.totalPoints || 0;
   const userRank = getUserRank(totalPoints);
@@ -1020,6 +1066,11 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.gymRequestsLabel}>Admin Tools</Text>
             </View>
             <View style={styles.gymRequestsRight}>
+              {adminPendingTotal > 0 && (
+                <View style={styles.adminBadge}>
+                  <Text style={styles.adminBadgeText}>{adminPendingTotal}</Text>
+                </View>
+              )}
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </View>
           </TouchableOpacity>
@@ -1422,6 +1473,21 @@ const getStyles = (colors, isDark) =>
       paddingHorizontal: 6,
     },
     gymRequestsBadgeText: {
+      fontSize: 11,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#FFFFFF',
+    },
+    // Admin Tools badge (pending items needing action)
+    adminBadge: {
+      backgroundColor: isDark ? '#7F1D1D' : '#DC2626',
+      borderRadius: 10,
+      minWidth: 20,
+      height: 20,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 6,
+    },
+    adminBadgeText: {
       fontSize: 11,
       fontWeight: FONT_WEIGHTS.bold,
       color: '#FFFFFF',

@@ -56,6 +56,20 @@ const ADMIN_TOOLS = [
     active: true,
   },
   {
+    id: 'suspended-users',
+    label: 'Suspended Users',
+    subtitle: 'View and manage currently suspended users',
+    icon: 'ban-outline',
+    active: true,
+  },
+  {
+    id: 'hidden-clips',
+    label: 'Hidden Clips',
+    subtitle: 'View and manage hidden clips',
+    icon: 'eye-off-outline',
+    active: true,
+  },
+  {
     id: 'featured-content',
     label: 'Featured Content',
     subtitle: 'Manage featured gyms, clips, and highlights',
@@ -78,6 +92,7 @@ export default function AdminToolsScreen({ navigation }) {
   const [pendingReports, setPendingReports] = useState(0);
   const [suspendedUsers, setSuspendedUsers] = useState(0);
   const [resolvedToday, setResolvedToday] = useState(0);
+  const [hiddenClips, setHiddenClips] = useState(0);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -136,13 +151,25 @@ export default function AdminToolsScreen({ navigation }) {
       () => setResolvedToday(0)
     );
 
-    return () => { unsubGym(); unsubReports(); unsubSuspended(); unsubResolved(); };
+    const hiddenClipsQ = query(
+      collection(db, 'gymClips'),
+      where('isHidden', '==', true)
+    );
+    const unsubHiddenClips = onSnapshot(
+      hiddenClipsQ,
+      (snap) => setHiddenClips(snap.size),
+      () => setHiddenClips(0)
+    );
+
+    return () => { unsubGym(); unsubReports(); unsubSuspended(); unsubResolved(); unsubHiddenClips(); };
   }, [isAdmin]);
 
   // Map tool id → pending count
   const pendingCounts = {
     'gym-requests': pendingGymRequests,
     'reports-moderation': pendingReports,
+    'suspended-users': suspendedUsers,
+    'hidden-clips': hiddenClips,
   };
 
   const handlePress = (tool) => {
@@ -151,6 +178,10 @@ export default function AdminToolsScreen({ navigation }) {
       navigation.navigate('AdminGymRequests');
     } else if (tool.id === 'reports-moderation') {
       navigation.navigate('AdminReports');
+    } else if (tool.id === 'suspended-users') {
+      navigation.navigate('AdminSuspendedUsers');
+    } else if (tool.id === 'hidden-clips') {
+      navigation.navigate('AdminHiddenClips');
     }
   };
 
