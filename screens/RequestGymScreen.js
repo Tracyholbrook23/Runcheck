@@ -35,6 +35,13 @@ const TYPE_OPTIONS = [
   { label: "I'm not sure", value: 'unknown' },
 ];
 
+// Access type options for the picker
+const ACCESS_TYPE_OPTIONS = [
+  { label: 'Free', value: 'free' },
+  { label: 'Paid', value: 'paid' },
+  { label: "I'm not sure", value: 'unknown' },
+];
+
 /**
  * RequestGymScreen — Gym request submission form.
  *
@@ -52,6 +59,7 @@ export default function RequestGymScreen({ navigation }) {
   const [city, setCity] = useState('');
   const [state, setState] = useState('');
   const [type, setType] = useState('indoor');
+  const [accessType, setAccessType] = useState('unknown');
   const [notes, setNotes] = useState('');
 
   // Submission state
@@ -70,14 +78,19 @@ export default function RequestGymScreen({ navigation }) {
 
     setSubmitting(true);
     try {
-      await callFunction('submitGymRequest', {
+      const payload = {
         gymName: gymName.trim(),
         address: address.trim(),
         city: city.trim(),
         state: state.trim(),
         type,
         notes: notes.trim(),
-      });
+      };
+      // Only include accessType if the user made a definite selection
+      if (accessType !== 'unknown') {
+        payload.accessType = accessType;
+      }
+      await callFunction('submitGymRequest', payload);
       setSubmitted(true);
     } catch (err) {
       // The Cloud Function returns structured errors with codes.
@@ -218,11 +231,35 @@ export default function RequestGymScreen({ navigation }) {
             ))}
           </View>
 
+          {/* Access type picker */}
+          <Text style={styles.label}>Access Type</Text>
+          <View style={styles.typeRow}>
+            {ACCESS_TYPE_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.typeChip,
+                  accessType === option.value && styles.typeChipActive,
+                ]}
+                onPress={() => setAccessType(option.value)}
+              >
+                <Text
+                  style={[
+                    styles.typeChipText,
+                    accessType === option.value && styles.typeChipTextActive,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           {/* Notes */}
           <Text style={styles.label}>Notes (optional)</Text>
           <TextInput
             style={[styles.input, styles.textArea]}
-            placeholder="Any details that would help us find and verify this gym — hours, number of courts, etc."
+            placeholder="Any details that would help us find and verify this gym — hours, number of courts, entry fee, membership requirements, etc."
             placeholderTextColor={colors.textMuted}
             value={notes}
             onChangeText={setNotes}

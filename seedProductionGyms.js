@@ -175,6 +175,21 @@ const gyms = [
     checkInRadiusMeters: 100,
     autoExpireMinutes: 120,
   },
+  {
+    id: 'veterans-park-round-rock',
+    name: 'Veterans Park',
+    address: '600 N Lee St, Round Rock, TX 78664',
+    city: 'Round Rock',
+    state: 'TX',
+    type: 'outdoor',
+    accessType: 'free',
+    status: 'active',
+    notes: 'Outdoor basketball courts at Veterans Park',
+    imageUrl: 'https://firebasestorage.googleapis.com/v0/b/runcheck-567a3.firebasestorage.app/o/gymImages%2Fveterans-park-round-rock.jpg?alt=media&token=fb600660-abc1-40bf-be82-60f036c5b35e',
+    location: { latitude: 30.51782715173148, longitude: -97.67570546006625 },
+    checkInRadiusMeters: 100,
+    autoExpireMinutes: 120,
+  },
 ];
 
 // ---------------------------------------------------------------------------
