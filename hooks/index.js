@@ -52,6 +52,9 @@
  * User Profile:
  * - useProfile: Current user's Firestore profile including followedGyms
  *
+ * Clips:
+ * - useUserClips: Real-time clips for a given user (profile clip reel)
+ *
  * Location:
  * - useLocation: GPS location and permissions
  */
@@ -84,6 +87,9 @@ export { useIsAdmin } from './useIsAdmin';
 // Gym Requests
 export { useMyGymRequests } from './useMyGymRequests';
 export { useAdminGymRequests } from './useAdminGymRequests';
+
+// Clips
+export { useUserClips } from './useUserClips';
 
 // Location
 export { useLocation } from './useLocation';

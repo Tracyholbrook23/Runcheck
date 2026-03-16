@@ -34,11 +34,12 @@ import {
   Image,
   Alert,
   Pressable,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { useGyms } from '../hooks';
+import { useGyms, useUserClips } from '../hooks';
 import { ReportModal } from '../components';
 import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -78,6 +79,7 @@ export default function UserProfileScreen({ route, navigation }) {
   console.log('🧑 [UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
 
   const { gyms } = useGyms();
+  const { clips: userClips, videoUrls: clipVideoUrls, thumbnails: clipThumbnails, loading: clipsLoading } = useUserClips(userId);
 
   // ── Fetch the target user's profile + current user's sentRequests ────────
   // Two parallel reads: users/{userId} for the profile/isFriend check, and
@@ -399,6 +401,86 @@ export default function UserProfileScreen({ route, navigation }) {
           )
         )}
 
+        {/* ── Clips ── */}
+        <View style={[styles.section, { marginBottom: SPACING.lg }]}>
+          <View style={styles.clipsSectionHeader}>
+            <Text style={styles.sectionTitle}>Clips</Text>
+            {userClips.length > 0 && (
+              <View style={styles.clipsCountBadge}>
+                <Text style={styles.clipsCountText}>{userClips.length}</Text>
+              </View>
+            )}
+          </View>
+          {clipsLoading ? (
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={[1, 2, 3]}
+              keyExtractor={(item) => String(item)}
+              contentContainerStyle={styles.clipsRow}
+              renderItem={() => <View style={styles.clipSkeletonTile} />}
+            />
+          ) : userClips.length > 0 ? (
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={userClips}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.clipsRow}
+              renderItem={({ item: clip }) => {
+                const videoUrl = clipVideoUrls[clip.id];
+                const thumbUri = clipThumbnails[clip.id];
+                return (
+                  <TouchableOpacity
+                    style={styles.clipTile}
+                    onPress={() => {
+                      if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId });
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    {thumbUri ? (
+                      <Image source={{ uri: thumbUri }} style={styles.clipTileThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.clipTilePlaceholder} />
+                    )}
+                    <View style={styles.clipTileScrim} />
+                    <View style={styles.clipTilePlayOverlay}>
+                      <Ionicons
+                        name={videoUrl ? 'play-circle' : 'hourglass-outline'}
+                        size={28}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                    </View>
+                    <View style={styles.clipTileBottomRow}>
+                      <Text style={styles.clipTileTime}>
+                        {clip.createdAt
+                          ? (() => {
+                              const d = clip.createdAt.toDate ? clip.createdAt.toDate() : new Date(clip.createdAt);
+                              const s = Math.floor((Date.now() - d.getTime()) / 1000);
+                              if (s < 60) return 'now';
+                              const m = Math.floor(s / 60);
+                              if (m < 60) return `${m}m`;
+                              const h = Math.floor(m / 60);
+                              if (h < 24) return `${h}h`;
+                              return `${Math.floor(h / 24)}d`;
+                            })()
+                          : ''}
+                      </Text>
+                    </View>
+                    {clip.status === 'ready_raw' && (
+                      <View style={styles.clipTileProcessing}>
+                        <Text style={styles.clipTileProcessingText}>Processing…</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          ) : (
+            <Text style={styles.emptyText}>No clips yet</Text>
+          )}
+        </View>
+
         {/* ── Home Court ── */}
         {homeCourtGym && (
           <View style={[styles.section, { marginBottom: SPACING.lg }]}>
@@ -684,5 +766,91 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.textMuted,
     fontStyle: 'italic',
+  },
+  // ── Clips section ─────────────────────────────────────────────────────────
+  clipsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: SPACING.sm,
+  },
+  clipsCountBadge: {
+    backgroundColor: 'rgba(255,122,69,0.18)',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,122,69,0.35)',
+  },
+  clipsCountText: {
+    color: '#FF7A45',
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  clipsRow: {
+    gap: 10,
+    alignItems: 'flex-start',
+    paddingVertical: SPACING.xs,
+  },
+  clipTile: {
+    width: 110,
+    height: 148,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  clipTileThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  clipTilePlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#2a2a2a',
+  },
+  clipTileScrim: {
+    ...StyleSheet.absoluteFillObject,
+    top: '60%',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  clipTilePlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  clipTileBottomRow: {
+    position: 'absolute',
+    left: 8,
+    bottom: 7,
+    right: 8,
+  },
+  clipTileTime: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  clipTileProcessing: {
+    position: 'absolute',
+    bottom: 28,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  clipTileProcessingText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  clipSkeletonTile: {
+    width: 110,
+    height: 148,
+    borderRadius: 12,
+    backgroundColor: '#2a2a2a',
   },
 });

@@ -45,12 +45,13 @@ import {
   Alert,
   Animated,
   Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests } from '../hooks';
+import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -180,6 +181,7 @@ export default function ProfileScreen({ navigation }) {
   // Real-time player counts — same canonical source used by HomeScreen and ViewRunsScreen.
   const { countMap: liveCountMap } = useLivePresenceMap();
   const { pendingCount: gymRequestCount } = useMyGymRequests();
+  const { clips: userClips, videoUrls: clipVideoUrls, thumbnails: clipThumbnails, loading: clipsLoading } = useUserClips(user?.uid);
   const [profile, setProfile] = useState(null);
 
   // Derive the list of followed gym objects from the full gyms array.
@@ -942,6 +944,96 @@ export default function ProfileScreen({ navigation }) {
               <Text style={styles.crewEmptyText}>No crew yet</Text>
               <Text style={styles.crewEmptySubtext}>
                 Send friend requests to build your crew
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* ── My Clips ─────────────────────────────────────────────────── */}
+        <View style={styles.card}>
+          <View style={styles.clipsSectionHeader}>
+            <Text style={styles.cardTitle}>My Clips</Text>
+            {userClips.length > 0 && (
+              <View style={styles.clipsCountBadge}>
+                <Text style={styles.clipsCountText}>{userClips.length}</Text>
+              </View>
+            )}
+          </View>
+          {clipsLoading ? (
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={[1, 2, 3]}
+              keyExtractor={(item) => String(item)}
+              contentContainerStyle={styles.clipsRow}
+              renderItem={() => <View style={styles.clipSkeletonTile} />}
+            />
+          ) : userClips.length > 0 ? (
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={userClips}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.clipsRow}
+              renderItem={({ item: clip }) => {
+                const videoUrl = clipVideoUrls[clip.id];
+                const thumbUri = clipThumbnails[clip.id];
+                return (
+                  <TouchableOpacity
+                    style={styles.clipTile}
+                    onPress={() => {
+                      if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId });
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    {thumbUri ? (
+                      <Image source={{ uri: thumbUri }} style={styles.clipTileThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.clipTilePlaceholder} />
+                    )}
+                    {/* Bottom scrim */}
+                    <View style={styles.clipTileScrim} />
+                    {/* Center play icon */}
+                    <View style={styles.clipTilePlayOverlay}>
+                      <Ionicons
+                        name={videoUrl ? 'play-circle' : 'hourglass-outline'}
+                        size={28}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                    </View>
+                    {/* Bottom time label */}
+                    <View style={styles.clipTileBottomRow}>
+                      <Text style={styles.clipTileTime}>
+                        {clip.createdAt
+                          ? (() => {
+                              const d = clip.createdAt.toDate ? clip.createdAt.toDate() : new Date(clip.createdAt);
+                              const s = Math.floor((Date.now() - d.getTime()) / 1000);
+                              if (s < 60) return 'now';
+                              const m = Math.floor(s / 60);
+                              if (m < 60) return `${m}m`;
+                              const h = Math.floor(m / 60);
+                              if (h < 24) return `${h}h`;
+                              return `${Math.floor(h / 24)}d`;
+                            })()
+                          : ''}
+                      </Text>
+                    </View>
+                    {/* Processing badge */}
+                    {clip.status === 'ready_raw' && (
+                      <View style={styles.clipTileProcessing}>
+                        <Text style={styles.clipTileProcessingText}>Processing…</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          ) : (
+            <View style={styles.clipsEmpty}>
+              <Ionicons name="videocam-outline" size={24} color={colors.textMuted} />
+              <Text style={styles.clipsEmptyText}>No clips yet</Text>
+              <Text style={styles.clipsEmptySubtext}>
+                Record clips at a gym to see them here
               </Text>
             </View>
           )}
@@ -1874,5 +1966,106 @@ editBadge: {
       fontSize: FONT_SIZES.body,
       fontWeight: FONT_WEIGHTS.bold,
       color: '#fff',
+    },
+    // ── My Clips section ───────────────────────────────────────────────────────
+    clipsSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: SPACING.sm,
+    },
+    clipsCountBadge: {
+      backgroundColor: 'rgba(255,122,69,0.18)',
+      borderRadius: 10,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderWidth: 1,
+      borderColor: 'rgba(255,122,69,0.35)',
+    },
+    clipsCountText: {
+      color: '#FF7A45',
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.bold,
+    },
+    clipsRow: {
+      gap: 10,
+      alignItems: 'flex-start',
+      paddingVertical: SPACING.xs,
+    },
+    clipTile: {
+      width: 110,
+      height: 148,
+      borderRadius: 12,
+      overflow: 'hidden',
+      backgroundColor: '#1a1a1a',
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+    },
+    clipTileThumb: {
+      width: '100%',
+      height: '100%',
+    },
+    clipTilePlaceholder: {
+      width: '100%',
+      height: '100%',
+      backgroundColor: '#2a2a2a',
+    },
+    clipTileScrim: {
+      ...StyleSheet.absoluteFillObject,
+      top: '60%',
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      borderBottomLeftRadius: 12,
+      borderBottomRightRadius: 12,
+    },
+    clipTilePlayOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    clipTileBottomRow: {
+      position: 'absolute',
+      left: 8,
+      bottom: 7,
+      right: 8,
+    },
+    clipTileTime: {
+      color: 'rgba(255,255,255,0.7)',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    clipTileProcessing: {
+      position: 'absolute',
+      bottom: 28,
+      alignSelf: 'center',
+      backgroundColor: 'rgba(0,0,0,0.62)',
+      borderRadius: 10,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    clipTileProcessingText: {
+      color: '#fff',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    clipSkeletonTile: {
+      width: 110,
+      height: 148,
+      borderRadius: 12,
+      backgroundColor: '#2a2a2a',
+    },
+    clipsEmpty: {
+      alignItems: 'center',
+      paddingVertical: SPACING.lg,
+      gap: 6,
+    },
+    clipsEmptyText: {
+      color: colors.textMuted,
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+    },
+    clipsEmptySubtext: {
+      color: colors.textMuted,
+      fontSize: FONT_SIZES.small,
+      textAlign: 'center',
     },
   });

@@ -657,28 +657,27 @@ export default function RunDetailsScreen({ route, navigation }) {
         });
     };
 
-    // NOTE: Requires a Firestore composite index on gymClips:
-    //   gymId ASC + expiresAt ASC
-    // If the app logs "index required", create the index in the Firebase console
-    // (or firestore.indexes.json) with fields: gymId (ASC), expiresAt (ASC).
+    // Recency-based query: show clips created within the last 48 hours.
+    // Clips now persist in Firestore permanently (no TTL deletion).
+    // Gym page visibility is controlled by this recency window, not by expiresAt.
+    // Uses existing composite index: gymId ASC + createdAt DESC.
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
     const clipsQuery = query(
       collection(db, 'gymClips'),
       where('gymId', '==', gymId),
-      where('expiresAt', '>', Timestamp.now()),
-      orderBy('expiresAt', 'desc'),
+      where('createdAt', '>', Timestamp.fromDate(fortyEightHoursAgo)),
+      orderBy('createdAt', 'desc'),
       limit(20)
     );
 
     // Client-side guard: show clips that are either fully finalized ("ready")
     // OR freshly uploaded and awaiting backend processing ("ready_raw").
-    // Both statuses have storagePath + expiresAt set by createClipSession /
-    // finalizeClipUpload, so they pass the Firestore query; we just need to
-    // stop excluding "ready_raw" here.
+    // Both statuses have storagePath + createdAt set by finalizeClipUpload.
     // Hidden clips (isHidden === true) are excluded from the feed.
     const isReadyClip = (c) =>
       (c.status === 'ready' || c.status === 'ready_raw') &&
       !!c.storagePath &&
-      !!c.expiresAt &&
+      !!c.createdAt &&
       !c.isHidden;
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
