@@ -52,6 +52,7 @@ import MyGymRequestsScreen from './screens/MyGymRequestsScreen';
 import AdminToolsScreen from './screens/AdminToolsScreen';
 import AdminGymRequestsScreen from './screens/AdminGymRequestsScreen';
 import AdminGymRequestDetailScreen from './screens/AdminGymRequestDetailScreen';
+import AdminReportsScreen from './screens/AdminReportsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -161,6 +162,7 @@ function ProfileStack() {
       <Stack.Screen name="AdminTools" component={AdminToolsScreen} options={{ title: 'Admin Tools', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequests" component={AdminGymRequestsScreen} options={{ title: 'Gym Requests', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequestDetail" component={AdminGymRequestDetailScreen} options={{ title: 'Request Detail', headerBackTitle: 'Requests', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ title: 'Reports', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
     </Stack.Navigator>
   );
 }

@@ -16,10 +16,11 @@
  *   • Pauses and unloads the video before navigating back to free resources.
  */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import { ReportModal } from '../components';
 
 /**
  * ClipPlayerScreen
@@ -30,8 +31,9 @@ import { Ionicons } from '@expo/vector-icons';
  * @returns {JSX.Element}
  */
 export default function ClipPlayerScreen({ route, navigation }) {
-  const { videoUrl } = route.params;
+  const { videoUrl, clipId } = route.params;
   const videoRef = useRef(null);
+  const [showReport, setShowReport] = useState(false);
 
   /**
    * handleClose — Pauses + unloads the video before going back so the
@@ -74,6 +76,27 @@ export default function ClipPlayerScreen({ route, navigation }) {
       >
         <Ionicons name="close" size={22} color="#fff" />
       </TouchableOpacity>
+
+      {/* Report button — below close button */}
+      {clipId && (
+        <TouchableOpacity
+          style={styles.reportButton}
+          onPress={() => setShowReport(true)}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Ionicons name="flag-outline" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* Report modal */}
+      {clipId && (
+        <ReportModal
+          visible={showReport}
+          onClose={() => setShowReport(false)}
+          type="clip"
+          targetId={clipId}
+        />
+      )}
     </View>
   );
 }
@@ -86,6 +109,17 @@ const styles = StyleSheet.create({
   closeButton: {
     position: 'absolute',
     top: 52,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  reportButton: {
+    position: 'absolute',
+    top: 100,
     right: 16,
     width: 40,
     height: 40,

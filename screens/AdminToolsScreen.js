@@ -51,7 +51,7 @@ const ADMIN_TOOLS = [
     label: 'Reports / Moderation',
     subtitle: 'Review flagged content and user reports',
     icon: 'shield-checkmark-outline',
-    active: false,
+    active: true,
   },
   {
     id: 'featured-content',
@@ -75,6 +75,8 @@ export default function AdminToolsScreen({ navigation }) {
     if (!tool.active) return;
     if (tool.id === 'gym-requests') {
       navigation.navigate('AdminGymRequests');
+    } else if (tool.id === 'reports-moderation') {
+      navigation.navigate('AdminReports');
     }
   };
 

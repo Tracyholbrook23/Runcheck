@@ -49,7 +49,7 @@ import {
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
-import { PresenceList, Logo } from '../components';
+import { PresenceList, Logo, ReportModal } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { useTheme } from '../contexts';
@@ -265,6 +265,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [selectedRunSlot, setSelectedRunSlot] = useState(null); // time slot object
   const [startingRun, setStartingRun] = useState(false);
   const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
+
+  // ── Report modal state ──────────────────────────────────────────────────
+  const [reportVisible, setReportVisible] = useState(false);
+  const [reportType, setReportType] = useState(null);   // 'gym' | 'run'
+  const [reportTargetId, setReportTargetId] = useState(null);
 
   // ── Per-run participant subscriptions ───────────────────────────────────────
   // Maps runId → participant[] so each run card can show real-time avatars
@@ -1302,6 +1307,14 @@ export default function RunDetailsScreen({ route, navigation }) {
                 {isHomeCourt ? 'Home Court' : 'Set Home'}
               </Text>
             </TouchableOpacity>
+            {/* Report gym */}
+            <TouchableOpacity
+              style={styles.followButton}
+              onPress={() => { setReportType('gym'); setReportTargetId(gymId); setReportVisible(true); }}
+            >
+              <Ionicons name="flag-outline" size={16} color={colors.textSecondary} style={{ marginRight: 4 }} />
+              <Text style={styles.followButtonText}>Report</Text>
+            </TouchableOpacity>
           </View>
           {/* Access type badge — shown immediately below the name */}
           {gym?.accessType && (
@@ -1469,6 +1482,14 @@ export default function RunDetailsScreen({ route, navigation }) {
                         <Text style={styles.runJoinButtonText}>Join Run</Text>
                       </TouchableOpacity>
                     )}
+                    {/* Report run */}
+                    <TouchableOpacity
+                      onPress={() => { setReportType('run'); setReportTargetId(run.id); setReportVisible(true); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      style={{ marginTop: 6 }}
+                    >
+                      <Ionicons name="flag-outline" size={16} color={colors.textMuted} />
+                    </TouchableOpacity>
                   </View>
                 </View>
               );
@@ -2024,6 +2045,14 @@ export default function RunDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* Report modal (shared for gym + run reports) */}
+      <ReportModal
+        visible={reportVisible}
+        onClose={() => { setReportVisible(false); setReportType(null); setReportTargetId(null); }}
+        type={reportType}
+        targetId={reportTargetId}
+      />
 
     </SafeAreaView>
   );

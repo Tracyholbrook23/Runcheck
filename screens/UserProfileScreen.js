@@ -39,6 +39,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms } from '../hooks';
+import { ReportModal } from '../components';
 import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -56,6 +57,7 @@ export default function UserProfileScreen({ route, navigation }) {
   const { userId } = route.params;
   const currentUid = auth.currentUser?.uid;
   const isOwnProfile = currentUid === userId;
+  const [showReport, setShowReport] = useState(false);
 
   const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -266,8 +268,18 @@ export default function UserProfileScreen({ route, navigation }) {
           <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Profile</Text>
-        {/* Spacer to centre the title */}
-        <View style={styles.backButton} />
+        {/* Report button (other users only) or spacer to centre the title */}
+        {!isOwnProfile ? (
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => setShowReport(true)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="flag-outline" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backButton} />
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -437,6 +449,16 @@ export default function UserProfileScreen({ route, navigation }) {
         </View>
 
       </ScrollView>
+
+      {/* Report modal */}
+      {!isOwnProfile && (
+        <ReportModal
+          visible={showReport}
+          onClose={() => setShowReport(false)}
+          type="player"
+          targetId={userId}
+        />
+      )}
     </SafeAreaView>
   );
 }
