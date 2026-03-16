@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-15_
+_Last updated: 2026-03-16_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -116,18 +116,52 @@ const getRunEnergyLabel = (count) => {
 - **Start a Run / Join a Run MVP**: any user can start a group run at a gym; others can join with one tap; merge rule prevents duplicate runs within ±60 min at the same gym; runs display participant count and who's going; grace window keeps runs visible 30 min after startTime so late arrivals can still join
 - **UI polish pass (2026-03-13)**: Consistent LinearGradient headers across CheckInScreen, ViewRunsScreen, PlanVisitScreen using `['#3D1E00', '#1A0A00', colors.background]` with `locations={[0, 0.55, 1]}`; GymThumbnail pattern (local image → imageUrl → fallback icon) replicated from ProfileScreen; RunCheck Logo on CheckInScreen empty state
 - **Run accountability (RC-006)**: `evaluateRunReward` awards `+10 pts` for genuine run follow-through; late-cancel penalties apply; solo farming blocked; creator-presence legitimacy check; idempotency via `pointsAwarded.runs[runId]`
-- **Gym request system (2026-03-15)**: Users can submit gym requests via Cloud Function with server-enforced 1-per-7-day rate limit. "My Gym Requests" screen in Profile tab shows real-time status with badges. Entry point in ViewRunsScreen ("Don't see your gym?"). Admin workflow: review in Firebase Console → add gym via `seedProductionGyms.js` → update request doc.
+- **Gym request system (2026-03-15)**: Users can submit gym requests via Cloud Function with server-enforced 1-per-7-day rate limit. "My Gym Requests" screen in Profile tab shows real-time status with pending-only badge. Entry point in ViewRunsScreen ("Don't see your gym?"). Admin workflow: review in Firebase Console → add gym via `seedProductionGyms.js` → update request doc.
 - **Gym image migration to Firebase Storage (2026-03-15)**: Storage path convention `gymImages/{gymId}.jpg`. Public read, admin-only write. Seed script warns on external image URLs. Fitness Connection is the first gym migrated to Firebase Storage.
 - **Reporting system (2026-03-15)**: Users can report clips, players, runs, and gyms via `ReportModal` component. Reports submitted via `submitReport` Cloud Function with server-side duplicate prevention (one report per user per item). Reports stored in `reports` Firestore collection with `targetOwnerId` resolved per type (player→targetId, clip→uploaderUid, run→creatorId, gym→null). Admin Tools has a live "Reports / Moderation" screen (`AdminReportsScreen`) with real-time `onSnapshot` listener, type/status badges, and pending count. Admins can mark reports as "reviewed" or "resolved" and attach optional notes via the `moderateReport` Cloud Function. No user bans or content deletion yet.
+- **Moderation system (2026-03-16)**: Full auto-moderation + admin moderation pipeline. `moderationHelpers.ts` is the single source of truth for all enforcement logic (hide clip, remove run, suspend user, unsuspend user, unhide clip, resolve report). Auto-moderation thresholds: clip→3 reports, run→3 reports, player→5 reports — triggered inside `submitReport` when pending report count reaches the threshold. Timed suspension escalation: `ESCALATION_DAYS = [1, 3, 7, 30, 365]` based on `suspensionLevel` on the user doc. Admin callables: `hideClip`, `removeRun`, `suspendUser`, `unsuspendUser`, `unhideClip`, `moderateReport` — all require `users/{uid}.isAdmin === true`. Client calls via `callFunction('functionName', payload)` from `config/firebase.js`.
+- **Admin dashboards (2026-03-16)**: Admin Tools hub screen (`AdminToolsScreen`) with live pending counts per tool. Sub-screens: `AdminGymRequestsScreen` (with detail view), `AdminReportsScreen` (type/status badges, resolve/review actions), `AdminSuspendedUsersScreen` (user avatar, suspendedBy resolved to display name, unsuspend action), `AdminHiddenClipsScreen` (clip thumbnail preview, play icon overlay, hiddenBy resolved to display name, uploader avatar, unhide action, tappable thumbnails to view video in ClipPlayerScreen). All admin screens gated by `useIsAdmin` hook. Admin badge on Profile → Admin Tools row counts total workload: pending gym requests + pending reports + currently suspended users + hidden clips.
+- **Profile badges (2026-03-16)**: "My Gym Requests" badge on Profile now counts only `status === 'pending'` requests (was total count). Uses `pendingCount` from `useMyGymRequests` hook. Badge disappears when all requests are approved/rejected/duplicate.
+- **Upcoming Runs participant modal (2026-03-16)**: The `+N` overflow bubble on Upcoming Runs cards in `RunDetailsScreen` is now tappable — opens a bottom-sheet modal listing all participants for that run with avatar, display name, and chevron. Tapping a participant navigates to their profile via `navigation.navigate('Home', { screen: 'UserProfile', params: { userId } })`.
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
+
+## Files Modified Recently (2026-03-16 session — Moderation System, Admin Dashboards, UX Polish)
+
+### Backend files changed (in runcheck-backend)
+| File | What changed |
+|---|---|
+| `functions/src/moderationHelpers.ts` | **New file** — Shared enforcement logic: `enforceHideClip`, `enforceRemoveRun`, `enforceSuspendUser`, `enforceUnsuspendUser`, `enforceUnhideClip`, `resolveRelatedReport`. Single source of truth for all moderation actions. Escalation table: `ESCALATION_DAYS = [1, 3, 7, 30, 365]`. |
+| `functions/src/hideClip.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceHideClip`. |
+| `functions/src/removeRun.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceRemoveRun`. |
+| `functions/src/suspendUser.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceSuspendUser`. Returns suspension level + duration. |
+| `functions/src/unsuspendUser.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceUnsuspendUser`. |
+| `functions/src/unhideClip.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceUnhideClip`. |
+| `functions/src/moderateReport.ts` | **New file** — Admin callable: mark reports as reviewed/resolved with optional admin notes. |
+| `functions/src/submitReport.ts` | Updated — auto-moderation: after writing report, checks pending count against thresholds (clip→3, run→3, player→5) and triggers enforcement helpers + resolves all related reports. |
+| `functions/src/index.ts` | Added exports: `hideClip`, `removeRun`, `suspendUser`, `unsuspendUser`, `unhideClip`, `moderateReport`. |
+
+### Frontend files changed
+| File | What changed |
+|---|---|
+| `screens/AdminToolsScreen.js` | **New file** — Admin hub with live pending counts per tool category. Navigation to all admin sub-screens. |
+| `screens/AdminGymRequestsScreen.js` | **New file** — Admin gym request review list. |
+| `screens/AdminGymRequestDetailScreen.js` | **New file** — Detail view for individual gym requests. |
+| `screens/AdminReportsScreen.js` | **New file** — Reports moderation list with type/status badges, resolve/review actions via `moderateReport` callable. |
+| `screens/AdminSuspendedUsersScreen.js` | **New file** — Suspended users list with avatar, resolved names, unsuspend action. |
+| `screens/AdminHiddenClipsScreen.js` | **New file** — Hidden clips list with thumbnails, video playback, unhide action. |
+| `screens/ProfileScreen.js` | Admin Tools badge counts all 4 categories. My Gym Requests badge uses `pendingCount`. |
+| `screens/RunDetailsScreen.js` | +N bubble on Upcoming Runs opens participant list bottom-sheet modal. |
+| `hooks/useMyGymRequests.js` | Added `pendingCount` to return value. |
+| `hooks/useIsAdmin.js` | **New file** — Admin gate hook. |
+| `App.js` | Added all admin screen routes + ClipPlayer in ProfileStack. |
 
 ## Files Modified Recently (2026-03-15 session — Gym Requests, Image Migration, Fitness Connection)
 | File | What changed |
 |---|---|
 | `screens/RequestGymScreen.js` | **New file** — Gym request submission form. Calls `submitGymRequest` Cloud Function. Fixed bottom bar for submit button. Handles rate-limit errors. |
 | `screens/MyGymRequestsScreen.js` | **New file** — Displays user's gym requests with status badges (pending/approved/duplicate/rejected), admin notes, contextual hints. Dark mode support. Empty state. |
-| `hooks/useMyGymRequests.js` | **New file** — Real-time Firestore listener on `gymRequests` where `submittedBy == uid`, ordered newest-first. Returns `{ requests, loading, count }`. |
+| `hooks/useMyGymRequests.js` | **New file** — Real-time Firestore listener on `gymRequests` where `submittedBy == uid`, ordered newest-first. Returns `{ requests, loading, count, pendingCount }`. |
 | `hooks/index.js` | Added `useMyGymRequests` export. |
 | `App.js` | Added RequestGymScreen to RunsStack. Added MyGymRequestsScreen to ProfileStack with themed header. |
 | `screens/ViewRunsScreen.js` | Added "Don't see your gym? Request it" entry point at bottom of gym list. |
@@ -158,29 +192,6 @@ const getRunEnergyLabel = (count) => {
 | `functions/src/index.ts` | Added `submitReport` export. |
 | `firestore.rules` | Added `reports` collection rules: admin can read all + update; users can read own reports; create/delete blocked (Cloud Function only). |
 | `firestore.indexes.json` | Added composite index for reports duplicate check: `reportedBy+type+targetId`. |
-
-## Files Modified Recently (2026-03-15 session — Gym Requests, Image Migration, Fitness Connection)
-| File | What changed |
-|---|---|
-| `screens/RequestGymScreen.js` | **New file** — Gym request submission form. Calls `submitGymRequest` Cloud Function. Fixed bottom bar for submit button. Handles rate-limit errors. |
-| `screens/MyGymRequestsScreen.js` | **New file** — Displays user's gym requests with status badges (pending/approved/duplicate/rejected), admin notes, contextual hints. Dark mode support. Empty state. |
-| `hooks/useMyGymRequests.js` | **New file** — Real-time Firestore listener on `gymRequests` where `submittedBy == uid`, ordered newest-first. Returns `{ requests, loading, count }`. |
-| `hooks/index.js` | Added `useMyGymRequests` export. |
-| `App.js` | Added RequestGymScreen to RunsStack. Added MyGymRequestsScreen to ProfileStack with themed header. |
-| `screens/ViewRunsScreen.js` | Added "Don't see your gym? Request it" entry point at bottom of gym list. |
-| `screens/ProfileScreen.js` | Added "My Gym Requests" row with orange count badge (uses `useMyGymRequests` hook). |
-| `seedProductionGyms.js` | Added Fitness Connection gym (`fitness-connection-austin-north`). Image URL now points to Firebase Storage. Added validation warning for non-Firebase-Storage image URLs. Total: 6 gyms. |
-| `services/gymService.js` | `subscribeToGyms` and `getAllGyms` now filter client-side by `status === 'active'`. |
-| `services/models.js` | Added `GYM_STATUS` and `GYM_ACCESS_TYPE` constants. Updated gym schema documentation. |
-
-### Backend files changed (in runcheck-backend — Gym Requests session)
-| File | What changed |
-|---|---|
-| `functions/src/submitGymRequest.ts` | **New file** — Cloud Function: auth check, input validation/sanitization, 7-day rate limit query, structured `gymRequests` doc creation. |
-| `functions/src/index.ts` | Added `submitGymRequest` export. |
-| `firestore.rules` | Tightened `gyms` write rules to field-level restricted updates (system-managed counters only). Added `gymRequests` read rules (own docs only) with all writes blocked. |
-| `firestore.indexes.json` | Added two composite indexes for `gymRequests`: `submittedBy+createdAt ASC` (rate-limit query) and `submittedBy+createdAt DESC` (frontend listing). |
-| `storage.rules` | Added `gymImages/{fileName}` rule: public read, write blocked (admin-only uploads). |
 
 ## Files Modified Recently (2026-03-15 session — Gym System Refactor: Firestore as Source of Truth)
 | File | What changed |
@@ -290,6 +301,18 @@ const getRunEnergyLabel = (count) => {
 - **One active review per user per gym**: enforced by `submitReview` querying before writing
 - **One-time reward per user per gym**: `pointsAwarded.reviewedGyms` guard in `pointsService` transaction — delete/repost cannot re-earn
 - **Display**: rating summary above CTA, 3-level sort (verifiedAttendee→rating→date), reviewer run count via lazy `reviewerStatsMap` cache, tappable avatar/name → UserProfile
+
+## Moderation System Architecture (as of 2026-03-16)
+- **Enforcement logic**: `moderationHelpers.ts` in the backend repo is the single source of truth. Contains: `enforceHideClip`, `enforceRemoveRun`, `enforceSuspendUser`, `enforceUnsuspendUser`, `enforceUnhideClip`, `resolveRelatedReport`. All helpers are idempotent.
+- **Auto-moderation**: Triggered inside `submitReport` when pending report count reaches threshold — clip: 3 reports, run: 3 reports, player: 5 reports. Auto-mod sets `autoModerated: true` and `actor: 'auto-moderation'`.
+- **Timed suspension escalation**: `ESCALATION_DAYS = [1, 3, 7, 30, 365]`. `suspensionLevel` increments on each suspension. Expired suspensions allow re-suspension with escalation. Admins are never suspended.
+- **User doc fields for suspension**: `isSuspended`, `suspendedBy`, `suspendedAt`, `suspensionReason`, `suspensionLevel`, `suspensionEndsAt`, `unsuspendedBy`, `unsuspendedAt`, `unsuspendReason`
+- **Clip doc fields for hiding**: `isHidden`, `hiddenBy`, `hiddenAt`, `hiddenReason`, `autoModerated`, `autoModeratedAt`, `unhiddenBy`, `unhiddenAt`, `unhiddenReason`
+- **Run doc fields for removal**: `isRemoved`, `removedBy`, `removedAt`, `removedReason`, `autoModerated`, `autoModeratedAt`
+- **Admin callables**: All use `onCall` from `firebase-functions/v2/https`. Auth + admin check pattern: `context.auth` required, then `getDoc('users/{uid}').isAdmin === true`. Client calls via `callFunction('name', payload)`.
+- **Admin screens**: All gated by `useIsAdmin` hook. Hub: `AdminToolsScreen` with pending counts. Sub-screens: `AdminGymRequestsScreen`, `AdminReportsScreen`, `AdminSuspendedUsersScreen`, `AdminHiddenClipsScreen`. Hidden clips screen allows admin video preview via ClipPlayerScreen.
+- **Profile badges**: Admin Tools badge counts 4 categories (gym requests + reports + suspended users + hidden clips). My Gym Requests badge counts only `status === 'pending'`.
+- **Name resolution pattern**: Collect unique UIDs from data → batch `getDoc` from `users` collection → store in state map `{ [uid]: { name, photoURL } }` → render with fallback to raw UID. Used consistently in AdminSuspendedUsersScreen and AdminHiddenClipsScreen.
 
 ## Attendance / Points Architecture (as of 2026-03-11)
 - **Check-in = attended session** — every successful `presenceService.checkIn()` call awards points AND increments `reliability.totalAttended`

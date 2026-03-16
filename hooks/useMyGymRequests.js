@@ -68,10 +68,13 @@ export const useMyGymRequests = () => {
     return unsubscribe;
   }, []);
 
+  const pendingCount = requests.filter((r) => r.status === 'pending').length;
+
   return {
     requests,
     loading,
     count: requests.length,
+    pendingCount,
   };
 };
 

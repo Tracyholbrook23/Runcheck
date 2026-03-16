@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-13_
+_Last updated: 2026-03-16_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -41,6 +41,18 @@ Firebase-only backend. No custom server. Logic lives in:
   activePresence: {         // denormalized — null if not checked in
     odId, gymId, gymName, checkedInAt, expiresAt
   } | null,
+  isAdmin: boolean,              // true for admin users
+  // ── Suspension fields (written by enforceSuspendUser / enforceUnsuspendUser) ──
+  isSuspended: boolean,
+  suspendedBy: string,           // admin UID or 'auto-moderation'
+  suspendedAt: Timestamp,
+  suspensionReason: string | null,
+  suspensionLevel: number,       // escalation level (1-indexed), persists across unsuspends
+  suspensionEndsAt: Timestamp,   // when the timed suspension expires
+  unsuspendedBy: string,         // admin UID who lifted suspension
+  unsuspendedAt: Timestamp,
+  unsuspendReason: string | null,
+  autoModerated: boolean,        // true if suspended by auto-moderation
   createdAt, updatedAt: Timestamp,
 }
 ```
@@ -166,6 +178,58 @@ Firebase-only backend. No custom server. Logic lives in:
 ```
 > Written by the `weeklyReset` Cloud Function (automated every Monday 00:05 CT) and optionally by `scripts/weeklyReset.js` (manual backup/admin tool). Read on client by `weeklyWinnersService.js`. The `firstPlace` field is a convenience duplicate of `winners[0]` for lightweight reads that only need the top winner.
 
+### `reports/{autoId}`
+```js
+{
+  reportedBy: string,            // UID of the reporter
+  reporterName: string,
+  type: 'clip' | 'player' | 'run' | 'gym',
+  targetId: string,              // ID of the reported item
+  targetOwnerId: string | null,  // resolved per type: player→targetId, clip→uploaderUid, run→creatorId, gym→null
+  reason: string,                // selected reason category
+  description: string | null,    // optional free-text details
+  status: 'pending' | 'reviewed' | 'resolved',
+  reviewedBy: string | null,     // admin UID who reviewed
+  reviewedAt: Timestamp | null,
+  adminNotes: string | null,
+  autoModerated: boolean,        // true if resolved by auto-moderation
+  autoModerationReason: string | null,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+}
+```
+> Duplicate prevention: composite unique on `reportedBy + type + targetId`. Auto-moderation in `submitReport` checks pending count against thresholds (clip→3, run→3, player→5) and triggers enforcement helpers.
+
+### `gymClips/{autoId}` — moderation fields (subset)
+```js
+{
+  // ... clip upload fields (storagePath, thumbnailPath, uploaderUid, etc.)
+  isHidden: boolean,
+  hiddenBy: string,              // admin UID or 'auto-moderation'
+  hiddenAt: Timestamp,
+  hiddenReason: string | null,
+  autoModerated: boolean,
+  autoModeratedAt: Timestamp,
+  unhiddenBy: string,            // admin UID who unhid
+  unhiddenAt: Timestamp,
+  unhiddenReason: string | null,
+}
+```
+
+### `gymRequests/{autoId}`
+```js
+{
+  submittedBy: string,           // UID
+  gymName: string,
+  address: string,
+  type: string,
+  notes: string | null,
+  status: 'pending' | 'approved' | 'rejected' | 'duplicate',
+  adminNotes: string | null,
+  createdAt: Timestamp,
+}
+```
+
 ---
 
 ## Services
@@ -264,6 +328,63 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useGymRuns(gymId)` | `{ runs, loading, joinedRunIds, userParticipants }` | `subscribeToGymRuns` + `subscribeToUserRunsAtGym` |
 | `useLivePresenceMap()` | `{ presenceMap, countMap }` | Single `presence` subscription (status==active, limit 200); client-side `expiresAt` guard; deduplicates by `odId` per gym. **Canonical source** for all-gym player counts — use `countMap[gymId]` everywhere, never `gym.currentPresenceCount`. |
 | `useWeeklyWinners()` | `{ winners, weekOf, recordedAt, loading }` | `getLatestWeeklyWinners` (one-shot fetch on mount). `recordedAt` used by HomeScreen to show a 24-hour celebration card after each weekly reset. |
+| `useMyGymRequests()` | `{ requests, loading, count, pendingCount }` | Real-time subscription to current user's `gymRequests` docs. `pendingCount` filters `status === 'pending'` for badge display. |
+| `useIsAdmin()` | `{ isAdmin, loading }` | Checks `users/{uid}.isAdmin === true`. Used to gate all admin screens. |
+
+---
+
+## Cloud Functions (in runcheck-backend)
+
+All Cloud Functions use `onCall` from `firebase-functions/v2/https`. Deployed from `~/Desktop/runcheck-backend`. Client calls via `callFunction('name', payload)` from `config/firebase.js` (region: `us-central1`).
+
+### Moderation Functions
+| Function | File | Role |
+|----------|------|------|
+| `hideClip` | `hideClip.ts` | Admin callable: hides a clip. Delegates to `enforceHideClip`. |
+| `removeRun` | `removeRun.ts` | Admin callable: removes a run + related activity. Delegates to `enforceRemoveRun`. |
+| `suspendUser` | `suspendUser.ts` | Admin callable: suspends a user with escalating timed duration. Delegates to `enforceSuspendUser`. Returns `{ suspensionLevel, durationDays, endsAt }`. |
+| `unsuspendUser` | `unsuspendUser.ts` | Admin callable: lifts a suspension. Delegates to `enforceUnsuspendUser`. |
+| `unhideClip` | `unhideClip.ts` | Admin callable: unhides a clip. Delegates to `enforceUnhideClip`. |
+| `moderateReport` | `moderateReport.ts` | Admin callable: marks reports as reviewed/resolved with optional admin notes. |
+| `submitReport` | `submitReport.ts` | User callable: submits a report with duplicate prevention. **Triggers auto-moderation** when pending count reaches threshold. |
+
+### moderationHelpers.ts — Shared Enforcement Logic
+Single source of truth for all moderation actions. Both admin callables and auto-moderation call these helpers so logic is never duplicated.
+
+| Helper | Target | Action |
+|--------|--------|--------|
+| `enforceHideClip` | `gymClips/{clipId}` | Sets `isHidden: true` + audit fields |
+| `enforceRemoveRun` | `runs/{runId}` | Sets `isRemoved: true` + marks related activity |
+| `enforceSuspendUser` | `users/{userId}` | Sets `isSuspended: true` with escalating timed duration |
+| `enforceUnsuspendUser` | `users/{userId}` | Clears `isSuspended`, preserves `suspensionLevel` for history |
+| `enforceUnhideClip` | `gymClips/{clipId}` | Clears `isHidden`, preserves audit trail |
+| `resolveRelatedReport` | `reports/{reportId}` | Sets `status: 'resolved'` with system note |
+
+**Auto-moderation thresholds** (in `submitReport.ts`):
+- Clip: 3 pending reports → `enforceHideClip` + resolve all related reports
+- Run: 3 pending reports → `enforceRemoveRun` + resolve all related reports
+- Player: 5 pending reports → `enforceSuspendUser` + resolve all related reports
+
+**Suspension escalation**: `ESCALATION_DAYS = [1, 3, 7, 30, 365]`. Level increments on each suspension. Expired suspensions allow re-suspension at the next level. Admin accounts are never suspended.
+
+**Admin auth pattern**: All admin callables check `context.auth` then `getDoc('users/{uid}').isAdmin === true`. Throws `unauthenticated` or `permission-denied` on failure.
+
+### Other Functions
+| Function | File | Role |
+|----------|------|------|
+| `submitGymRequest` | `submitGymRequest.ts` | User callable: gym request with 7-day rate limit. |
+| `weeklyReset` | `weeklyReset.ts` | Scheduled: Monday 00:05 CT. Saves top 3 winners, resets `weeklyPoints`. |
+| `checkIn` | `checkIn.ts` | Check-in with GPS validation. |
+| `createRun` | `createRun.ts` | Create a new run. |
+| `expirePresence` | `expirePresence.ts` | Server-side presence expiry. |
+| `onScheduleWrite` | `onScheduleWrite.ts` | Firestore trigger on schedule writes. |
+| `createClipSession` | `clipFunctions.ts` | Clip session creation. |
+| `finalizeClipUpload` | `clipFunctions.ts` | Clip upload finalization. |
+| `expireClips` | `expireClips.ts` | Scheduled clip expiry. |
+| `addFriend` | `addFriend.ts` | Friend request acceptance. |
+| `declineFriendRequest` | `declineFriendRequest.ts` | Friend request decline. |
+| `cancelFriendRequest` | `cancelFriendRequest.ts` | Friend request cancellation. |
+| `removeFriend` | `removeFriend.ts` | Remove a friend. |
 
 ---
 

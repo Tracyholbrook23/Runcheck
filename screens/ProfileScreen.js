@@ -179,7 +179,7 @@ export default function ProfileScreen({ navigation }) {
   const { followedGyms, profile: liveProfile } = useProfile();
   // Real-time player counts — same canonical source used by HomeScreen and ViewRunsScreen.
   const { countMap: liveCountMap } = useLivePresenceMap();
-  const { count: gymRequestCount } = useMyGymRequests();
+  const { pendingCount: gymRequestCount } = useMyGymRequests();
   const [profile, setProfile] = useState(null);
 
   // Derive the list of followed gym objects from the full gyms array.

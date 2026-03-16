@@ -52,6 +52,7 @@ Before writing any code for a task:
 - Never add reliability writes — those belong to Cloud Functions
 - Never add gym document writes — gym data is admin-only via `seedProductionGyms.js`. The client is read-only for the `gyms` collection.
 - Never add direct writes to `gymRequests` — all writes go through the `submitGymRequest` Cloud Function
+- Never write moderation fields directly from the client (`isHidden`, `isRemoved`, `isSuspended`, report `status`, etc.) — all moderation writes go through Cloud Functions. `moderationHelpers.ts` is the single source of truth for enforcement logic.
 - Prefer modifying query filters over adding new queries
 - Do not change function signatures unless required; add optional parameters if needed
 - All new Firestore reads must use existing indexes (check `BACKEND_MEMORY.md`)
@@ -88,4 +89,4 @@ Before writing any code for a task:
 
 ---
 
-_Last updated: 2026-03-15_
+_Last updated: 2026-03-16_

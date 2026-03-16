@@ -219,7 +219,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Hook Layer
 | File | Role |
 |------|------|
-| `hooks/useMyGymRequests.js` | Real-time subscription to current user's `gymRequests` docs, ordered newest-first; exposes `{ requests, loading, count }` |
+| `hooks/useMyGymRequests.js` | Real-time subscription to current user's `gymRequests` docs, ordered newest-first; exposes `{ requests, loading, count, pendingCount }` |
 
 ### Screen Layer
 | File | Role |
@@ -239,6 +239,74 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Navigation
 - RequestGymScreen is in RunsStack (`App.js`)
 - MyGymRequestsScreen is in ProfileStack (`App.js`)
+
+---
+
+## Zone 7 — Moderation & Admin
+
+**Responsibility:** Report submission, auto-moderation enforcement, admin dashboards for managing reports, suspended users, hidden clips, and gym requests. All enforcement logic lives in `moderationHelpers.ts` (backend). Admin screens are gated by `useIsAdmin`. All moderation writes go through Cloud Functions — the client is read-only for moderation fields.
+
+### Backend (in runcheck-backend)
+| File | Role |
+|------|------|
+| `functions/src/moderationHelpers.ts` | **Single source of truth** for enforcement: `enforceHideClip`, `enforceRemoveRun`, `enforceSuspendUser`, `enforceUnsuspendUser`, `enforceUnhideClip`, `resolveRelatedReport` |
+| `functions/src/submitReport.ts` | User callable: report submission + auto-moderation trigger |
+| `functions/src/moderateReport.ts` | Admin callable: mark reports reviewed/resolved |
+| `functions/src/hideClip.ts` | Admin callable: hide a clip |
+| `functions/src/removeRun.ts` | Admin callable: remove a run |
+| `functions/src/suspendUser.ts` | Admin callable: suspend a user (escalating) |
+| `functions/src/unsuspendUser.ts` | Admin callable: unsuspend a user |
+| `functions/src/unhideClip.ts` | Admin callable: unhide a clip |
+
+### Hook Layer
+| File | Role |
+|------|------|
+| `hooks/useIsAdmin.js` | Admin gate: checks `users/{uid}.isAdmin === true` |
+
+### Screen Layer
+| File | Role |
+|------|------|
+| `screens/AdminToolsScreen.js` | Admin hub: live pending counts per tool, navigation to sub-screens |
+| `screens/AdminGymRequestsScreen.js` | Admin gym request review list |
+| `screens/AdminGymRequestDetailScreen.js` | Detail view for individual gym requests |
+| `screens/AdminReportsScreen.js` | Reports moderation: type/status badges, resolve/review actions |
+| `screens/AdminSuspendedUsersScreen.js` | Suspended users: avatar, resolved names, unsuspend action |
+| `screens/AdminHiddenClipsScreen.js` | Hidden clips: thumbnail preview, video playback, unhide action |
+
+### Component Layer
+| File | Role |
+|------|------|
+| `components/ReportModal.js` | Reusable bottom-sheet modal for reporting content (used by ClipPlayerScreen, UserProfileScreen, RunDetailsScreen) |
+
+### Entry Points
+| Location | How it connects |
+|----------|----------------|
+| `screens/ProfileScreen.js` | Admin Tools row (admin-only) with workload badge → AdminToolsScreen |
+| `screens/ClipPlayerScreen.js` | Flag button → ReportModal (type="clip") |
+| `screens/UserProfileScreen.js` | Flag button → ReportModal (type="player") |
+| `screens/RunDetailsScreen.js` | Report pill/flag → ReportModal (type="gym" or "run") |
+
+### Key Firestore Collections
+- `reports/{autoId}` — one document per user report
+- `gymClips/{autoId}` — moderation fields: `isHidden`, `hiddenBy`, `hiddenAt`, etc.
+- `runs/{autoId}` — moderation fields: `isRemoved`, `removedBy`, `removedAt`, etc.
+- `users/{uid}` — suspension fields: `isSuspended`, `suspensionLevel`, `suspensionEndsAt`, etc.
+
+### Auto-Moderation Thresholds
+- Clip: 3 pending reports → hide clip + resolve reports
+- Run: 3 pending reports → remove run + resolve reports
+- Player: 5 pending reports → suspend player + resolve reports
+
+### Important Constraints
+- All moderation writes go through Cloud Functions — never write moderation fields directly from the client
+- `moderationHelpers.ts` is the single source of truth — never duplicate enforcement logic in individual callable files
+- Admin screens use `useIsAdmin` hook for gating — non-admin users see an Access Denied screen
+- Admin auth in Cloud Functions: `context.auth` + `getDoc('users/{uid}').isAdmin === true`
+
+### Zone Overlap
+- `screens/ProfileScreen.js` (Zone 3) owns the Admin Tools badge counting pending items across all 4 categories
+- `components/ReportModal.js` is used by screens in Zone 1 (RunDetailsScreen) and Zone 4 (ClipPlayerScreen, UserProfileScreen)
+- `functions/src/submitReport.ts` bridges Zone 7 (moderation) and Zone 2 (activity feed) via auto-moderation's activity cleanup in `enforceRemoveRun`
 
 ---
 
@@ -303,6 +371,8 @@ The following files serve multiple zones and should be treated carefully when ma
 | `hooks/useGymSchedules.js` | Zone 1 + Zone 4 | Used by RunDetailsScreen (Zone 1) for scheduled visit counts |
 | `screens/GymsScreen.js` | Zone 1 + Zone 4 | Possibly an earlier version of ViewRunsScreen or a gym-list component — verify before editing |
 | `constants/theme 2.js` | Zone 4 | Appears to be a duplicate of `theme.js` — may be safe to delete but verify no imports first |
+| `components/ReportModal.js` | Zone 4 + Zone 7 | Shared report submission UI used by screens in multiple zones; moderation enforcement is handled server-side |
+| `screens/ProfileScreen.js` | Zone 3 + Zone 7 | Owns user profile (Zone 3) AND the Admin Tools badge that counts moderation items (Zone 7) |
 
 ---
 
@@ -316,5 +386,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-15_
+_Last updated: 2026-03-16_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._
