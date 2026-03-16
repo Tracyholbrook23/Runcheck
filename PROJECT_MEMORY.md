@@ -118,6 +118,7 @@ const getRunEnergyLabel = (count) => {
 - **Run accountability (RC-006)**: `evaluateRunReward` awards `+10 pts` for genuine run follow-through; late-cancel penalties apply; solo farming blocked; creator-presence legitimacy check; idempotency via `pointsAwarded.runs[runId]`
 - **Gym request system (2026-03-15)**: Users can submit gym requests via Cloud Function with server-enforced 1-per-7-day rate limit. "My Gym Requests" screen in Profile tab shows real-time status with badges. Entry point in ViewRunsScreen ("Don't see your gym?"). Admin workflow: review in Firebase Console → add gym via `seedProductionGyms.js` → update request doc.
 - **Gym image migration to Firebase Storage (2026-03-15)**: Storage path convention `gymImages/{gymId}.jpg`. Public read, admin-only write. Seed script warns on external image URLs. Fitness Connection is the first gym migrated to Firebase Storage.
+- **Reporting system (2026-03-15)**: Users can report clips, players, runs, and gyms via `ReportModal` component. Reports submitted via `submitReport` Cloud Function with server-side duplicate prevention (one report per user per item). Reports stored in `reports` Firestore collection with `targetOwnerId` resolved per type (player→targetId, clip→uploaderUid, run→creatorId, gym→null). Admin Tools has a live "Reports / Moderation" screen (`AdminReportsScreen`) with real-time `onSnapshot` listener, type/status badges, and pending count. Admins can mark reports as "reviewed" or "resolved" and attach optional notes via the `moderateReport` Cloud Function. No user bans or content deletion yet.
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
 
@@ -135,7 +136,44 @@ const getRunEnergyLabel = (count) => {
 | `services/gymService.js` | `subscribeToGyms` and `getAllGyms` now filter client-side by `status === 'active'`. |
 | `services/models.js` | Added `GYM_STATUS` and `GYM_ACCESS_TYPE` constants. Updated gym schema documentation. |
 
+## Files Modified Recently (2026-03-15 session — Reporting System + Veterans Park)
+| File | What changed |
+|---|---|
+| `components/ReportModal.js` | **New file** — Reusable bottom-sheet modal for reporting content. Radio-button reason selector (5 options), optional description, `submitReport` Cloud Function call. Keyboard avoidance with scroll-to-input, iOS InputAccessoryView "Done" button. |
+| `screens/AdminReportsScreen.js` | **New file** — Admin reports list with real-time `onSnapshot` on `reports` collection. Cards with type/status badges, reason, description, targetId, targetOwnerId, reporter name, relative time. Summary bar with pending pill. Admin-gated. |
+| `screens/ClipPlayerScreen.js` | Added flag button + ReportModal for type="clip". |
+| `screens/UserProfileScreen.js` | Added flag icon button (other users only) + ReportModal for type="player". |
+| `screens/RunDetailsScreen.js` | Added "Report" pill for gym reports + flag icon on run cards + shared ReportModal. |
+| `screens/AdminToolsScreen.js` | Activated reports-moderation tool, added navigation to AdminReports. |
+| `components/index.js` | Added `ReportModal` export. |
+| `App.js` | Added AdminReportsScreen route in stack navigator. |
+| `screens/RequestGymScreen.js` | Updated Notes placeholder text. |
+| `seedProductionGyms.js` | Added Veterans Park (8th gym). Updated coordinates. Total: 8 gyms. |
+
 ### Backend files changed (in runcheck-backend)
+| File | What changed |
+|---|---|
+| `functions/src/submitReport.ts` | **New file** — Cloud Function: auth, validation, duplicate prevention (`reportedBy+type+targetId`), `targetOwnerId` resolution, writes to `reports` collection with status "pending". |
+| `functions/src/submitGymRequest.ts` | Admin cooldown bypass — admins skip 7-day rate limit. |
+| `functions/src/index.ts` | Added `submitReport` export. |
+| `firestore.rules` | Added `reports` collection rules: admin can read all + update; users can read own reports; create/delete blocked (Cloud Function only). |
+| `firestore.indexes.json` | Added composite index for reports duplicate check: `reportedBy+type+targetId`. |
+
+## Files Modified Recently (2026-03-15 session — Gym Requests, Image Migration, Fitness Connection)
+| File | What changed |
+|---|---|
+| `screens/RequestGymScreen.js` | **New file** — Gym request submission form. Calls `submitGymRequest` Cloud Function. Fixed bottom bar for submit button. Handles rate-limit errors. |
+| `screens/MyGymRequestsScreen.js` | **New file** — Displays user's gym requests with status badges (pending/approved/duplicate/rejected), admin notes, contextual hints. Dark mode support. Empty state. |
+| `hooks/useMyGymRequests.js` | **New file** — Real-time Firestore listener on `gymRequests` where `submittedBy == uid`, ordered newest-first. Returns `{ requests, loading, count }`. |
+| `hooks/index.js` | Added `useMyGymRequests` export. |
+| `App.js` | Added RequestGymScreen to RunsStack. Added MyGymRequestsScreen to ProfileStack with themed header. |
+| `screens/ViewRunsScreen.js` | Added "Don't see your gym? Request it" entry point at bottom of gym list. |
+| `screens/ProfileScreen.js` | Added "My Gym Requests" row with orange count badge (uses `useMyGymRequests` hook). |
+| `seedProductionGyms.js` | Added Fitness Connection gym (`fitness-connection-austin-north`). Image URL now points to Firebase Storage. Added validation warning for non-Firebase-Storage image URLs. Total: 6 gyms. |
+| `services/gymService.js` | `subscribeToGyms` and `getAllGyms` now filter client-side by `status === 'active'`. |
+| `services/models.js` | Added `GYM_STATUS` and `GYM_ACCESS_TYPE` constants. Updated gym schema documentation. |
+
+### Backend files changed (in runcheck-backend — Gym Requests session)
 | File | What changed |
 |---|---|
 | `functions/src/submitGymRequest.ts` | **New file** — Cloud Function: auth check, input validation/sanitization, 7-day rate limit query, structured `gymRequests` doc creation. |

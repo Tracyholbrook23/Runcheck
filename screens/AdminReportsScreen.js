@@ -1,16 +1,19 @@
 /**
  * AdminReportsScreen.js — Admin Reports / Moderation List
  *
- * Read-only MVP screen showing all user-submitted reports from the `reports`
- * Firestore collection. Reports are displayed in reverse chronological order
- * (newest first), with pending reports highlighted.
+ * Shows all user-submitted reports from the `reports` Firestore collection.
+ * Reports are displayed in reverse chronological order (newest first), with
+ * pending reports highlighted.
+ *
+ * Admin actions: Mark Reviewed, Mark Resolved, optional admin notes.
+ * Calls the `moderateReport` Cloud Function for secure, server-side updates.
  *
  * Uses a real-time `onSnapshot` listener so new reports appear immediately.
  *
  * Gated by useIsAdmin — non-admin users see an Access Denied screen.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,11 +22,15 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { useIsAdmin } from '../hooks';
-import { db } from '../config/firebase';
+import { db, callFunction } from '../config/firebase';
 import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
@@ -107,6 +114,11 @@ export default function AdminReportsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Moderation state
+  const [expandedId, setExpandedId] = useState(null);   // which card shows actions
+  const [noteText, setNoteText] = useState('');          // admin notes draft
+  const [moderating, setModerating] = useState(null);    // reportId currently being moderated
+
   // Real-time listener on reports collection, newest first
   useEffect(() => {
     if (!isAdmin) return;
@@ -142,6 +154,41 @@ export default function AdminReportsScreen() {
     // onSnapshot will fire and clear refreshing
     setTimeout(() => setRefreshing(false), 1500);
   };
+
+  // Toggle expanded actions for a card
+  const toggleExpanded = useCallback((reportId) => {
+    setExpandedId((prev) => {
+      if (prev === reportId) {
+        setNoteText('');
+        return null;
+      }
+      setNoteText('');
+      return reportId;
+    });
+    Keyboard.dismiss();
+  }, []);
+
+  // Moderate a report (mark reviewed or resolved)
+  const handleModerate = useCallback(async (reportId, newStatus) => {
+    setModerating(reportId);
+    try {
+      const payload = { reportId, status: newStatus };
+      if (noteText.trim().length > 0) {
+        payload.adminNotes = noteText.trim();
+      }
+      await callFunction('moderateReport', payload);
+      setExpandedId(null);
+      setNoteText('');
+    } catch (err) {
+      console.error('moderateReport error:', err);
+      Alert.alert(
+        'Update Failed',
+        err?.message || 'Could not update report. Please try again.'
+      );
+    } finally {
+      setModerating(null);
+    }
+  }, [noteText]);
 
   // ── Admin gate ────────────────────────────────────────────────────
   if (adminLoading) {
@@ -282,6 +329,16 @@ export default function AdminReportsScreen() {
                 </View>
               )}
 
+              {/* Admin notes (if previously set) */}
+              {report.adminNotes ? (
+                <View style={styles.adminNotesRow}>
+                  <Ionicons name="document-text-outline" size={12} color={colors.textMuted} />
+                  <Text style={styles.adminNotesText} numberOfLines={2}>
+                    {report.adminNotes}
+                  </Text>
+                </View>
+              ) : null}
+
               {/* Footer: reporter + date */}
               <View style={styles.footerRow}>
                 <View style={styles.reporterRow}>
@@ -296,6 +353,77 @@ export default function AdminReportsScreen() {
                   </Text>
                 )}
               </View>
+
+              {/* Action toggle button */}
+              <TouchableOpacity
+                style={styles.actionToggle}
+                onPress={() => toggleExpanded(report.id)}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={expandedId === report.id ? 'chevron-up-outline' : 'ellipsis-horizontal'}
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={styles.actionToggleText}>
+                  {expandedId === report.id ? 'Hide Actions' : 'Actions'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Expanded action panel */}
+              {expandedId === report.id && (
+                <View style={styles.actionPanel}>
+                  {/* Optional admin note input */}
+                  <TextInput
+                    style={styles.noteInput}
+                    placeholder="Add admin note (optional)..."
+                    placeholderTextColor={colors.textMuted}
+                    value={noteText}
+                    onChangeText={setNoteText}
+                    maxLength={500}
+                    multiline
+                    numberOfLines={2}
+                  />
+
+                  {/* Action buttons */}
+                  <View style={styles.actionButtons}>
+                    {report.status !== 'reviewed' && (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.reviewedBtn]}
+                        onPress={() => handleModerate(report.id, 'reviewed')}
+                        disabled={moderating === report.id}
+                        activeOpacity={0.7}
+                      >
+                        {moderating === report.id ? (
+                          <ActivityIndicator size="small" color="#1D4ED8" />
+                        ) : (
+                          <>
+                            <Ionicons name="eye-outline" size={14} color="#1D4ED8" />
+                            <Text style={styles.reviewedBtnText}>Mark Reviewed</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    {report.status !== 'resolved' && (
+                      <TouchableOpacity
+                        style={[styles.actionBtn, styles.resolvedBtn]}
+                        onPress={() => handleModerate(report.id, 'resolved')}
+                        disabled={moderating === report.id}
+                        activeOpacity={0.7}
+                      >
+                        {moderating === report.id ? (
+                          <ActivityIndicator size="small" color="#059669" />
+                        ) : (
+                          <>
+                            <Ionicons name="checkmark-circle-outline" size={14} color="#059669" />
+                            <Text style={styles.resolvedBtnText}>Mark Resolved</Text>
+                          </>
+                        )}
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+              )}
             </View>
           );
         })}
@@ -477,5 +605,89 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.small,
       color: colors.textMuted,
       marginLeft: SPACING.sm,
+    },
+
+    // Admin notes (previously saved)
+    adminNotesRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 4,
+      marginBottom: SPACING.xs,
+      paddingHorizontal: 2,
+    },
+    adminNotesText: {
+      fontSize: FONT_SIZES.xs,
+      color: isDark ? '#93C5FD' : '#1D4ED8',
+      fontStyle: 'italic',
+      flex: 1,
+      lineHeight: 16,
+    },
+
+    // Action toggle
+    actionToggle: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      paddingTop: SPACING.sm,
+      marginTop: SPACING.xs,
+    },
+    actionToggleText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.medium,
+      color: colors.primary,
+    },
+
+    // Action panel
+    actionPanel: {
+      marginTop: SPACING.sm,
+      paddingTop: SPACING.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : colors.border,
+    },
+    noteInput: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F9FAFB',
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border,
+      borderRadius: RADIUS.sm,
+      padding: SPACING.sm,
+      fontSize: FONT_SIZES.small,
+      color: colors.textPrimary,
+      marginBottom: SPACING.sm,
+      minHeight: 40,
+      maxHeight: 80,
+      textAlignVertical: 'top',
+    },
+    actionButtons: {
+      flexDirection: 'row',
+      gap: SPACING.sm,
+    },
+    actionBtn: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      paddingVertical: 8,
+      borderRadius: RADIUS.sm,
+      borderWidth: 1,
+    },
+    reviewedBtn: {
+      backgroundColor: isDark ? '#1E3A5F' : '#DBEAFE',
+      borderColor: isDark ? '#1E40AF' : '#93C5FD',
+    },
+    reviewedBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: isDark ? '#60A5FA' : '#1D4ED8',
+    },
+    resolvedBtn: {
+      backgroundColor: isDark ? '#064E3B' : '#ECFDF5',
+      borderColor: isDark ? '#065F46' : '#A7F3D0',
+    },
+    resolvedBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: isDark ? '#34D399' : '#059669',
     },
   });
