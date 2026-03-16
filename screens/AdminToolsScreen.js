@@ -9,7 +9,7 @@
  *   - Reports / Moderation
  *   - Featured Content
  *
- * No Firestore logic or role gating yet — this is a UI-only screen.
+ * Gated by useIsAdmin — non-admin users see an Access Denied screen.
  */
 
 import React from 'react';
@@ -20,9 +20,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
+import { useIsAdmin } from '../hooks';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,7 @@ const ADMIN_TOOLS = [
 export default function AdminToolsScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors, isDark);
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
 
   const handlePress = (tool) => {
     if (!tool.active) return;
@@ -74,6 +77,29 @@ export default function AdminToolsScreen({ navigation }) {
       navigation.navigate('AdminGymRequests');
     }
   };
+
+  // ── Admin gate ────────────────────────────────────────────────────
+  if (adminLoading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+          <Ionicons name="lock-closed-outline" size={56} color={colors.textMuted} />
+          <Text style={{ fontSize: FONT_SIZES.h3, fontWeight: FONT_WEIGHTS.bold, color: colors.textPrimary, marginTop: SPACING.md, marginBottom: SPACING.xs }}>Access Denied</Text>
+          <Text style={{ fontSize: FONT_SIZES.body, color: colors.textSecondary, textAlign: 'center', lineHeight: 22 }}>You do not have permission to view this screen.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>

@@ -22,7 +22,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
-import { useAdminGymRequests } from '../hooks';
+import { useAdminGymRequests, useIsAdmin } from '../hooks';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -90,11 +90,35 @@ function formatRelativeTime(ts) {
 export default function AdminGymRequestsScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors, isDark);
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
   const { requests, loading, pendingCount } = useAdminGymRequests();
 
   const handleCardPress = (request) => {
     navigation.navigate('AdminGymRequestDetail', { requestId: request.id });
   };
+
+  // ── Admin gate ────────────────────────────────────────────────────
+  if (adminLoading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centered}>
+          <Ionicons name="lock-closed-outline" size={56} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>Access Denied</Text>
+          <Text style={styles.emptyText}>You do not have permission to view this screen.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // ── Loading ──────────────────────────────────────────────────────────
   if (loading) {

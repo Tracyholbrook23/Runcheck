@@ -993,20 +993,22 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
-        {/* ── Admin Tools ─────────────────────────────────────────────── */}
-        <TouchableOpacity
-          style={styles.adminToolsRow}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('AdminTools')}
-        >
-          <View style={styles.gymRequestsLeft}>
-            <Ionicons name="construct-outline" size={20} color={colors.primary} />
-            <Text style={styles.gymRequestsLabel}>Admin Tools</Text>
-          </View>
-          <View style={styles.gymRequestsRight}>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </View>
-        </TouchableOpacity>
+        {/* ── Admin Tools (visible only to admins) ──────────────────── */}
+        {liveProfile?.isAdmin === true && (
+          <TouchableOpacity
+            style={styles.adminToolsRow}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('AdminTools')}
+          >
+            <View style={styles.gymRequestsLeft}>
+              <Ionicons name="construct-outline" size={20} color={colors.primary} />
+              <Text style={styles.gymRequestsLabel}>Admin Tools</Text>
+            </View>
+            <View style={styles.gymRequestsRight}>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* ── Settings ──────────────────────────────────────────────────── */}
         <View style={styles.card}>

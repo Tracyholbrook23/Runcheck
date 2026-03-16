@@ -30,6 +30,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
+import { useIsAdmin } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { doc, onSnapshot, updateDoc, Timestamp } from 'firebase/firestore';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -186,6 +187,7 @@ export default function AdminGymRequestDetailScreen({ route, navigation }) {
   const { requestId } = route.params;
   const { colors, isDark } = useTheme();
   const styles = getStyles(colors, isDark);
+  const { isAdmin, loading: adminLoading } = useIsAdmin();
 
   const [request, setRequest] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -250,6 +252,29 @@ export default function AdminGymRequestDetailScreen({ route, navigation }) {
       updatedAt: now,
     });
   };
+
+  // ── Admin gate ────────────────────────────────────────────────────
+  if (adminLoading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.centered}>
+          <Ionicons name="lock-closed-outline" size={56} color={colors.textMuted} />
+          <Text style={styles.emptyTitle}>Access Denied</Text>
+          <Text style={styles.emptyText}>You do not have permission to view this screen.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // ── Loading ─────────────────────────────────────────────────────────
   if (loading) {

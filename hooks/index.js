@@ -78,6 +78,9 @@ export { useGym } from './useGym';
 // User Profile
 export { useProfile } from './useProfile';
 
+// Admin
+export { useIsAdmin } from './useIsAdmin';
+
 // Gym Requests
 export { useMyGymRequests } from './useMyGymRequests';
 export { useAdminGymRequests } from './useAdminGymRequests';
