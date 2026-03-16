@@ -80,6 +80,7 @@ export { useProfile } from './useProfile';
 
 // Gym Requests
 export { useMyGymRequests } from './useMyGymRequests';
+export { useAdminGymRequests } from './useAdminGymRequests';
 
 // Location
 export { useLocation } from './useLocation';

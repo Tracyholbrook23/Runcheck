@@ -993,6 +993,21 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
+        {/* ── Admin Tools ─────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.adminToolsRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('AdminTools')}
+        >
+          <View style={styles.gymRequestsLeft}>
+            <Ionicons name="construct-outline" size={20} color={colors.primary} />
+            <Text style={styles.gymRequestsLabel}>Admin Tools</Text>
+          </View>
+          <View style={styles.gymRequestsRight}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
         {/* ── Settings ──────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Settings</Text>
@@ -1393,6 +1408,19 @@ const getStyles = (colors, isDark) =>
       fontSize: 11,
       fontWeight: FONT_WEIGHTS.bold,
       color: '#FFFFFF',
+    },
+    // Admin Tools link
+    adminToolsRow: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      ...(isDark
+        ? { borderWidth: 0 }
+        : { borderWidth: 1, borderColor: colors.border }),
     },
     // Settings
     settingRow: {

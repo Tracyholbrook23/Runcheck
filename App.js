@@ -49,6 +49,9 @@ import ClipPlayerScreen from './screens/ClipPlayerScreen';
 import PremiumScreen from './screens/PremiumScreen';
 import RequestGymScreen from './screens/RequestGymScreen';
 import MyGymRequestsScreen from './screens/MyGymRequestsScreen';
+import AdminToolsScreen from './screens/AdminToolsScreen';
+import AdminGymRequestsScreen from './screens/AdminGymRequestsScreen';
+import AdminGymRequestDetailScreen from './screens/AdminGymRequestDetailScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -155,6 +158,9 @@ function ProfileStack() {
       {/* Required so leaderboard row taps can navigate to UserProfile from the Profile tab */}
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="MyGymRequests" component={MyGymRequestsScreen} options={{ title: 'My Gym Requests', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="AdminTools" component={AdminToolsScreen} options={{ title: 'Admin Tools', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="AdminGymRequests" component={AdminGymRequestsScreen} options={{ title: 'Gym Requests', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="AdminGymRequestDetail" component={AdminGymRequestDetailScreen} options={{ title: 'Request Detail', headerBackTitle: 'Requests', ...themeStyles.NAV_HEADER }} />
     </Stack.Navigator>
   );
 }

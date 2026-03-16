@@ -207,6 +207,41 @@ Zone assignments are based on file content, service dependencies, and the data m
 
 ---
 
+## Zone 6 — Gym Requests & Onboarding
+
+**Responsibility:** User-submitted gym requests, request status tracking, and the admin gym approval workflow. Users submit requests via Cloud Function (no direct Firestore writes). Admins review in Firebase Console, add approved gyms via `seedProductionGyms.js`, and update the request document. Owns the `gymRequests` Firestore collection.
+
+### Cloud Function (in runcheck-backend)
+| File | Role |
+|------|------|
+| `functions/src/submitGymRequest.ts` | Callable: validates input, enforces 1-per-7-day rate limit, writes to `gymRequests` collection. Returns `resource-exhausted` if rate limited. |
+
+### Hook Layer
+| File | Role |
+|------|------|
+| `hooks/useMyGymRequests.js` | Real-time subscription to current user's `gymRequests` docs, ordered newest-first; exposes `{ requests, loading, count }` |
+
+### Screen Layer
+| File | Role |
+|------|------|
+| `screens/RequestGymScreen.js` | Gym request submission form. Calls `submitGymRequest` Cloud Function — no direct Firestore writes. Fixed bottom bar with submit button. |
+| `screens/MyGymRequestsScreen.js` | Displays user's submitted requests with status badges (pending/approved/duplicate/rejected), admin notes, and contextual hints for approved/duplicate outcomes. |
+
+### Entry Points
+| Location | How it connects |
+|----------|----------------|
+| `screens/ViewRunsScreen.js` | "Don't see your gym? Request it" link at bottom of gym list → navigates to RequestGymScreen |
+| `screens/ProfileScreen.js` | "My Gym Requests" row with orange count badge → navigates to MyGymRequestsScreen |
+
+### Key Firestore Collections
+- `gymRequests/{autoId}` — one document per user request (see BACKEND_MEMORY.md for schema)
+
+### Navigation
+- RequestGymScreen is in RunsStack (`App.js`)
+- MyGymRequestsScreen is in ProfileStack (`App.js`)
+
+---
+
 ## Zone 5 — Backend / Cloud Functions
 
 **Responsibility:** Firebase configuration, client-side service layer for data reads/writes, migration scripts, and the interface to Cloud Functions. Cloud Functions themselves are deployed separately (no `/functions` directory exists in this repo at time of mapping — functions are managed in a separate project or deploy context).
@@ -222,7 +257,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Service Layer (shared across zones)
 | File | Role |
 |------|------|
-| `services/gymService.js` | `getAllGyms`, `getGym`, `subscribeToGyms`, `subscribeToGym`, `seedGyms` |
+| `services/gymService.js` | `getAllGyms`, `getGym`, `subscribeToGyms`, `subscribeToGym` (read-only; `seedGyms` deprecated) |
 | `services/models.js` | Shared data model definitions / factory functions |
 | `services/index.js` | Barrel export for all services |
 
@@ -236,7 +271,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `scripts/verifyGymCoordinates.js` | Verifies gym location data |
 | `scripts/weeklyReset.js` | Weekly stat reset — manual admin backup (dry-run by default; `COMMIT=true` to write) |
 | `runcheck-backend/functions/src/weeklyReset.ts` | **Automated** weekly reset Cloud Function — runs every Monday 00:05 CT via Cloud Scheduler; saves top 3 winners + batch-resets `weeklyPoints` |
-| `seedProductionGyms.js` | Production gym seed (root-level script) |
+| `seedProductionGyms.js` | **Single source of truth** for gym data. Validates all entries (required fields, enums, coordinates, ID format, image host). Seeds via `set(merge:true)`. Warns on non-Firebase-Storage image URLs. Run with `--validate` for dry run. |
 
 ### Test Layer
 | File | Role |
@@ -249,6 +284,8 @@ Zone assignments are based on file content, service dependencies, and the data m
 - Cloud Functions own all reliability writes — do not call deprecated methods from the client
 - `serviceAccountKey.json` is for migration scripts only — never import in app code
 - GPS distance check in `presenceService.checkIn` is currently commented out — do not remove the comment without an explicit task
+- **Gym writes are admin-only** — the client app is read-only for the `gyms` collection. All gym data changes go through `seedProductionGyms.js`. Firestore rules block client `create` and `delete`; `update` is restricted to system-managed counter fields only.
+- **Gym images are migrating to Firebase Storage** — path convention: `gymImages/{gymId}.jpg`. Storage rules: public read, write blocked (admin uploads via console/gsutil). The seed script warns on non-Firebase-hosted imageUrls.
 
 ---
 
@@ -279,5 +316,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-13_
+_Last updated: 2026-03-15_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

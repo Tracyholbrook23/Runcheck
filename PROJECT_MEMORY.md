@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-13_
+_Last updated: 2026-03-15_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -116,8 +116,33 @@ const getRunEnergyLabel = (count) => {
 - **Start a Run / Join a Run MVP**: any user can start a group run at a gym; others can join with one tap; merge rule prevents duplicate runs within ±60 min at the same gym; runs display participant count and who's going; grace window keeps runs visible 30 min after startTime so late arrivals can still join
 - **UI polish pass (2026-03-13)**: Consistent LinearGradient headers across CheckInScreen, ViewRunsScreen, PlanVisitScreen using `['#3D1E00', '#1A0A00', colors.background]` with `locations={[0, 0.55, 1]}`; GymThumbnail pattern (local image → imageUrl → fallback icon) replicated from ProfileScreen; RunCheck Logo on CheckInScreen empty state
 - **Run accountability (RC-006)**: `evaluateRunReward` awards `+10 pts` for genuine run follow-through; late-cancel penalties apply; solo farming blocked; creator-presence legitimacy check; idempotency via `pointsAwarded.runs[runId]`
+- **Gym request system (2026-03-15)**: Users can submit gym requests via Cloud Function with server-enforced 1-per-7-day rate limit. "My Gym Requests" screen in Profile tab shows real-time status with badges. Entry point in ViewRunsScreen ("Don't see your gym?"). Admin workflow: review in Firebase Console → add gym via `seedProductionGyms.js` → update request doc.
+- **Gym image migration to Firebase Storage (2026-03-15)**: Storage path convention `gymImages/{gymId}.jpg`. Public read, admin-only write. Seed script warns on external image URLs. Fitness Connection is the first gym migrated to Firebase Storage.
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
+
+## Files Modified Recently (2026-03-15 session — Gym Requests, Image Migration, Fitness Connection)
+| File | What changed |
+|---|---|
+| `screens/RequestGymScreen.js` | **New file** — Gym request submission form. Calls `submitGymRequest` Cloud Function. Fixed bottom bar for submit button. Handles rate-limit errors. |
+| `screens/MyGymRequestsScreen.js` | **New file** — Displays user's gym requests with status badges (pending/approved/duplicate/rejected), admin notes, contextual hints. Dark mode support. Empty state. |
+| `hooks/useMyGymRequests.js` | **New file** — Real-time Firestore listener on `gymRequests` where `submittedBy == uid`, ordered newest-first. Returns `{ requests, loading, count }`. |
+| `hooks/index.js` | Added `useMyGymRequests` export. |
+| `App.js` | Added RequestGymScreen to RunsStack. Added MyGymRequestsScreen to ProfileStack with themed header. |
+| `screens/ViewRunsScreen.js` | Added "Don't see your gym? Request it" entry point at bottom of gym list. |
+| `screens/ProfileScreen.js` | Added "My Gym Requests" row with orange count badge (uses `useMyGymRequests` hook). |
+| `seedProductionGyms.js` | Added Fitness Connection gym (`fitness-connection-austin-north`). Image URL now points to Firebase Storage. Added validation warning for non-Firebase-Storage image URLs. Total: 6 gyms. |
+| `services/gymService.js` | `subscribeToGyms` and `getAllGyms` now filter client-side by `status === 'active'`. |
+| `services/models.js` | Added `GYM_STATUS` and `GYM_ACCESS_TYPE` constants. Updated gym schema documentation. |
+
+### Backend files changed (in runcheck-backend)
+| File | What changed |
+|---|---|
+| `functions/src/submitGymRequest.ts` | **New file** — Cloud Function: auth check, input validation/sanitization, 7-day rate limit query, structured `gymRequests` doc creation. |
+| `functions/src/index.ts` | Added `submitGymRequest` export. |
+| `firestore.rules` | Tightened `gyms` write rules to field-level restricted updates (system-managed counters only). Added `gymRequests` read rules (own docs only) with all writes blocked. |
+| `firestore.indexes.json` | Added two composite indexes for `gymRequests`: `submittedBy+createdAt ASC` (rate-limit query) and `submittedBy+createdAt DESC` (frontend listing). |
+| `storage.rules` | Added `gymImages/{fileName}` rule: public read, write blocked (admin-only uploads). |
 
 ## Files Modified Recently (2026-03-15 session — Gym System Refactor: Firestore as Source of Truth)
 | File | What changed |
@@ -284,6 +309,9 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - When Cloud Functions are eventually deployed for reliability/no-show tracking, the client-side `reliability.totalAttended` increment in `presenceService.checkIn()` should be removed to avoid double-counting
 - The compound presenceId (`{userId}_{gymId}`) is reused when a user checks in, checks out, and re-checks into the same gym — this is intentional for duplicate-prevention; the points idempotency key is separately `{presenceId}_{checkinTimestampMs}` so repeat visits earn points correctly
 - **`'joined a run at'` activity writes** are present in `runService.js` (both `joinExistingRun` and the merge-join branch of `startOrJoinRun`) but should be removed before commit — with many users joining one run, the feed fills with identical join events. Only `'started a run at'` should remain. The code change is two `addDoc` call deletions in `runService.js`.
+- **Gym images still on external hosts**: 5 of 6 gyms still use third-party image URLs (Yelp, gstatic, Cloudinary, Life Time CDN). Only Fitness Connection has been migrated to Firebase Storage. The seed script warns on each external URL during `--validate`. Migrate remaining gyms when convenient.
+- **`addGym` Cloud Function is stale**: The existing `addGym` Cloud Function writes directly to the `gyms` collection, bypassing the seed script and not including the `status` field. Should be deprecated/removed.
+- **Cowboys Fit coordinates approximate**: Still using approximate coordinates. User will manually verify exact building pin in Google Maps before updating.
 
 ## Next Tasks
 1. Remove `__DEV__` debug logs from HomeScreen.js and RunDetailsScreen.js (after confirming counts look correct)
