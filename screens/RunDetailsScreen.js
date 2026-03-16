@@ -277,6 +277,8 @@ export default function RunDetailsScreen({ route, navigation }) {
   // changes. The dependency key is a comma-joined string of run IDs so the
   // effect only re-fires when the actual set of runs changes.
   const [runParticipantsMap, setRunParticipantsMap] = useState({});
+  // Run ID whose full participant list modal is open (null = closed)
+  const [participantModalRunId, setParticipantModalRunId] = useState(null);
 
   useEffect(() => {
     if (runs.length === 0) {
@@ -1003,9 +1005,13 @@ export default function RunDetailsScreen({ route, navigation }) {
             </TouchableOpacity>
           ))}
           {extra > 0 && (
-            <View style={[styles.runAvatarWrap, styles.runAvatarOffset, styles.runAvatarMore]}>
+            <TouchableOpacity
+              style={[styles.runAvatarWrap, styles.runAvatarOffset, styles.runAvatarMore]}
+              onPress={() => setParticipantModalRunId(runId)}
+              activeOpacity={0.7}
+            >
               <Text style={styles.runAvatarMoreText}>+{extra}</Text>
-            </View>
+            </TouchableOpacity>
           )}
         </View>
         <Text style={styles.runParticipantNames} numberOfLines={1}>{namePreview}</Text>
@@ -2044,6 +2050,60 @@ export default function RunDetailsScreen({ route, navigation }) {
                 <Text style={clipSheetStyles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </Animated.View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Participant list modal (opened by +N bubble) ──────────────── */}
+      <Modal
+        visible={participantModalRunId !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setParticipantModalRunId(null)}
+      >
+        <TouchableOpacity
+          style={styles.participantModalOverlay}
+          activeOpacity={1}
+          onPress={() => setParticipantModalRunId(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.participantModalSheet}>
+            <View style={styles.participantModalHandle} />
+            <Text style={styles.participantModalTitle}>Players Going</Text>
+            <FlatList
+              data={participantModalRunId ? (runParticipantsMap[participantModalRunId] || []) : []}
+              keyExtractor={(item) => item.userId || item.id}
+              style={styles.participantModalList}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.participantModalRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setParticipantModalRunId(null);
+                    navigation.navigate('Home', { screen: 'UserProfile', params: { userId: item.userId } });
+                  }}
+                >
+                  {item.userAvatar ? (
+                    <Image source={{ uri: item.userAvatar }} style={styles.participantModalAvatar} />
+                  ) : (
+                    <View style={[styles.participantModalAvatar, styles.participantModalAvatarFallback]}>
+                      <Text style={styles.participantModalInitial}>
+                        {(item.userName || '?')[0].toUpperCase()}
+                      </Text>
+                    </View>
+                  )}
+                  <Text style={styles.participantModalName} numberOfLines={1}>
+                    {item.userName || 'Player'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity
+              style={styles.participantModalClose}
+              onPress={() => setParticipantModalRunId(null)}
+            >
+              <Text style={styles.participantModalCloseText}>Close</Text>
+            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -3205,6 +3265,80 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   runAvatarMoreText: {
     fontSize: 9,
     fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+  },
+
+  // ─── Participant list modal ─────────────────────────────────────────────
+  participantModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  participantModalSheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: RADIUS.lg * 1.5,
+    borderTopRightRadius: RADIUS.lg * 1.5,
+    paddingTop: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.lg,
+    maxHeight: '60%',
+  },
+  participantModalHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+  },
+  participantModalTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    marginBottom: SPACING.md,
+  },
+  participantModalList: {
+    flexGrow: 0,
+  },
+  participantModalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : colors.border,
+  },
+  participantModalAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  participantModalAvatarFallback: {
+    backgroundColor: colors.primary + '25',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  participantModalInitial: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+  },
+  participantModalName: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  participantModalClose: {
+    marginTop: SPACING.md,
+    backgroundColor: colors.background,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+  },
+  participantModalCloseText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textSecondary,
   },
   runParticipantNames: {
