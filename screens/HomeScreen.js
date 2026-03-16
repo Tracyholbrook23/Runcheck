@@ -173,6 +173,8 @@ const HomeScreen = ({ navigation }) => {
             // Hide 'joined a run at' items — these writes have been removed from
             // runService but docs already in Firestore must also be suppressed. RC-002.
             if (item.action === 'joined a run at') return false;
+            // Hide activity tied to admin-removed runs (set by removeRun Cloud Function)
+            if (item.isRemoved) return false;
             // Check-in items have no plannedTime — always show.
             // Plan items: only show within the 60-minute lead-up window.
             //   lower bound: plannedTime > now  (visit hasn't happened yet)
@@ -358,46 +360,60 @@ const HomeScreen = ({ navigation }) => {
   const communityDisplayFeed = (friendsActivity.length > 0 ? communityActivity : activityFeed)
     .filter((item) => COMMUNITY_ACTIONS.has(item.action));
 
-  // Shared row renderer — used by Community Activity section (taps go to UserProfile)
-  const renderActivityRow = (item) => (
-    <TouchableOpacity
-      key={item.id}
-      activeOpacity={0.75}
-      onPress={() => {
-        console.log('🏀 [Activity] Row tapped — full item:', JSON.stringify(item));
-        if (!item.userId) {
-          console.warn('⚠️ [Activity] item.userId is missing, cannot navigate');
-          return;
-        }
-        try {
-          console.log('🏀 [Activity] Calling navigation.push UserProfile with userId:', item.userId);
-          navigation.push('UserProfile', { userId: item.userId });
-          console.log('🏀 [Activity] navigation.push called successfully');
-        } catch (err) {
-          console.error('❌ [Activity] navigation.push threw:', err);
-        }
-      }}
-    >
-      <BlurView intensity={40} tint="dark" style={styles.activityRow}>
-        {item.userAvatar ? (
-          <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
-        ) : (
-          <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
-            <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+  // Shared row renderer — used by Community Activity section
+  // Run-start items: avatar → UserProfile, card body → RunDetails (gym)
+  // Other items: whole card → UserProfile
+  const renderActivityRow = (item) => {
+    const isRunActivity = item.action === 'started a run at';
+
+    const handleCardPress = () => {
+      if (isRunActivity && item.gymId) {
+        navigation.getParent()?.navigate('Runs', {
+          screen: 'RunDetails',
+          params: { gymId: item.gymId, gymName: item.gymName },
+        });
+      } else if (item.userId) {
+        navigation.push('UserProfile', { userId: item.userId });
+      }
+    };
+
+    const handleAvatarPress = () => {
+      if (item.userId) {
+        navigation.push('UserProfile', { userId: item.userId });
+      }
+    };
+
+    const avatarContent = item.userAvatar ? (
+      <Image source={{ uri: item.userAvatar }} style={styles.activityAvatar} />
+    ) : (
+      <View style={[styles.activityAvatar, styles.activityAvatarPlaceholder]}>
+        <Ionicons name="person" size={20} color="rgba(255,255,255,0.5)" />
+      </View>
+    );
+
+    return (
+      <TouchableOpacity key={item.id} activeOpacity={0.75} onPress={handleCardPress}>
+        <BlurView intensity={40} tint="dark" style={styles.activityRow}>
+          {isRunActivity ? (
+            <TouchableOpacity onPress={handleAvatarPress} activeOpacity={0.75}>
+              {avatarContent}
+            </TouchableOpacity>
+          ) : (
+            avatarContent
+          )}
+          <View style={styles.activityInfo}>
+            <Text style={styles.activityText} numberOfLines={1}>
+              <Text style={styles.activityName}>{item.userName}</Text>
+              <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
+              <Text style={styles.activityGym}>{item.gymName}</Text>
+            </Text>
+            <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
           </View>
-        )}
-        <View style={styles.activityInfo}>
-          <Text style={styles.activityText} numberOfLines={1}>
-            <Text style={styles.activityName}>{item.userName}</Text>
-            <Text style={styles.activityAction}>{' '}{item.action}{' '}</Text>
-            <Text style={styles.activityGym}>{item.gymName}</Text>
-          </Text>
-          <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
-      </BlurView>
-    </TouchableOpacity>
-  );
+          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+        </BlurView>
+      </TouchableOpacity>
+    );
+  };
 
   // Friends Activity row renderer — row taps go to RunDetails; avatar tap goes to UserProfile
   const renderFriendActivityRow = (item) => {
