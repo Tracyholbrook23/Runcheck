@@ -31,7 +31,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { useIsAdmin } from '../hooks';
 import { db, callFunction } from '../config/firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -145,6 +145,126 @@ export default function AdminReportsScreen() {
 
     return unsubscribe;
   }, [isAdmin]);
+
+  // ── Resolve targetId / targetOwnerId into display labels ──────────
+  // Maps: targetId → display string, targetOwnerId → display name
+  const [targetLabels, setTargetLabels] = useState({});
+  const [ownerNames, setOwnerNames] = useState({});
+
+  useEffect(() => {
+    if (reports.length === 0) return;
+
+    let cancelled = false;
+
+    async function resolveLabels() {
+      const newTargetLabels = {};
+      const newOwnerNames = {};
+
+      // Collect unique IDs to fetch, grouped by type
+      const gymIds = new Set();
+      const userIds = new Set();
+      const runIds = new Set();
+      const clipIds = new Set();
+      const ownerUserIds = new Set();
+
+      for (const r of reports) {
+        if (targetLabels[r.targetId]) continue; // already resolved
+        if (r.type === 'gym') gymIds.add(r.targetId);
+        else if (r.type === 'player') userIds.add(r.targetId);
+        else if (r.type === 'run') runIds.add(r.targetId);
+        else if (r.type === 'clip') clipIds.add(r.targetId);
+      }
+      for (const r of reports) {
+        if (r.targetOwnerId && !ownerNames[r.targetOwnerId]) {
+          ownerUserIds.add(r.targetOwnerId);
+        }
+      }
+
+      // Fetch gym names
+      for (const id of gymIds) {
+        try {
+          const snap = await getDoc(doc(db, 'gyms', id));
+          if (snap.exists()) newTargetLabels[id] = `Gym: ${snap.data().name}`;
+        } catch (_) { /* fallback to raw ID */ }
+      }
+
+      // Fetch player display names
+      for (const id of userIds) {
+        try {
+          const snap = await getDoc(doc(db, 'users', id));
+          if (snap.exists()) {
+            const d = snap.data();
+            newTargetLabels[id] = `Player: ${d.displayName || d.name || id}`;
+          }
+        } catch (_) { /* fallback */ }
+      }
+
+      // Fetch run info (gymId → gym name)
+      for (const id of runIds) {
+        try {
+          const snap = await getDoc(doc(db, 'runs', id));
+          if (snap.exists()) {
+            const runData = snap.data();
+            const gymId = runData.gymId;
+            let gymName = gymId || 'Unknown Gym';
+            // Try to get gym name
+            if (gymId) {
+              try {
+                const gymSnap = await getDoc(doc(db, 'gyms', gymId));
+                if (gymSnap.exists()) gymName = gymSnap.data().name;
+              } catch (_) { /* use gymId */ }
+            }
+            newTargetLabels[id] = `Run at ${gymName}`;
+          }
+        } catch (_) { /* fallback */ }
+      }
+
+      // Fetch clip info (uploader name)
+      for (const id of clipIds) {
+        try {
+          const snap = await getDoc(doc(db, 'gymClips', id));
+          if (snap.exists()) {
+            const clipData = snap.data();
+            const uploaderUid = clipData.uploaderUid || clipData.uid;
+            let uploaderName = 'Unknown';
+            if (uploaderUid) {
+              try {
+                const userSnap = await getDoc(doc(db, 'users', uploaderUid));
+                if (userSnap.exists()) {
+                  const u = userSnap.data();
+                  uploaderName = u.displayName || u.name || uploaderUid;
+                }
+              } catch (_) { /* use uid */ }
+            }
+            newTargetLabels[id] = `Clip by ${uploaderName}`;
+          }
+        } catch (_) { /* fallback */ }
+      }
+
+      // Fetch owner display names
+      for (const id of ownerUserIds) {
+        try {
+          const snap = await getDoc(doc(db, 'users', id));
+          if (snap.exists()) {
+            const d = snap.data();
+            newOwnerNames[id] = d.displayName || d.name || id;
+          }
+        } catch (_) { /* fallback */ }
+      }
+
+      if (cancelled) return;
+
+      if (Object.keys(newTargetLabels).length > 0) {
+        setTargetLabels((prev) => ({ ...prev, ...newTargetLabels }));
+      }
+      if (Object.keys(newOwnerNames).length > 0) {
+        setOwnerNames((prev) => ({ ...prev, ...newOwnerNames }));
+      }
+    }
+
+    resolveLabels();
+    return () => { cancelled = true; };
+  }, [reports]);
 
   const pendingCount = reports.filter((r) => r.status === 'pending').length;
 
@@ -310,21 +430,21 @@ export default function AdminReportsScreen() {
                 </Text>
               ) : null}
 
-              {/* Target info row */}
+              {/* Target info row — resolved to human-readable label */}
               <View style={styles.metaRow}>
                 <Ionicons name="link-outline" size={13} color={colors.textMuted} />
                 <Text style={styles.metaText} numberOfLines={1}>
-                  {report.targetId}
+                  {targetLabels[report.targetId] || report.targetId}
                 </Text>
               </View>
 
-              {/* Target owner (if known) */}
+              {/* Target owner (if known) — resolved to display name */}
               {report.targetOwnerId && (
                 <View style={styles.metaRow}>
                   <Ionicons name="person-circle-outline" size={13} color={colors.textMuted} />
                   <Text style={styles.metaLabel}>Owner: </Text>
                   <Text style={styles.metaText} numberOfLines={1}>
-                    {report.targetOwnerId}
+                    {ownerNames[report.targetOwnerId] || report.targetOwnerId}
                   </Text>
                 </View>
               )}
