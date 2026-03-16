@@ -993,6 +993,21 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </TouchableOpacity>
 
+        {/* ── My Reports ────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.gymRequestsRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('MyReports')}
+        >
+          <View style={styles.gymRequestsLeft}>
+            <Ionicons name="flag-outline" size={20} color={colors.primary} />
+            <Text style={styles.gymRequestsLabel}>My Reports</Text>
+          </View>
+          <View style={styles.gymRequestsRight}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
         {/* ── Admin Tools (visible only to admins) ──────────────────── */}
         {liveProfile?.isAdmin === true && (
           <TouchableOpacity
