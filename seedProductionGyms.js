@@ -160,6 +160,21 @@ const gyms = [
     checkInRadiusMeters: 100,
     autoExpireMinutes: 120,
   },
+  {
+    id: 'montopolis-rec-center-austin',
+    name: 'Montopolis Recreation and Community Center',
+    address: '1200 Montopolis Dr, Austin, TX 78741',
+    city: 'Austin',
+    state: 'TX',
+    type: 'indoor',
+    accessType: 'free',
+    status: 'active',
+    notes: 'Community Center',
+    imageUrl: 'https://firebasestorage.googleapis.com/v0/b/runcheck-567a3.firebasestorage.app/o/gymImages%2Fmontopolis-rec-center-austin.jpg?alt=media&token=844f845f-d284-4f7b-8282-4f2e218c14bc',
+    location: { latitude: 30.232372532425174, longitude: -97.69989329035879 },
+    checkInRadiusMeters: 100,
+    autoExpireMinutes: 120,
+  },
 ];
 
 // ---------------------------------------------------------------------------
