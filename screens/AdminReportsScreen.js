@@ -310,6 +310,45 @@ export default function AdminReportsScreen() {
     }
   }, [noteText]);
 
+  // Hide a reported clip (clip reports only)
+  const [hidingClip, setHidingClip] = useState(null); // reportId currently hiding
+  const handleHideClip = useCallback((report) => {
+    Alert.alert(
+      'Hide Clip',
+      'This will hide the clip from all users. The report will be marked as resolved. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Hide Clip',
+          style: 'destructive',
+          onPress: async () => {
+            setHidingClip(report.id);
+            try {
+              const payload = {
+                clipId: report.targetId,
+                reportId: report.id,
+              };
+              if (noteText.trim().length > 0) {
+                payload.reason = noteText.trim();
+              }
+              await callFunction('hideClip', payload);
+              setExpandedId(null);
+              setNoteText('');
+            } catch (err) {
+              console.error('hideClip error:', err);
+              Alert.alert(
+                'Hide Failed',
+                err?.message || 'Could not hide clip. Please try again.'
+              );
+            } finally {
+              setHidingClip(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [noteText]);
+
   // ── Admin gate ────────────────────────────────────────────────────
   if (adminLoading) {
     return (
@@ -542,6 +581,25 @@ export default function AdminReportsScreen() {
                       </TouchableOpacity>
                     )}
                   </View>
+
+                  {/* Hide Clip — enforcement action, clip reports only */}
+                  {report.type === 'clip' && (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.hideClipBtn, { marginTop: SPACING.sm }]}
+                      onPress={() => handleHideClip(report)}
+                      disabled={hidingClip === report.id}
+                      activeOpacity={0.7}
+                    >
+                      {hidingClip === report.id ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <>
+                          <Ionicons name="eye-off-outline" size={14} color="#DC2626" />
+                          <Text style={styles.hideClipBtnText}>Hide Clip</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -809,5 +867,14 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.semibold,
       color: isDark ? '#34D399' : '#059669',
+    },
+    hideClipBtn: {
+      backgroundColor: isDark ? '#450A0A' : '#FEF2F2',
+      borderColor: isDark ? '#7F1D1D' : '#FECACA',
+    },
+    hideClipBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#DC2626',
     },
   });

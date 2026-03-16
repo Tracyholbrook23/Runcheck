@@ -672,10 +672,12 @@ export default function RunDetailsScreen({ route, navigation }) {
     // Both statuses have storagePath + expiresAt set by createClipSession /
     // finalizeClipUpload, so they pass the Firestore query; we just need to
     // stop excluding "ready_raw" here.
+    // Hidden clips (isHidden === true) are excluded from the feed.
     const isReadyClip = (c) =>
       (c.status === 'ready' || c.status === 'ready_raw') &&
       !!c.storagePath &&
-      !!c.expiresAt;
+      !!c.expiresAt &&
+      !c.isHidden;
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
       // TEMP: log every returned doc so we can confirm status/field shape
