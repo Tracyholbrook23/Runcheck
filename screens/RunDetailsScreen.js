@@ -673,12 +673,13 @@ export default function RunDetailsScreen({ route, navigation }) {
     // Client-side guard: show clips that are either fully finalized ("ready")
     // OR freshly uploaded and awaiting backend processing ("ready_raw").
     // Both statuses have storagePath + createdAt set by finalizeClipUpload.
-    // Hidden clips (isHidden === true) are excluded from the feed.
+    // Hidden and user-deleted clips are excluded from the feed.
     const isReadyClip = (c) =>
       (c.status === 'ready' || c.status === 'ready_raw') &&
       !!c.storagePath &&
       !!c.createdAt &&
-      !c.isHidden;
+      !c.isHidden &&
+      !c.isDeletedByUser;
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
       // TEMP: log every returned doc so we can confirm status/field shape

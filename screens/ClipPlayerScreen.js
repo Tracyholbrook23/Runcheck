@@ -21,7 +21,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } fr
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportModal } from '../components';
-import { useIsAdmin } from '../hooks';
+import { useIsAdmin, useAuth } from '../hooks';
 import { callFunction, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -47,9 +47,11 @@ export default function ClipPlayerScreen({ route, navigation }) {
   const [showReport, setShowReport] = useState(false);
   const { isAdmin } = useIsAdmin();
   const [featuring, setFeaturing] = useState(false);
+  const { userId: currentUid } = useAuth();
 
-  // Clip metadata (caption + category) fetched from Firestore
-  const [clipMeta, setClipMeta] = useState({ caption: null, category: null });
+  // Clip metadata fetched from Firestore
+  const [clipMeta, setClipMeta] = useState({ caption: null, category: null, uploaderUid: null });
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!clipId) return;
@@ -63,6 +65,7 @@ export default function ClipPlayerScreen({ route, navigation }) {
           setClipMeta({
             caption: d.caption || null,
             category: d.category || null,
+            uploaderUid: d.uploaderUid || d.uid || null,
           });
         }
       } catch (_) { /* silently ignore — older clips may not exist */ }
@@ -87,6 +90,36 @@ export default function ClipPlayerScreen({ route, navigation }) {
     } finally {
       setFeaturing(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (!clipId || deleting) return;
+    Alert.alert(
+      'Delete Clip',
+      'This clip will be removed from all feeds. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              const result = await callFunction('deleteClip', { clipId });
+              if (result.alreadyDeleted) {
+                Alert.alert('Already Deleted', 'This clip was already deleted.');
+              }
+              // Navigate back regardless — clip is gone from feeds
+              navigation.goBack();
+            } catch (err) {
+              console.error('deleteClip error:', err);
+              Alert.alert('Delete Failed', err?.message || 'Could not delete clip. Please try again.');
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   /**
@@ -158,6 +191,22 @@ export default function ClipPlayerScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
 
+      {/* Delete button — uploader only, below feature/report button */}
+      {clipId && currentUid && clipMeta.uploaderUid === currentUid && (
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={handleDelete}
+          disabled={deleting}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color="#EF4444" />
+          ) : (
+            <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          )}
+        </TouchableOpacity>
+      )}
+
       {/* Caption + category overlay — bottom-left, TikTok-style */}
       {(clipMeta.caption || clipMeta.category) && (
         <View style={styles.captionOverlay}>
@@ -219,6 +268,18 @@ const styles = StyleSheet.create({
   featureButton: {
     position: 'absolute',
     top: 148,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  deleteButton: {
+    position: 'absolute',
+    top: 196,
     right: 16,
     width: 40,
     height: 40,

@@ -48,6 +48,7 @@ const FEATURED_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
  */
 const isFeaturedClipValid = (c) => {
   if (c.isHidden === true) return false;
+  if (c.isDeletedByUser === true) return false;
   if (c.status !== 'ready' && c.status !== 'ready_raw') return false;
   if (!c.storagePath) return false;
   if (!c.featuredAt) return false;

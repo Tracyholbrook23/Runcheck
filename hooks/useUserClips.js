@@ -41,7 +41,8 @@ const isReadyClip = (c) =>
   (c.status === 'ready' || c.status === 'ready_raw') &&
   !!c.storagePath &&
   !!c.createdAt &&
-  !c.isHidden;
+  !c.isHidden &&
+  !c.isDeletedByUser;
 
 /**
  * useUserClips — Hook for real-time clips belonging to a specific user.

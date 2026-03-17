@@ -62,6 +62,7 @@ const FILTER_MODES = [
   { key: 'byGym', label: 'By Gym' },
   { key: 'hidden', label: 'Hidden' },
   { key: 'featured', label: 'Featured' },
+  { key: 'deleted', label: 'Deleted' },
 ];
 
 const PAGE_LIMIT = 25;
@@ -195,6 +196,11 @@ export default function AdminAllClipsScreen({ navigation }) {
         collection(db, 'gymClips'),
         where('isDailyHighlight', '==', true)
       );
+    } else if (filterMode === 'deleted') {
+      q = query(
+        collection(db, 'gymClips'),
+        where('isDeletedByUser', '==', true)
+      );
     }
 
     setLoading(true);
@@ -210,6 +216,7 @@ export default function AdminAllClipsScreen({ navigation }) {
           docs = docs.filter((c) =>
             c.isHidden !== true &&
             c.isDailyHighlight !== true &&
+            c.isDeletedByUser !== true &&
             (c.status === 'ready' || c.status === 'ready_raw') &&
             !!c.storagePath &&
             (c.likesCount || 0) > 0
@@ -227,6 +234,12 @@ export default function AdminAllClipsScreen({ navigation }) {
           docs.sort((a, b) => {
             const aDate = (a.featuredAt || a.createdAt)?.toDate?.() || new Date(0);
             const bDate = (b.featuredAt || b.createdAt)?.toDate?.() || new Date(0);
+            return bDate - aDate;
+          });
+        } else if (filterMode === 'deleted') {
+          docs.sort((a, b) => {
+            const aDate = a.deletedAt?.toDate?.() || new Date(0);
+            const bDate = b.deletedAt?.toDate?.() || new Date(0);
             return bDate - aDate;
           });
         }
@@ -592,6 +605,8 @@ export default function AdminAllClipsScreen({ navigation }) {
     summaryLabel = `${clips.length} hidden clip${clips.length === 1 ? '' : 's'}`;
   } else if (filterMode === 'featured') {
     summaryLabel = `${clips.length} featured clip${clips.length === 1 ? '' : 's'}`;
+  } else if (filterMode === 'deleted') {
+    summaryLabel = `${clips.length} deleted clip${clips.length === 1 ? '' : 's'}`;
   }
 
   return (
@@ -657,7 +672,9 @@ export default function AdminAllClipsScreen({ navigation }) {
               ? 'Select a gym to browse its clips.'
               : filterMode === 'candidates'
                 ? 'No liked, visible, un-featured clips found.'
-                : 'No clips match the current filter.'}
+                : filterMode === 'deleted'
+                  ? 'No deleted clips found.'
+                  : 'No clips match the current filter.'}
           </Text>
         </View>
       ) : (
@@ -683,6 +700,7 @@ export default function AdminAllClipsScreen({ navigation }) {
 
             const isHidden = clip.isHidden === true;
             const isFeatured = clip.isDailyHighlight === true;
+            const isDeletedByUser = clip.isDeletedByUser === true;
             const isProcessing = clip.status === 'pending' || clip.status === 'processing';
             const isActionInProgress = actioning === clip.id;
 
@@ -736,6 +754,12 @@ export default function AdminAllClipsScreen({ navigation }) {
                         <View style={styles.processingBadge}>
                           <Ionicons name="hourglass-outline" size={10} color="#fff" />
                           <Text style={styles.processingBadgeText}>{clip.status}</Text>
+                        </View>
+                      )}
+                      {isDeletedByUser && (
+                        <View style={styles.deletedBadge}>
+                          <Ionicons name="trash" size={10} color="#fff" />
+                          <Text style={styles.deletedBadgeText}>Deleted</Text>
                         </View>
                       )}
                     </View>
@@ -1098,6 +1122,20 @@ const getStyles = (colors, isDark) =>
       paddingVertical: 2,
     },
     processingBadgeText: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#fff',
+    },
+    deletedBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: 'rgba(127, 29, 29, 0.85)',
+      borderRadius: RADIUS.sm,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    deletedBadgeText: {
       fontSize: 10,
       fontWeight: FONT_WEIGHTS.bold,
       color: '#fff',
