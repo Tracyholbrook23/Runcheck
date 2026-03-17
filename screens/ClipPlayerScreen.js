@@ -52,6 +52,14 @@ export default function ClipPlayerScreen({ route, navigation }) {
   // Clip metadata fetched from Firestore
   const [clipMeta, setClipMeta] = useState({ caption: null, category: null, uploaderUid: null, taggedPlayers: [] });
   const [deleting, setDeleting] = useState(false);
+  const [addingToProfile, setAddingToProfile] = useState(false);
+
+  // Derived: is the current user tagged in this clip?
+  const myTagEntry = currentUid
+    ? clipMeta.taggedPlayers.find((p) => p.uid === currentUid)
+    : null;
+  const isTaggedUser = !!myTagEntry;
+  const alreadyAddedToProfile = myTagEntry?.addedToProfile === true;
 
   useEffect(() => {
     if (!clipId) return;
@@ -121,6 +129,25 @@ export default function ClipPlayerScreen({ route, navigation }) {
         },
       ]
     );
+  };
+
+  const handleAddToProfile = async () => {
+    if (!clipId || !currentUid || addingToProfile || alreadyAddedToProfile) return;
+    setAddingToProfile(true);
+    try {
+      await callFunction('addClipToProfile', { clipId });
+      // Update local state so the button reflects the change immediately
+      const updatedTaggedPlayers = clipMeta.taggedPlayers.map((p) =>
+        p.uid === currentUid ? { ...p, addedToProfile: true } : p,
+      );
+      setClipMeta((prev) => ({ ...prev, taggedPlayers: updatedTaggedPlayers }));
+      Alert.alert('Added!', 'This clip now appears on your profile.');
+    } catch (err) {
+      console.error('addToProfile error:', err);
+      Alert.alert('Failed', err?.message || 'Could not add clip to your profile.');
+    } finally {
+      setAddingToProfile(false);
+    }
   };
 
   /**
@@ -246,6 +273,31 @@ export default function ClipPlayerScreen({ route, navigation }) {
               ))}
             </View>
           )}
+
+          {/* "Add to my profile" — shown only to tagged users who haven't added yet */}
+          {isTaggedUser && !alreadyAddedToProfile && (
+            <TouchableOpacity
+              style={styles.addToProfileBtn}
+              onPress={handleAddToProfile}
+              disabled={addingToProfile}
+              activeOpacity={0.8}
+            >
+              {addingToProfile ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="add-circle-outline" size={14} color="#fff" />
+                  <Text style={styles.addToProfileText}>Add to my profile</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+          {isTaggedUser && alreadyAddedToProfile && (
+            <View style={styles.addedToProfileBadge}>
+              <Ionicons name="checkmark-circle" size={14} color="#22C55E" />
+              <Text style={styles.addedToProfileText}>On your profile</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -355,5 +407,33 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
     maxWidth: 120,
+  },
+  addToProfileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginTop: 2,
+  },
+  addToProfileText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  addedToProfileBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 4,
+    marginTop: 2,
+  },
+  addedToProfileText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#22C55E',
   },
 });

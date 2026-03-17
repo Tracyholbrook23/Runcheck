@@ -990,7 +990,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             <TouchableOpacity
               key={p.userId}
               style={[styles.runAvatarWrap, idx > 0 && styles.runAvatarOffset]}
-              onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: p.userId } })}
+              onPress={() => navigation.navigate('UserProfile', { userId: p.userId })}
               activeOpacity={0.75}
             >
               {p.userAvatar ? (
@@ -1687,7 +1687,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   <View style={styles.reviewHeader}>
                     <TouchableOpacity
                       activeOpacity={0.7}
-                      onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: review.userId } })}
+                      onPress={() => navigation.navigate('UserProfile', { userId: review.userId })}
                     >
                       {review.userAvatar ? (
                         <Image source={{ uri: review.userAvatar }} style={styles.reviewAvatar} />
@@ -1704,7 +1704,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: review.userId } })}
+                          onPress={() => navigation.navigate('UserProfile', { userId: review.userId })}
                         >
                           <Text style={styles.reviewerName}>{review.userName || 'Anonymous'}</Text>
                         </TouchableOpacity>
@@ -2079,7 +2079,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   activeOpacity={0.7}
                   onPress={() => {
                     setParticipantModalRunId(null);
-                    navigation.navigate('Home', { screen: 'UserProfile', params: { userId: item.userId } });
+                    navigation.navigate('UserProfile', { userId: item.userId });
                   }}
                 >
                   {item.userAvatar ? (
@@ -2261,7 +2261,7 @@ function ClipTile({ clip, videoUrl, thumbnailUri, liked, likesCount, navigation,
       {/* Bottom-left identity: avatar + name + time — tappable, opens profile */}
       <TouchableOpacity
         style={clipPlayerStyles.tileIdentityOverlay}
-        onPress={() => navigation.navigate('Home', { screen: 'UserProfile', params: { userId: clip.uploaderUid } })}
+        onPress={() => navigation.navigate('UserProfile', { userId: clip.uploaderUid })}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         activeOpacity={0.75}
       >

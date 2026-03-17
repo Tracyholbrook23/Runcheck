@@ -32,7 +32,7 @@
  *     where toUid == currentUid and status == "pending".
  */
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -50,8 +50,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
+import { useFocusEffect } from '@react-navigation/native';
 import { Logo } from '../components';
-import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips } from '../hooks';
+import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips, useTaggedClips } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -182,6 +183,12 @@ export default function ProfileScreen({ navigation }) {
   const { countMap: liveCountMap } = useLivePresenceMap();
   const { pendingCount: gymRequestCount } = useMyGymRequests();
   const { clips: userClips, videoUrls: clipVideoUrls, thumbnails: clipThumbnails, loading: clipsLoading } = useUserClips(user?.uid);
+  const { allTagged: taggedClips, featuredIn: featuredInClips, videoUrls: taggedVideoUrls, thumbnails: taggedThumbnails, loading: taggedClipsLoading, refetch: refetchTaggedClips } = useTaggedClips(user?.uid);
+
+  // Re-fetch tagged clips when the screen regains focus (e.g. after
+  // tapping "Add to my profile" on ClipPlayerScreen and navigating back).
+  useFocusEffect(useCallback(() => { refetchTaggedClips(); }, [refetchTaggedClips]));
+
   const [profile, setProfile] = useState(null);
 
   // Derive the list of followed gym objects from the full gyms array.
@@ -1038,6 +1045,141 @@ export default function ProfileScreen({ navigation }) {
             </View>
           )}
         </View>
+
+        {/* ── Tagged In (own profile only — private review surface) ─────── */}
+        {taggedClips.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.clipsSectionHeader}>
+              <Text style={styles.cardTitle}>Tagged In</Text>
+              <View style={styles.clipsCountBadge}>
+                <Text style={styles.clipsCountText}>{taggedClips.length}</Text>
+              </View>
+            </View>
+            {taggedClipsLoading ? (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={[1, 2, 3]}
+                keyExtractor={(item) => String(item)}
+                contentContainerStyle={styles.clipsRow}
+                renderItem={() => <View style={styles.clipSkeletonTile} />}
+              />
+            ) : (
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={taggedClips}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={styles.clipsRow}
+                renderItem={({ item: clip }) => {
+                  const videoUrl = taggedVideoUrls[clip.id];
+                  const thumbUri = taggedThumbnails[clip.id];
+                  return (
+                    <TouchableOpacity
+                      style={styles.clipTile}
+                      onPress={() => {
+                        if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId });
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      {thumbUri ? (
+                        <Image source={{ uri: thumbUri }} style={styles.clipTileThumb} resizeMode="cover" />
+                      ) : (
+                        <View style={styles.clipTilePlaceholder} />
+                      )}
+                      <View style={styles.clipTileScrim} />
+                      <View style={styles.clipTilePlayOverlay}>
+                        <Ionicons
+                          name={videoUrl ? 'play-circle' : 'hourglass-outline'}
+                          size={28}
+                          color="rgba(255,255,255,0.9)"
+                        />
+                      </View>
+                      <View style={styles.clipTileBottomRow}>
+                        <Text style={styles.clipTileTime}>
+                          {clip.createdAt
+                            ? (() => {
+                                const d = clip.createdAt.toDate ? clip.createdAt.toDate() : new Date(clip.createdAt);
+                                const s = Math.floor((Date.now() - d.getTime()) / 1000);
+                                if (s < 60) return 'now';
+                                const m = Math.floor(s / 60);
+                                if (m < 60) return `${m}m`;
+                                const h = Math.floor(m / 60);
+                                if (h < 24) return `${h}h`;
+                                return `${Math.floor(h / 24)}d`;
+                              })()
+                            : ''}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+          </View>
+        )}
+
+        {/* ── Featured In (public — clips where addedToProfile === true) ── */}
+        {featuredInClips.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.clipsSectionHeader}>
+              <Text style={styles.cardTitle}>Featured In</Text>
+              <View style={styles.clipsCountBadge}>
+                <Text style={styles.clipsCountText}>{featuredInClips.length}</Text>
+              </View>
+            </View>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={featuredInClips}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.clipsRow}
+              renderItem={({ item: clip }) => {
+                const videoUrl = taggedVideoUrls[clip.id];
+                const thumbUri = taggedThumbnails[clip.id];
+                return (
+                  <TouchableOpacity
+                    style={styles.clipTile}
+                    onPress={() => {
+                      if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId });
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    {thumbUri ? (
+                      <Image source={{ uri: thumbUri }} style={styles.clipTileThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.clipTilePlaceholder} />
+                    )}
+                    <View style={styles.clipTileScrim} />
+                    <View style={styles.clipTilePlayOverlay}>
+                      <Ionicons
+                        name={videoUrl ? 'play-circle' : 'hourglass-outline'}
+                        size={28}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                    </View>
+                    <View style={styles.clipTileBottomRow}>
+                      <Text style={styles.clipTileTime}>
+                        {clip.createdAt
+                          ? (() => {
+                              const d = clip.createdAt.toDate ? clip.createdAt.toDate() : new Date(clip.createdAt);
+                              const s = Math.floor((Date.now() - d.getTime()) / 1000);
+                              if (s < 60) return 'now';
+                              const m = Math.floor(s / 60);
+                              if (m < 60) return `${m}m`;
+                              const h = Math.floor(m / 60);
+                              if (h < 24) return `${h}h`;
+                              return `${Math.floor(h / 24)}d`;
+                            })()
+                          : ''}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        )}
 
         {/* ── Current Status ────────────────────────────────────────────── */}
         <TouchableOpacity

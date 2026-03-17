@@ -109,6 +109,7 @@ function RunsStack() {
       <Stack.Screen name="TrimClipScreen" component={TrimClipScreen} options={{ headerShown: false }} />
       <Stack.Screen name="GymReviews" component={GymReviewsScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="RequestGym" component={RequestGymScreen} options={{ title: 'Request a Gym' }} />
     </Stack.Navigator>
   );

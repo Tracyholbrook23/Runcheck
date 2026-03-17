@@ -92,6 +92,7 @@ export { useAdminGymRequests } from './useAdminGymRequests';
 // Clips
 export { useUserClips } from './useUserClips';
 export { useFeaturedClip } from './useFeaturedClip';
+export { useTaggedClips } from './useTaggedClips';
 
 // Location
 export { useLocation } from './useLocation';

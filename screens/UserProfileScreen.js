@@ -22,7 +22,7 @@
  *   back stack. Receives `{ userId: string }` as route params.
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -38,8 +38,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts';
-import { useGyms, useUserClips } from '../hooks';
+import { useGyms, useUserClips, useTaggedClips } from '../hooks';
 import { ReportModal } from '../components';
 import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -80,6 +81,10 @@ export default function UserProfileScreen({ route, navigation }) {
 
   const { gyms } = useGyms();
   const { clips: userClips, videoUrls: clipVideoUrls, thumbnails: clipThumbnails, loading: clipsLoading } = useUserClips(userId);
+  const { featuredIn: featuredInClips, videoUrls: taggedVideoUrls, thumbnails: taggedThumbnails, refetch: refetchTaggedClips } = useTaggedClips(userId);
+
+  // Re-fetch tagged clips when the screen regains focus.
+  useFocusEffect(useCallback(() => { refetchTaggedClips(); }, [refetchTaggedClips]));
 
   // ── Fetch the target user's profile + current user's sentRequests ────────
   // Two parallel reads: users/{userId} for the profile/isFriend check, and
@@ -480,6 +485,68 @@ export default function UserProfileScreen({ route, navigation }) {
             <Text style={styles.emptyText}>No clips yet</Text>
           )}
         </View>
+
+        {/* ── Featured In (public — clips where addedToProfile === true) ── */}
+        {featuredInClips.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.clipsSectionHeader}>
+              <Text style={styles.sectionTitle}>Featured In</Text>
+              <View style={styles.clipsCountBadge}>
+                <Text style={styles.clipsCountText}>{featuredInClips.length}</Text>
+              </View>
+            </View>
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={featuredInClips}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.clipsRow}
+              renderItem={({ item: clip }) => {
+                const videoUrl = taggedVideoUrls[clip.id];
+                const thumbUri = taggedThumbnails[clip.id];
+                return (
+                  <TouchableOpacity
+                    style={styles.clipTile}
+                    onPress={() => {
+                      if (videoUrl) navigation.navigate('ClipPlayer', { videoUrl, clipId: clip.id, gymId: clip.gymId });
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    {thumbUri ? (
+                      <Image source={{ uri: thumbUri }} style={styles.clipTileThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={styles.clipTilePlaceholder} />
+                    )}
+                    <View style={styles.clipTileScrim} />
+                    <View style={styles.clipTilePlayOverlay}>
+                      <Ionicons
+                        name={videoUrl ? 'play-circle' : 'hourglass-outline'}
+                        size={28}
+                        color="rgba(255,255,255,0.9)"
+                      />
+                    </View>
+                    <View style={styles.clipTileBottomRow}>
+                      <Text style={styles.clipTileTime}>
+                        {clip.createdAt
+                          ? (() => {
+                              const d = clip.createdAt.toDate ? clip.createdAt.toDate() : new Date(clip.createdAt);
+                              const s = Math.floor((Date.now() - d.getTime()) / 1000);
+                              if (s < 60) return 'now';
+                              const m = Math.floor(s / 60);
+                              if (m < 60) return `${m}m`;
+                              const h = Math.floor(m / 60);
+                              if (h < 24) return `${h}h`;
+                              return `${Math.floor(h / 24)}d`;
+                            })()
+                          : ''}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              }}
+            />
+          </View>
+        )}
 
         {/* ── Home Court ── */}
         {homeCourtGym && (
