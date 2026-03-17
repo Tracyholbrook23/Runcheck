@@ -71,10 +71,10 @@ const ADMIN_TOOLS = [
   },
   {
     id: 'featured-content',
-    label: 'Featured Content',
-    subtitle: 'Manage featured gyms, clips, and highlights',
+    label: 'Featured Clips',
+    subtitle: 'Manage featured clips and highlights',
     icon: 'star-outline',
-    active: false,
+    active: true,
   },
 ];
 
@@ -93,6 +93,7 @@ export default function AdminToolsScreen({ navigation }) {
   const [suspendedUsers, setSuspendedUsers] = useState(0);
   const [resolvedToday, setResolvedToday] = useState(0);
   const [hiddenClips, setHiddenClips] = useState(0);
+  const [featuredClips, setFeaturedClips] = useState(0);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -161,7 +162,17 @@ export default function AdminToolsScreen({ navigation }) {
       () => setHiddenClips(0)
     );
 
-    return () => { unsubGym(); unsubReports(); unsubSuspended(); unsubResolved(); unsubHiddenClips(); };
+    const featuredClipsQ = query(
+      collection(db, 'gymClips'),
+      where('isDailyHighlight', '==', true)
+    );
+    const unsubFeaturedClips = onSnapshot(
+      featuredClipsQ,
+      (snap) => setFeaturedClips(snap.size),
+      () => setFeaturedClips(0)
+    );
+
+    return () => { unsubGym(); unsubReports(); unsubSuspended(); unsubResolved(); unsubHiddenClips(); unsubFeaturedClips(); };
   }, [isAdmin]);
 
   // Map tool id → pending count
@@ -170,6 +181,7 @@ export default function AdminToolsScreen({ navigation }) {
     'reports-moderation': pendingReports,
     'suspended-users': suspendedUsers,
     'hidden-clips': hiddenClips,
+    'featured-content': featuredClips,
   };
 
   const handlePress = (tool) => {
@@ -182,6 +194,8 @@ export default function AdminToolsScreen({ navigation }) {
       navigation.navigate('AdminSuspendedUsers');
     } else if (tool.id === 'hidden-clips') {
       navigation.navigate('AdminHiddenClips');
+    } else if (tool.id === 'featured-content') {
+      navigation.navigate('AdminFeaturedClips');
     }
   };
 

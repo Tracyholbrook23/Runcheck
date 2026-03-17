@@ -17,10 +17,12 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportModal } from '../components';
+import { useIsAdmin } from '../hooks';
+import { callFunction } from '../config/firebase';
 
 /**
  * ClipPlayerScreen
@@ -34,6 +36,26 @@ export default function ClipPlayerScreen({ route, navigation }) {
   const { videoUrl, clipId } = route.params;
   const videoRef = useRef(null);
   const [showReport, setShowReport] = useState(false);
+  const { isAdmin } = useIsAdmin();
+  const [featuring, setFeaturing] = useState(false);
+
+  const handleFeature = async () => {
+    if (!clipId || featuring) return;
+    setFeaturing(true);
+    try {
+      const result = await callFunction('featureClip', { clipId });
+      if (result.alreadyFeatured) {
+        Alert.alert('Already Featured', 'This clip is already featured.');
+      } else {
+        Alert.alert('Clip Featured', 'This clip has been added to featured clips.');
+      }
+    } catch (err) {
+      console.error('featureClip error:', err);
+      Alert.alert('Feature Failed', err?.message || 'Could not feature clip. Please try again.');
+    } finally {
+      setFeaturing(false);
+    }
+  };
 
   /**
    * handleClose — Pauses + unloads the video before going back so the
@@ -88,6 +110,22 @@ export default function ClipPlayerScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
 
+      {/* Feature button — admin only, below report button */}
+      {clipId && isAdmin && (
+        <TouchableOpacity
+          style={styles.featureButton}
+          onPress={handleFeature}
+          disabled={featuring}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          {featuring ? (
+            <ActivityIndicator size="small" color="#FBBF24" />
+          ) : (
+            <Ionicons name="star-outline" size={20} color="#FBBF24" />
+          )}
+        </TouchableOpacity>
+      )}
+
       {/* Report modal */}
       {clipId && (
         <ReportModal
@@ -120,6 +158,17 @@ const styles = StyleSheet.create({
   reportButton: {
     position: 'absolute',
     top: 100,
+    right: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  featureButton: {
+    position: 'absolute',
+    top: 148,
     right: 16,
     width: 40,
     height: 40,
