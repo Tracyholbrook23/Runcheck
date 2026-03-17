@@ -54,6 +54,7 @@
  *
  * Clips:
  * - useUserClips: Real-time clips for a given user (profile clip reel)
+ * - useFeaturedClip: Single featured clip for the Home spotlight card
  *
  * Location:
  * - useLocation: GPS location and permissions
@@ -90,6 +91,7 @@ export { useAdminGymRequests } from './useAdminGymRequests';
 
 // Clips
 export { useUserClips } from './useUserClips';
+export { useFeaturedClip } from './useFeaturedClip';
 
 // Location
 export { useLocation } from './useLocation';

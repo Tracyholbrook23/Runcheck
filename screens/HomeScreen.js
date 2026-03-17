@@ -49,7 +49,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { usePresence, useGyms, useLivePresenceMap } from '../hooks';
+import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip } from '../hooks';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
@@ -132,6 +132,15 @@ const HomeScreen = ({ navigation }) => {
     weekOf: winnersWeekOf,
     recordedAt: winnersRecordedAt,
   } = useWeeklyWinners();
+
+  // Featured clip spotlight — single curated clip for the editorial card.
+  const {
+    clip: featuredClip,
+    videoUrl: featuredVideoUrl,
+    thumbnail: featuredThumbnail,
+    uploaderInfo: featuredUploaderInfo,
+    gymName: featuredGymName,
+  } = useFeaturedClip(gyms);
 
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
@@ -764,6 +773,84 @@ const HomeScreen = ({ navigation }) => {
               </BlurView>
             );
           })()}
+
+          {/* Featured Clip Spotlight — single editorial card, auto-hidden when empty */}
+          {featuredClip && featuredVideoUrl && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('ClipPlayer', {
+                videoUrl: featuredVideoUrl,
+                clipId: featuredClip.id,
+                gymId: featuredClip.gymId,
+              })}
+            >
+              <BlurView intensity={60} tint="dark" style={styles.spotlightCard}>
+                {/* Header row */}
+                <View style={styles.spotlightHeader}>
+                  <View style={styles.spotlightBadge}>
+                    <Ionicons name="star" size={12} color="#FFD700" />
+                    <Text style={styles.spotlightBadgeText}>FEATURED</Text>
+                  </View>
+                  {featuredClip.featuredAt && (
+                    <Text style={styles.spotlightTime}>
+                      {(() => {
+                        const d = featuredClip.featuredAt.toDate
+                          ? featuredClip.featuredAt.toDate()
+                          : new Date(featuredClip.featuredAt);
+                        const s = Math.floor((Date.now() - d.getTime()) / 1000);
+                        if (s < 60) return 'just now';
+                        const m = Math.floor(s / 60);
+                        if (m < 60) return `${m}m ago`;
+                        const h = Math.floor(m / 60);
+                        return `${h}h ago`;
+                      })()}
+                    </Text>
+                  )}
+                </View>
+
+                {/* Thumbnail + play overlay */}
+                <View style={styles.spotlightThumbWrap}>
+                  {featuredThumbnail ? (
+                    <Image
+                      source={{ uri: featuredThumbnail }}
+                      style={styles.spotlightThumb}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={styles.spotlightThumbPlaceholder} />
+                  )}
+                  <View style={styles.spotlightPlayOverlay}>
+                    <Ionicons name="play-circle" size={44} color="rgba(255,255,255,0.9)" />
+                  </View>
+                </View>
+
+                {/* Footer: uploader + gym */}
+                <View style={styles.spotlightFooter}>
+                  {featuredUploaderInfo?.photoURL ? (
+                    <Image
+                      source={{ uri: featuredUploaderInfo.photoURL }}
+                      style={styles.spotlightAvatar}
+                    />
+                  ) : (
+                    <View style={[styles.spotlightAvatar, styles.spotlightAvatarFallback]}>
+                      <Ionicons name="person" size={12} color="rgba(255,255,255,0.7)" />
+                    </View>
+                  )}
+                  <View style={styles.spotlightMeta}>
+                    <Text style={styles.spotlightUploader} numberOfLines={1}>
+                      {featuredUploaderInfo?.name || 'Player'}
+                    </Text>
+                    {featuredGymName && (
+                      <Text style={styles.spotlightGym} numberOfLines={1}>
+                        {featuredGymName}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons name="play" size={14} color="rgba(255,255,255,0.5)" />
+                </View>
+              </BlurView>
+            </TouchableOpacity>
+          )}
 
           {/* Live Runs Near You — horizontal scroll of gyms with active players */}
           <View style={styles.sectionHeader}>
@@ -1738,6 +1825,97 @@ actionCard: {
   activityTimeJustNow: {
     color: 'rgba(255,255,255,0.85)',
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ── Featured Clip Spotlight ─────────────────────────────────────────────
+  spotlightCard: {
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,158,11,0.25)',
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  spotlightHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm + 2,
+    paddingBottom: SPACING.xs,
+  },
+  spotlightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  spotlightBadgeText: {
+    fontSize: 11,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: '#FFD700',
+    letterSpacing: 1,
+  },
+  spotlightTime: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.45)',
+  },
+  spotlightThumbWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#1a1a1a',
+    marginHorizontal: 0,
+  },
+  spotlightThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  spotlightThumbPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#2a2a2a',
+  },
+  spotlightPlayOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spotlightFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
+  },
+  spotlightAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#333',
+  },
+  spotlightAvatarFallback: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  spotlightMeta: {
+    flex: 1,
+    minWidth: 0,
+  },
+  spotlightUploader: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FFFFFF',
+  },
+  spotlightGym: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 1,
   },
 });
 
