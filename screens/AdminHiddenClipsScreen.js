@@ -34,6 +34,7 @@ import { useIsAdmin } from '../hooks';
 import { db, callFunction, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -160,7 +161,8 @@ export default function AdminHiddenClipsScreen({ navigation }) {
     return () => { cancelled = true; };
   }, [clips]);
 
-  // Resolve clip thumbnails from thumbnailPath via Firebase Storage
+  // Resolve clip thumbnails — backend thumbnailPath first, then client-side
+  // fallback via expo-video-thumbnails once video URLs are available.
   useEffect(() => {
     if (clips.length === 0) return;
     let cancelled = false;
@@ -170,13 +172,24 @@ export default function AdminHiddenClipsScreen({ navigation }) {
 
       for (const c of clips) {
         if (thumbnails[c.id]) continue; // already resolved
-        const path = c.thumbnailPath;
-        if (!path) continue;
 
-        try {
-          const url = await getDownloadURL(ref(storage, path));
-          newThumbs[c.id] = url;
-        } catch (_) { /* no thumbnail available */ }
+        // Step 1: try backend thumbnail from thumbnailPath
+        if (c.thumbnailPath) {
+          try {
+            const url = await getDownloadURL(ref(storage, c.thumbnailPath));
+            newThumbs[c.id] = url;
+            continue; // success — skip fallback
+          } catch (_) { /* fall through to client-side */ }
+        }
+
+        // Step 2: client-side fallback from resolved video URL
+        const vidUrl = videoUrls[c.id];
+        if (vidUrl) {
+          try {
+            const thumb = await VideoThumbnails.getThumbnailAsync(vidUrl, { time: 0 });
+            newThumbs[c.id] = thumb.uri;
+          } catch (_) { /* no thumbnail — placeholder will show */ }
+        }
       }
 
       if (cancelled) return;
@@ -187,7 +200,7 @@ export default function AdminHiddenClipsScreen({ navigation }) {
 
     resolveThumbs();
     return () => { cancelled = true; };
-  }, [clips]);
+  }, [clips, videoUrls]);
 
   // Resolve clip video URLs from storagePath via Firebase Storage
   useEffect(() => {

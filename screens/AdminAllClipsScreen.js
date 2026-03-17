@@ -66,6 +66,14 @@ const FILTER_MODES = [
 
 const PAGE_LIMIT = 25;
 
+// Category display config — consistent palette across admin screens
+const CATEGORY_CONFIG = {
+  vibe:      { label: 'Vibe',      color: '#8B5CF6' },
+  highlight: { label: 'Highlight', color: '#F59E0B' },
+  energy:    { label: 'Energy',    color: '#EF4444' },
+  funny:     { label: 'Funny',     color: '#22C55E' },
+};
+
 // Candidates mode over-fetches to compensate for client-side filtering
 const CANDIDATES_FETCH_LIMIT = 75;
 
@@ -758,6 +766,24 @@ export default function AdminAllClipsScreen({ navigation }) {
                   </Text>
                 </View>
 
+                {/* Caption + category */}
+                {(clip.caption || clip.category) && (
+                  <View style={styles.captionRow}>
+                    {clip.category && CATEGORY_CONFIG[clip.category] && (
+                      <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_CONFIG[clip.category].color }]}>
+                        <Text style={styles.categoryBadgeText}>
+                          {CATEGORY_CONFIG[clip.category].label}
+                        </Text>
+                      </View>
+                    )}
+                    {clip.caption && (
+                      <Text style={styles.captionText} numberOfLines={2}>
+                        {clip.caption}
+                      </Text>
+                    )}
+                  </View>
+                )}
+
                 {/* Clip ID + like count */}
                 <View style={styles.metaRow}>
                   <Text style={styles.clipIdText} numberOfLines={1}>
@@ -1147,6 +1173,32 @@ const getStyles = (colors, isDark) =>
       fontSize: 10,
       fontWeight: FONT_WEIGHTS.bold,
       color: isDark ? '#F87171' : '#DC2626',
+    },
+
+    // ── Caption + category ────────────────────────────────────────────
+    captionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      paddingHorizontal: SPACING.md,
+      paddingBottom: SPACING.xs,
+    },
+    categoryBadge: {
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    categoryBadgeText: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#fff',
+    },
+    captionText: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      flex: 1,
+      lineHeight: 18,
     },
 
     // ── Action row ───────────────────────────────────────────────────

@@ -16,13 +16,22 @@
  *   • Pauses and unloads the video before navigating back to free resources.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportModal } from '../components';
 import { useIsAdmin } from '../hooks';
-import { callFunction } from '../config/firebase';
+import { callFunction, db } from '../config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
+
+// Category display config — shared palette for caption/category badges
+const CATEGORY_CONFIG = {
+  vibe:      { label: 'Vibe',      color: '#8B5CF6' },
+  highlight: { label: 'Highlight', color: '#F59E0B' },
+  energy:    { label: 'Energy',    color: '#EF4444' },
+  funny:     { label: 'Funny',     color: '#22C55E' },
+};
 
 /**
  * ClipPlayerScreen
@@ -38,6 +47,29 @@ export default function ClipPlayerScreen({ route, navigation }) {
   const [showReport, setShowReport] = useState(false);
   const { isAdmin } = useIsAdmin();
   const [featuring, setFeaturing] = useState(false);
+
+  // Clip metadata (caption + category) fetched from Firestore
+  const [clipMeta, setClipMeta] = useState({ caption: null, category: null });
+
+  useEffect(() => {
+    if (!clipId) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'gymClips', clipId));
+        if (!cancelled && snap.exists()) {
+          const d = snap.data();
+          setClipMeta({
+            caption: d.caption || null,
+            category: d.category || null,
+          });
+        }
+      } catch (_) { /* silently ignore — older clips may not exist */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [clipId]);
 
   const handleFeature = async () => {
     if (!clipId || featuring) return;
@@ -126,6 +158,24 @@ export default function ClipPlayerScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
 
+      {/* Caption + category overlay — bottom-left, TikTok-style */}
+      {(clipMeta.caption || clipMeta.category) && (
+        <View style={styles.captionOverlay}>
+          {clipMeta.category && CATEGORY_CONFIG[clipMeta.category] && (
+            <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_CONFIG[clipMeta.category].color }]}>
+              <Text style={styles.categoryBadgeText}>
+                {CATEGORY_CONFIG[clipMeta.category].label}
+              </Text>
+            </View>
+          )}
+          {clipMeta.caption && (
+            <Text style={styles.captionText} numberOfLines={3}>
+              {clipMeta.caption}
+            </Text>
+          )}
+        </View>
+      )}
+
       {/* Report modal */}
       {clipId && (
         <ReportModal
@@ -176,5 +226,34 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.55)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+
+  // Caption + category overlay (bottom-left)
+  captionOverlay: {
+    position: 'absolute',
+    bottom: 48,
+    left: 16,
+    right: 72,
+    gap: 6,
+  },
+  categoryBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  categoryBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  captionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    lineHeight: 20,
   },
 });

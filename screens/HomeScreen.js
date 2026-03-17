@@ -848,6 +848,15 @@ const HomeScreen = ({ navigation }) => {
                   </View>
                   <Ionicons name="play" size={14} color="rgba(255,255,255,0.5)" />
                 </View>
+
+                {/* Caption — subtle single line below footer, only if present */}
+                {!!featuredClip.caption && (
+                  <View style={styles.spotlightCaptionRow}>
+                    <Text style={styles.spotlightCaption} numberOfLines={1}>
+                      {featuredClip.caption}
+                    </Text>
+                  </View>
+                )}
               </BlurView>
             </TouchableOpacity>
           )}
@@ -1916,6 +1925,16 @@ actionCard: {
     fontSize: FONT_SIZES.xs,
     color: 'rgba(255,255,255,0.5)',
     marginTop: 1,
+  },
+  spotlightCaptionRow: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
+    marginTop: -2,
+  },
+  spotlightCaption: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.55)',
+    fontStyle: 'italic',
   },
 });
 

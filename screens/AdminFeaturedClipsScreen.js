@@ -32,11 +32,20 @@ import { useIsAdmin } from '../hooks';
 import { db, callFunction, storage } from '../config/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Category display config — consistent palette across admin screens
+const CATEGORY_CONFIG = {
+  vibe:      { label: 'Vibe',      color: '#8B5CF6' },
+  highlight: { label: 'Highlight', color: '#F59E0B' },
+  energy:    { label: 'Energy',    color: '#EF4444' },
+  funny:     { label: 'Funny',     color: '#22C55E' },
+};
 
 /** Returns a relative time string like "2h ago", "3d ago", or a short date. */
 function formatRelativeTime(ts) {
@@ -60,6 +69,47 @@ function formatRelativeTime(ts) {
 function getInitials(name) {
   if (!name) return '?';
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+/**
+ * Computes the Home spotlight visibility state for a featured clip.
+ * Matches the 24-hour window used by useFeaturedClip.js on the Home screen.
+ *
+ * @returns {{ isLive: boolean, label: string }}
+ *   isLive true  → clip is currently visible on Home
+ *   isLive false → clip has expired from Home (still featured in Firestore)
+ */
+const FEATURED_WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getHomeVisibility(clip) {
+  const ts = clip.featuredAt;
+  if (!ts) return { isLive: false, label: 'No featured date' };
+
+  const featuredDate = ts.toDate ? ts.toDate() : new Date(ts);
+  const elapsed = Date.now() - featuredDate.getTime();
+  const remaining = FEATURED_WINDOW_MS - elapsed;
+
+  if (remaining > 0) {
+    // Still live — show time remaining
+    const hoursLeft = remaining / 3600000;
+    if (hoursLeft >= 1) {
+      return { isLive: true, label: `Live · ${Math.floor(hoursLeft)}h left` };
+    }
+    const minsLeft = Math.floor(remaining / 60000);
+    return { isLive: true, label: `Live · ${minsLeft}m left` };
+  }
+
+  // Expired — show how long ago
+  const agoMs = -remaining; // time past the 24h window
+  const agoHours = agoMs / 3600000;
+  if (agoHours < 1) {
+    return { isLive: false, label: `Expired ${Math.floor(agoMs / 60000)}m ago` };
+  }
+  if (agoHours < 24) {
+    return { isLive: false, label: `Expired ${Math.floor(agoHours)}h ago` };
+  }
+  const agoDays = Math.floor(agoHours / 24);
+  return { isLive: false, label: `Expired ${agoDays}d ago` };
 }
 
 // ---------------------------------------------------------------------------
@@ -156,7 +206,8 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
     return () => { cancelled = true; };
   }, [clips]);
 
-  // Resolve clip thumbnails from thumbnailPath via Firebase Storage
+  // Resolve clip thumbnails — backend thumbnailPath first, then client-side
+  // fallback via expo-video-thumbnails once video URLs are available.
   useEffect(() => {
     if (clips.length === 0) return;
     let cancelled = false;
@@ -166,13 +217,24 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
 
       for (const c of clips) {
         if (thumbnails[c.id]) continue;
-        const path = c.thumbnailPath;
-        if (!path) continue;
 
-        try {
-          const url = await getDownloadURL(ref(storage, path));
-          newThumbs[c.id] = url;
-        } catch (_) { /* no thumbnail available */ }
+        // Step 1: try backend thumbnail from thumbnailPath
+        if (c.thumbnailPath) {
+          try {
+            const url = await getDownloadURL(ref(storage, c.thumbnailPath));
+            newThumbs[c.id] = url;
+            continue;
+          } catch (_) { /* fall through to client-side */ }
+        }
+
+        // Step 2: client-side fallback from resolved video URL
+        const vidUrl = videoUrls[c.id];
+        if (vidUrl) {
+          try {
+            const thumb = await VideoThumbnails.getThumbnailAsync(vidUrl, { time: 0 });
+            newThumbs[c.id] = thumb.uri;
+          } catch (_) { /* no thumbnail — placeholder will show */ }
+        }
       }
 
       if (cancelled) return;
@@ -183,7 +245,7 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
 
     resolveThumbs();
     return () => { cancelled = true; };
-  }, [clips]);
+  }, [clips, videoUrls]);
 
   // Resolve clip video URLs from storagePath via Firebase Storage
   useEffect(() => {
@@ -384,6 +446,46 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
                 </View>
               </View>
 
+              {/* Caption + category */}
+              {(clip.caption || clip.category) && (
+                <View style={styles.captionRow}>
+                  {clip.category && CATEGORY_CONFIG[clip.category] && (
+                    <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_CONFIG[clip.category].color }]}>
+                      <Text style={styles.categoryBadgeText}>
+                        {CATEGORY_CONFIG[clip.category].label}
+                      </Text>
+                    </View>
+                  )}
+                  {clip.caption && (
+                    <Text style={styles.captionText} numberOfLines={2}>
+                      {clip.caption}
+                    </Text>
+                  )}
+                </View>
+              )}
+
+              {/* Home visibility status */}
+              {(() => {
+                const visibility = getHomeVisibility(clip);
+                return (
+                  <View style={styles.visibilityRow}>
+                    <View style={[
+                      styles.visibilityPill,
+                      visibility.isLive ? styles.visibilityPillLive : styles.visibilityPillExpired,
+                    ]}>
+                      <Ionicons
+                        name={visibility.isLive ? 'radio' : 'time-outline'}
+                        size={11}
+                        color={visibility.isLive ? '#fff' : '#fff'}
+                      />
+                      <Text style={styles.visibilityPillText}>
+                        {visibility.label}
+                      </Text>
+                    </View>
+                  </View>
+                );
+              })()}
+
               {/* Featured by — resolved to display name */}
               <View style={styles.metaRow}>
                 <Ionicons name="star-outline" size={13} color={colors.textMuted} />
@@ -571,6 +673,32 @@ const getStyles = (colors, isDark) =>
       marginTop: 1,
     },
 
+    // Caption + category
+    captionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 6,
+      paddingHorizontal: SPACING.md,
+      paddingBottom: SPACING.xs,
+    },
+    categoryBadge: {
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    categoryBadgeText: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#fff',
+    },
+    captionText: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      flex: 1,
+      lineHeight: 18,
+    },
+
     // Meta rows
     metaRow: {
       flexDirection: 'row',
@@ -588,6 +716,33 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.xs,
       color: colors.textMuted,
       flex: 1,
+    },
+
+    // Home visibility pill
+    visibilityRow: {
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      paddingBottom: SPACING.xs,
+    },
+    visibilityPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      alignSelf: 'flex-start',
+      gap: 4,
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    visibilityPillLive: {
+      backgroundColor: isDark ? '#065F46' : '#059669',
+    },
+    visibilityPillExpired: {
+      backgroundColor: isDark ? '#6B7280' : '#9CA3AF',
+    },
+    visibilityPillText: {
+      fontSize: 11,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#fff',
     },
 
     // Unfeature button

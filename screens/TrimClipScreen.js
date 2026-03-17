@@ -33,6 +33,7 @@ import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
@@ -62,6 +63,15 @@ const UPLOADING  = 'uploading';
 const FINALIZING = 'finalizing';
 
 const FUNCTIONS_REGION = 'us-central1';
+
+/** Predefined clip categories — order matches the chip row display. */
+const CLIP_CATEGORIES = [
+  { key: 'vibe',      label: 'Vibe' },
+  { key: 'highlight', label: 'Highlight' },
+  { key: 'energy',    label: 'Energy' },
+  { key: 'funny',     label: 'Funny' },
+];
+const MAX_CAPTION_LENGTH = 100;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function serializeError(err) {
@@ -113,6 +123,10 @@ export default function TrimClipScreen({ route, navigation }) {
 
   // ── Upload progress (0-100, shown during UPLOADING state) ─────────────────
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  // ── Caption + category (optional metadata) ─────────────────────────────────
+  const [caption, setCaption]   = useState('');
+  const [category, setCategory] = useState(null); // null = none selected
 
   // ── Playback progress (0-1, updated on every status tick) ─────────────────
   // Represents position within the active preview range:
@@ -455,7 +469,13 @@ export default function TrimClipScreen({ route, navigation }) {
       const finalizeClip = httpsCallable(functions, 'finalizeClipUpload');
       console.log('[clips] finalize — clipId:', clipId, '| durationSec:', durationSec);
 
-      const result = await finalizeClip({ clipId, gymId, durationSec });
+      const result = await finalizeClip({
+        clipId,
+        gymId,
+        durationSec,
+        caption: caption.trim() || null,
+        category: category || null,
+      });
       console.log('[clips] finalize ✓ —', JSON.stringify(result?.data, null, 2));
     } catch (finalizeErr) {
       console.error('[clips] FINALIZE ERROR ✗ —', serializeError(finalizeErr));
@@ -694,6 +714,39 @@ export default function TrimClipScreen({ route, navigation }) {
             </View>
           )}
 
+          {/* ── Caption + category ── */}
+          {!isLoading && (
+            <View style={styles.metadataSection}>
+              <TextInput
+                style={styles.captionInput}
+                placeholder="Add a caption…"
+                placeholderTextColor="rgba(255,255,255,0.35)"
+                value={caption}
+                onChangeText={setCaption}
+                maxLength={MAX_CAPTION_LENGTH}
+                returnKeyType="done"
+                blurOnSubmit
+              />
+              <View style={styles.categoryRow}>
+                {CLIP_CATEGORIES.map((cat) => {
+                  const isSelected = category === cat.key;
+                  return (
+                    <TouchableOpacity
+                      key={cat.key}
+                      style={[styles.categoryChip, isSelected && styles.categoryChipSelected]}
+                      activeOpacity={0.7}
+                      onPress={() => setCategory(isSelected ? null : cat.key)}
+                    >
+                      <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextSelected]}>
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           {/* Post Clip button */}
           <TouchableOpacity
             style={[styles.postBtn, isLoading && styles.postBtnDisabled]}
@@ -925,6 +978,47 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: 'center',
     marginTop: 5,
+  },
+
+  // ── Caption + category ──
+  metadataSection: {
+    marginBottom: 14,
+  },
+  captionInput: {
+    color: '#fff',
+    fontSize: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 10,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  categoryChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  categoryChipSelected: {
+    backgroundColor: 'rgba(255,122,69,0.2)',
+    borderColor: '#FF7A45',
+  },
+  categoryChipText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  categoryChipTextSelected: {
+    color: '#FF7A45',
+    fontWeight: '700',
   },
 
   // ── Post button ──

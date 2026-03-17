@@ -77,6 +77,7 @@ function HomeStack() {
       <Stack.Screen name="HomeMain" component={HomeScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
