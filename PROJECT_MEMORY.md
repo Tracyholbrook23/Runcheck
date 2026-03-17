@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-16_
+_Last updated: 2026-03-17_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -122,9 +122,34 @@ const getRunEnergyLabel = (count) => {
 - **Moderation system (2026-03-16)**: Full auto-moderation + admin moderation pipeline. `moderationHelpers.ts` is the single source of truth for all enforcement logic (hide clip, remove run, suspend user, unsuspend user, unhide clip, resolve report). Auto-moderation thresholds: clip→3 reports, run→3 reports, player→5 reports — triggered inside `submitReport` when pending report count reaches the threshold. Timed suspension escalation: `ESCALATION_DAYS = [1, 3, 7, 30, 365]` based on `suspensionLevel` on the user doc. Admin callables: `hideClip`, `removeRun`, `suspendUser`, `unsuspendUser`, `unhideClip`, `moderateReport` — all require `users/{uid}.isAdmin === true`. Client calls via `callFunction('functionName', payload)` from `config/firebase.js`.
 - **Admin dashboards (2026-03-16)**: Admin Tools hub screen (`AdminToolsScreen`) with live pending counts per tool. Sub-screens: `AdminGymRequestsScreen` (with detail view), `AdminReportsScreen` (type/status badges, resolve/review actions), `AdminSuspendedUsersScreen` (user avatar, suspendedBy resolved to display name, unsuspend action), `AdminHiddenClipsScreen` (clip thumbnail preview, play icon overlay, hiddenBy resolved to display name, uploader avatar, unhide action, tappable thumbnails to view video in ClipPlayerScreen). All admin screens gated by `useIsAdmin` hook. Admin badge on Profile → Admin Tools row counts total workload: pending gym requests + pending reports + currently suspended users + hidden clips.
 - **Profile badges (2026-03-16)**: "My Gym Requests" badge on Profile now counts only `status === 'pending'` requests (was total count). Uses `pendingCount` from `useMyGymRequests` hook. Badge disappears when all requests are approved/rejected/duplicate.
+- **Clip tagging V1 (2026-03-17)**: Users can tag up to 5 friends when posting a clip. Backend validates tags in `finalizeClipUpload` (dedupe, verify uid exists, trim displayName). Tags displayed as tappable `@Name` chips on ClipPlayerScreen. TrimClipScreen has a collapsible friend picker.
+- **Tagged clip awareness + approval V1 (2026-03-17)**: Tagged users see clips they appear in via "Tagged In" section on ProfileScreen (own profile only) and can approve clips to appear on their public "Featured In" section on UserProfileScreen. Approval flow: `addClipToProfile` Cloud Function (backend-controlled, per-user ownership). `useTaggedClips` hook fetches + client-side filters recent clips. Refetches on screen focus via `useFocusEffect`.
+- **Clip posting audit hardening (2026-03-17)**: Per-session duplicate guard now explicitly blocks soft-deleted clips (`isDeletedByUser === true` → slot consumed). Weekly free-tier cap (`FREE_CLIPS_PER_WEEK = 3`) now excludes soft-deleted clips (deleting restores weekly slot). `pointsAwarded: boolean` scaffolded on clip docs for future rewards system.
 - **Upcoming Runs participant modal (2026-03-16)**: The `+N` overflow bubble on Upcoming Runs cards in `RunDetailsScreen` is now tappable — opens a bottom-sheet modal listing all participants for that run with avatar, display name, and chevron. Tapping a participant navigates to their profile via `navigation.navigate('Home', { screen: 'UserProfile', params: { userId } })`.
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
+
+## Files Modified Recently (2026-03-17 session — Clip Tagging, Awareness, Approval, Posting Audit)
+
+### Backend files changed (in runcheck-backend)
+| File | What changed |
+|---|---|
+| `functions/src/clipFunctions.ts` | Added `TaggedPlayer` interface, `MAX_TAGGED_PLAYERS = 5`, `taggedPlayers` + `taggedUserIds` fields to `ProcessingClipDocument`, tagging validation in `finalizeClipUpload` (dedupe, verify uid, trim name). Phase 8A: hardened per-session guard to block soft-deleted clips. Phase 8B: `pointsAwarded: boolean` scaffold. Weekly cap now excludes `isDeletedByUser === true` clips. |
+| `functions/src/addClipToProfile.ts` | **New file** — Callable Cloud Function: validates auth, verifies caller is in `taggedPlayers`, sets `addedToProfile: true` on caller's entry only. Idempotent. |
+| `functions/src/index.ts` | Added `addClipToProfile` export. |
+| `firestore.rules` | Removed `isValidTaggedProfileUpdate` (was temporary). gymClips update rule is back to like/unlike only. Comment documents that taggedPlayers writes go through Cloud Function. |
+
+### Frontend files changed
+| File | What changed |
+|---|---|
+| `screens/ClipPlayerScreen.js` | Delete button fix (useAuth hook). Tagged players display as tappable `@Name` chips. "Add to my profile" button calls `addClipToProfile` Cloud Function (was `updateDoc`, now backend-controlled). "On your profile" badge. Removed `updateDoc` import. |
+| `screens/TrimClipScreen.js` | Player tagging UI: friends fetch, collapsible tag picker with horizontal ScrollView, `toggleTagPlayer` with max-5 enforcement, passes `taggedPlayers` in `finalizeClipUpload` payload. |
+| `hooks/useTaggedClips.js` | **New file** — Queries 100 recent clips, client-side filters for tagged user. Returns `allTagged`, `featuredIn`, `videoUrls`, `thumbnails`, `loading`, `refetch`. Refetch via `fetchKey` counter. |
+| `hooks/index.js` | Added `useTaggedClips` export. |
+| `screens/ProfileScreen.js` | Added "Tagged In" section (own profile only, horizontal FlatList). Added "Featured In" section (approved clips). Added `useFocusEffect` + `refetch` on screen focus. |
+| `screens/UserProfileScreen.js` | Added public "Featured In" section (horizontal FlatList, same tile pattern). Added `useFocusEffect` + `refetch` on screen focus. |
+| `screens/RunDetailsScreen.js` | Fixed back navigation: changed 5 cross-stack `navigation.navigate('Home', { screen: 'UserProfile' })` calls to same-stack `navigation.navigate('UserProfile', { userId })`. |
+| `App.js` | Added `UserProfile` to RunsStack for same-stack navigation fix. |
 
 ## Files Modified Recently (2026-03-16 session — Moderation System, Admin Dashboards, UX Polish)
 
@@ -471,6 +496,40 @@ Three interaction zones on the timeline bar:
 Implemented with three `PanResponder` instances. State is mirrored into refs so callbacks always read fresh values without stale closures.
 
 ---
+
+## Clip Tagging & Approval Architecture (as of 2026-03-17)
+
+### Data Model
+- `gymClips/{clipId}.taggedPlayers: Array<{ uid, displayName, addedToProfile? }>` — max 5 entries, written by `finalizeClipUpload`
+- `gymClips/{clipId}.taggedUserIds: string[]` — flat mirror of `taggedPlayers[].uid`, written once by backend, never mutated by client. Exists for Firestore rule compatibility (array-contains can't match sub-fields of map arrays).
+- `addedToProfile` is per-user within the array. Default `undefined`/`false`. Set to `true` via `addClipToProfile` Cloud Function.
+
+### Approval Flow (CRITICAL — backend-controlled)
+- **All writes to `taggedPlayers` MUST go through the `addClipToProfile` Cloud Function.** The client NEVER writes `taggedPlayers` directly.
+- The Cloud Function validates: (1) auth, (2) caller's uid exists in `taggedPlayers`, (3) only modifies caller's own entry.
+- Firestore rules do NOT allow client-side `taggedPlayers` writes. The gymClips `allow update` rule permits only like/unlike.
+- This eliminates the edge case where a tagged user could theoretically modify another user's `addedToProfile` via a client-side array replacement.
+
+### Display Logic
+- **"Tagged In"** (ProfileScreen, own profile only): All clips where user appears in `taggedPlayers` — `useTaggedClips.allTagged`
+- **"Featured In"** (ProfileScreen + UserProfileScreen, any profile): Clips where user's `addedToProfile === true` — `useTaggedClips.featuredIn`
+- A clip can appear in BOTH sections simultaneously. Approval does not remove from "Tagged In".
+- Sections hidden when empty (guarded by `.length > 0`).
+
+### Refresh Pattern
+- `useTaggedClips` exposes a `refetch` callback (increments internal `fetchKey` counter).
+- Both ProfileScreen and UserProfileScreen call `refetch` via `useFocusEffect` on screen focus.
+- This ensures fresh data after navigating back from ClipPlayerScreen (where approval happens).
+
+### Firestore Limitation
+- `array-contains` requires exact object match — cannot filter by sub-field of array element.
+- V1 uses client-side filtering: query 100 recent clips, filter for `taggedPlayers` containing target uid.
+- Future optimization: use `taggedUserIds` flat array for a native `array-contains` query.
+
+### Clip Posting Limits (Hardened 2026-03-17)
+- **Per-session duplicate guard**: Deterministic clipId + transaction check. Soft-deleted clips (`isDeletedByUser === true`) still consume the session slot — cannot repost for the same run.
+- **Weekly free-tier cap** (`FREE_CLIPS_PER_WEEK = 3`): Counts exclude `status === 'abandoned'` AND `isDeletedByUser === true`. Deleting a clip restores the weekly posting slot.
+- These two rules are intentionally independent: deleting restores the weekly slot but NOT the session slot.
 
 ## Instagram Integration (Home Screen)
 RunCheck includes Instagram entry points to connect the app with the community page.

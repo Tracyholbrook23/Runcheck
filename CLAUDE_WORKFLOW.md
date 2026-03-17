@@ -53,6 +53,7 @@ Before writing any code for a task:
 - Never add gym document writes — gym data is admin-only via `seedProductionGyms.js`. The client is read-only for the `gyms` collection.
 - Never add direct writes to `gymRequests` — all writes go through the `submitGymRequest` Cloud Function
 - Never write moderation fields directly from the client (`isHidden`, `isRemoved`, `isSuspended`, report `status`, etc.) — all moderation writes go through Cloud Functions. `moderationHelpers.ts` is the single source of truth for enforcement logic.
+- **Never write `taggedPlayers` directly from the client** — all `taggedPlayers` mutations (specifically `addedToProfile`) go through the `addClipToProfile` Cloud Function. Firestore rules block client-side `taggedPlayers` writes on `gymClips`. The `taggedUserIds` flat array is backend-written and immutable from client.
 - Prefer modifying query filters over adding new queries
 - Do not change function signatures unless required; add optional parameters if needed
 - All new Firestore reads must use existing indexes (check `BACKEND_MEMORY.md`)
@@ -89,4 +90,4 @@ Before writing any code for a task:
 
 ---
 
-_Last updated: 2026-03-16_
+_Last updated: 2026-03-17_

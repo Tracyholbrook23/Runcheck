@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-16_
+_Last updated: 2026-03-17_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -200,10 +200,46 @@ Firebase-only backend. No custom server. Logic lives in:
 ```
 > Duplicate prevention: composite unique on `reportedBy + type + targetId`. Auto-moderation in `submitReport` checks pending count against thresholds (clip→3, run→3, player→5) and triggers enforcement helpers.
 
-### `gymClips/{autoId}` — moderation fields (subset)
+### `gymClips/{clipId}` — full schema (deterministic ID: `{scheduleId}_{uid}` or `presence_{gymId}_{uid}`)
 ```js
 {
-  // ... clip upload fields (storagePath, thumbnailPath, uploaderUid, etc.)
+  // ── Core fields (written by finalizeClipUpload) ──
+  uploaderUid: string,
+  uploaderDisplayName: string,
+  gymId: string,
+  gymName: string,
+  scheduleId: string,
+  status: 'pending' | 'ready_raw' | 'processing' | 'ready',
+  storagePath: string,
+  rawStoragePath: string,
+  finalStoragePath: string | null,
+  thumbnailPath: string | null,
+  source: 'camera' | 'library',
+  trimStartSec: number,
+  durationSecClient: number,
+  caption: string | null,
+  category: string | null,
+  createdAt: Timestamp,
+  likesCount: number,              // 0 at creation
+  likedBy: { [uid]: true },        // O(1) like-state lookup
+  reportsCount: number,            // 0 at creation
+  isDailyHighlight: boolean,       // false at creation
+  pointsAwarded: boolean,          // false at creation; future rewards system flips to true
+
+  // ── Tagging (written by finalizeClipUpload, V1 2026-03-17) ──
+  taggedPlayers: Array<{
+    uid: string,
+    displayName: string,
+    addedToProfile?: boolean,      // set to true by addClipToProfile Cloud Function
+  }>,
+  taggedUserIds: string[],         // flat mirror of taggedPlayers[].uid — for Firestore rules
+
+  // ── Soft-delete (written by deleteClip Cloud Function) ──
+  isDeletedByUser: boolean,
+  deletedAt: Timestamp,
+  deletedByUid: string,
+
+  // ── Moderation (written by hideClip/unhideClip/auto-moderation) ──
   isHidden: boolean,
   hiddenBy: string,              // admin UID or 'auto-moderation'
   hiddenAt: Timestamp,
@@ -330,6 +366,8 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useWeeklyWinners()` | `{ winners, weekOf, recordedAt, loading }` | `getLatestWeeklyWinners` (one-shot fetch on mount). `recordedAt` used by HomeScreen to show a 24-hour celebration card after each weekly reset. |
 | `useMyGymRequests()` | `{ requests, loading, count, pendingCount }` | Real-time subscription to current user's `gymRequests` docs. `pendingCount` filters `status === 'pending'` for badge display. |
 | `useIsAdmin()` | `{ isAdmin, loading }` | Checks `users/{uid}.isAdmin === true`. Used to gate all admin screens. |
+| `useUserClips(uid)` | `{ clips, videoUrls, thumbnails, loading }` | User's own clips (by `uploaderUid`). |
+| `useTaggedClips(uid)` | `{ allTagged, featuredIn, videoUrls, thumbnails, loading, refetch }` | Clips user is tagged in. V1: queries 100 recent clips, client-side filters by `taggedPlayers[].uid`. `allTagged` = all tagged clips. `featuredIn` = clips where `addedToProfile === true`. `refetch` bumps internal counter to re-query. Called with `useFocusEffect` on ProfileScreen and UserProfileScreen. |
 
 ---
 
@@ -385,6 +423,10 @@ Single source of truth for all moderation actions. Both admin callables and auto
 | `declineFriendRequest` | `declineFriendRequest.ts` | Friend request decline. |
 | `cancelFriendRequest` | `cancelFriendRequest.ts` | Friend request cancellation. |
 | `removeFriend` | `removeFriend.ts` | Remove a friend. |
+| `deleteClip` | `deleteClip.ts` | User callable: soft-deletes own clip (`isDeletedByUser: true`). Admins can delete any clip. Clears `isDailyHighlight` if active. |
+| `featureClip` | `featureClip.ts` | Admin callable: features a clip as daily highlight. |
+| `unfeatureClip` | `unfeatureClip.ts` | Admin callable: removes daily highlight. |
+| `addClipToProfile` | `addClipToProfile.ts` | User callable: tagged user marks own `addedToProfile: true`. Validates caller is in `taggedPlayers`. Idempotent. **Only path for client-side taggedPlayers writes.** |
 
 ---
 
@@ -414,6 +456,10 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 - Schedule grace period: 60 min (user can check in up to 60 min after scheduled time and have it count)
 - Cancel penalty threshold: 60 min (no penalty if cancelled 1hr+ before)
 - `skillLevel` valid values: `'Casual' | 'Competitive' | 'Either'` — always normalize legacy values
+- **Clip tagging**: Max 5 tagged players per clip. Tags validated in `finalizeClipUpload`: dedupe by uid, verify each uid exists in `users` collection, trim displayName to 50 chars, fallback to Firestore displayName.
+- **Clip approval (addedToProfile)**: Only the tagged user can set their own `addedToProfile: true` via `addClipToProfile` Cloud Function. Client NEVER writes `taggedPlayers` directly. Firestore rules block all client writes to `taggedPlayers`.
+- **Per-session clip limit**: Deterministic clipId means one clip per user per session. Soft-deleted clips still consume the session slot (cannot repost for same run).
+- **Weekly free-tier clip cap**: `FREE_CLIPS_PER_WEEK = 3`. Excludes `abandoned` and `isDeletedByUser === true` clips. Deleting a clip restores the weekly slot but NOT the session slot.
 
 ---
 
@@ -430,6 +476,8 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 9.  runParticipants: userId ASC, gymId ASC, status ASC      ← subscribeToUserRunsAtGym
 10. runParticipants: runId ASC, status ASC, joinedAt ASC    ← subscribeToRunParticipants
 11. runs:            status ASC, startTime ASC              ← subscribeToAllUpcomingRuns (cross-gym)
+12. gymClips:        uploaderUid ASC, createdAt ASC         ← weekly clip count query in createClipSession
+13. gymClips:        createdAt DESC                         ← useTaggedClips broad query (limit 100)
 ```
 
 ---

@@ -310,6 +310,60 @@ Zone assignments are based on file content, service dependencies, and the data m
 
 ---
 
+## Zone 8 — Clips (Recording, Posting, Tagging, Approval)
+
+**Responsibility:** Recording, trimming, uploading, playing, tagging, and approving gym clips. Owns the `gymClips` Firestore collection (top-level, flat). Clip lifecycle: `pending → ready_raw → processing → ready`. Tagging writes and approval flow are backend-controlled via Cloud Functions.
+
+### Backend (in runcheck-backend)
+| File | Role |
+|------|------|
+| `functions/src/clipFunctions.ts` | `createClipSession` (reserves slot, per-session + weekly guards) + `finalizeClipUpload` (validates, writes clip doc with taggedPlayers + taggedUserIds) |
+| `functions/src/deleteClip.ts` | User callable: soft-delete own clip. Admins can delete any. |
+| `functions/src/addClipToProfile.ts` | User callable: tagged user sets own `addedToProfile: true`. **Only path for taggedPlayers client writes.** |
+| `functions/src/featureClip.ts` | Admin callable: feature clip as daily highlight. |
+| `functions/src/unfeatureClip.ts` | Admin callable: remove daily highlight. |
+
+### Hook Layer
+| File | Role |
+|------|------|
+| `hooks/useUserClips.js` | User's own clips by `uploaderUid`. |
+| `hooks/useTaggedClips.js` | Clips user is tagged in. V1 client-side filtering (100 recent clips). Returns `allTagged`, `featuredIn`, `refetch`. |
+
+### Screen Layer
+| File | Role |
+|------|------|
+| `screens/RecordClipScreen.js` | Camera recording (≤30s). |
+| `screens/TrimClipScreen.js` | Trim UI + tag picker + post. Calls `createClipSession` + upload + `finalizeClipUpload`. |
+| `screens/ClipPlayerScreen.js` | Full-screen playback, tagged player chips, like/delete/report, "Add to my profile" button. |
+
+### Display Integration
+| File | Role |
+|------|------|
+| `screens/ProfileScreen.js` | "My Clips" + "Tagged In" + "Featured In" sections (own profile). |
+| `screens/UserProfileScreen.js` | "Clips" + "Featured In" sections (public profile). |
+| `screens/RunDetailsScreen.js` | Clip tiles for the gym, "Post Clip" bottom sheet entry point. |
+
+### Native Module
+| File | Role |
+|------|------|
+| `modules/video-trimmer/` | On-device trim: iOS (AVFoundation), Android (Media3 Transformer). |
+
+### Key Firestore Collections
+- `gymClips/{clipId}` — deterministic ID (`{scheduleId}_{uid}` or `presence_{gymId}_{uid}`)
+
+### Important Constraints
+- **All writes to `taggedPlayers` go through `addClipToProfile` Cloud Function** — NEVER via client-side `updateDoc`. Firestore rules block client `taggedPlayers` writes.
+- `taggedUserIds` is backend-written (immutable from client) — exists for Firestore rule compatibility.
+- Per-session duplicate guard and weekly cap are independent: deleting restores weekly slot but NOT session slot.
+- `useTaggedClips` uses client-side filtering (Firestore limitation: `array-contains` can't match sub-fields of map arrays). Future: use `taggedUserIds` for native query.
+
+### Zone Overlap
+- `screens/ProfileScreen.js` (Zone 3) renders "Tagged In" and "Featured In" sections.
+- `screens/UserProfileScreen.js` (Zone 3) renders "Featured In" section.
+- `screens/RunDetailsScreen.js` (Zone 1) is the entry point for clip posting and displays clip tiles.
+
+---
+
 ## Zone 5 — Backend / Cloud Functions
 
 **Responsibility:** Firebase configuration, client-side service layer for data reads/writes, migration scripts, and the interface to Cloud Functions. Cloud Functions themselves are deployed separately (no `/functions` directory exists in this repo at time of mapping — functions are managed in a separate project or deploy context).
@@ -372,7 +426,9 @@ The following files serve multiple zones and should be treated carefully when ma
 | `screens/GymsScreen.js` | Zone 1 + Zone 4 | Possibly an earlier version of ViewRunsScreen or a gym-list component — verify before editing |
 | `constants/theme 2.js` | Zone 4 | Appears to be a duplicate of `theme.js` — may be safe to delete but verify no imports first |
 | `components/ReportModal.js` | Zone 4 + Zone 7 | Shared report submission UI used by screens in multiple zones; moderation enforcement is handled server-side |
-| `screens/ProfileScreen.js` | Zone 3 + Zone 7 | Owns user profile (Zone 3) AND the Admin Tools badge that counts moderation items (Zone 7) |
+| `screens/ProfileScreen.js` | Zone 3 + Zone 7 + Zone 8 | Owns user profile (Zone 3), Admin Tools badge (Zone 7), and "Tagged In"/"Featured In" clip sections (Zone 8) |
+| `screens/UserProfileScreen.js` | Zone 3 + Zone 8 | Owns public profile (Zone 3) and "Featured In" clip section (Zone 8) |
+| `screens/ClipPlayerScreen.js` | Zone 4 + Zone 8 | Full-screen video player (Zone 4) with tagging display and approval button (Zone 8) |
 
 ---
 
@@ -380,11 +436,11 @@ The following files serve multiple zones and should be treated carefully when ma
 
 | File | Notes |
 |------|-------|
-| `modules/video-trimmer/` | Native Expo module for video trimming; used by TrimClipScreen and RecordClipScreen. Not clearly within any of the five feature zones — treat as a standalone native module. |
+| `modules/video-trimmer/` | Native Expo module for video trimming; classified under Zone 8 (Clips). |
 | `__mocks__/` | Test mocks for Expo vector icons and React Native vector icons. Infrastructure, not a feature zone. |
 | `jest.setup.js` | Test infrastructure. |
 
 ---
 
-_Last updated: 2026-03-16_
+_Last updated: 2026-03-17_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._
