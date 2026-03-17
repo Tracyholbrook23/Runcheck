@@ -57,12 +57,17 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 const FILTER_MODES = [
   { key: 'all', label: 'All' },
+  { key: 'candidates', label: 'Candidates' },
+  { key: 'mostLiked', label: 'Most Liked' },
   { key: 'byGym', label: 'By Gym' },
   { key: 'hidden', label: 'Hidden' },
   { key: 'featured', label: 'Featured' },
 ];
 
 const PAGE_LIMIT = 25;
+
+// Candidates mode over-fetches to compensate for client-side filtering
+const CANDIDATES_FETCH_LIMIT = 75;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -146,6 +151,19 @@ export default function AdminAllClipsScreen({ navigation }) {
         orderBy('createdAt', 'desc'),
         limit(PAGE_LIMIT)
       );
+    } else if (filterMode === 'candidates') {
+      // Over-fetch by likesCount, then client-side filter for feature-worthy clips
+      q = query(
+        collection(db, 'gymClips'),
+        orderBy('likesCount', 'desc'),
+        limit(CANDIDATES_FETCH_LIMIT)
+      );
+    } else if (filterMode === 'mostLiked') {
+      q = query(
+        collection(db, 'gymClips'),
+        orderBy('likesCount', 'desc'),
+        limit(PAGE_LIMIT)
+      );
     } else if (filterMode === 'byGym') {
       if (!selectedGymId) {
         // No gym selected yet — show empty until they pick one
@@ -178,6 +196,18 @@ export default function AdminAllClipsScreen({ navigation }) {
       (snapshot) => {
         let docs = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
 
+        // Candidates mode: client-side filter for feature-worthy clips
+        // Already sorted by likesCount desc from Firestore, so just filter + cap
+        if (filterMode === 'candidates') {
+          docs = docs.filter((c) =>
+            c.isHidden !== true &&
+            c.isDailyHighlight !== true &&
+            (c.status === 'ready' || c.status === 'ready_raw') &&
+            !!c.storagePath &&
+            (c.likesCount || 0) > 0
+          ).slice(0, PAGE_LIMIT);
+        }
+
         // Client-side sort for Hidden / Featured modes (matching existing admin screens)
         if (filterMode === 'hidden') {
           docs.sort((a, b) => {
@@ -195,7 +225,9 @@ export default function AdminAllClipsScreen({ navigation }) {
 
         // Minimal exclusion: only drop docs missing both storagePath and status
         // (these are abandoned reservation stubs, not real clips)
-        docs = docs.filter((c) => c.storagePath || c.status);
+        if (filterMode !== 'candidates') {
+          docs = docs.filter((c) => c.storagePath || c.status);
+        }
 
         setClips(docs);
         setLoading(false);
@@ -541,6 +573,10 @@ export default function AdminAllClipsScreen({ navigation }) {
   let summaryLabel = '';
   if (filterMode === 'all') {
     summaryLabel = `${clips.length} clip${clips.length === 1 ? '' : 's'} (newest)`;
+  } else if (filterMode === 'candidates') {
+    summaryLabel = `${clips.length} candidate${clips.length === 1 ? '' : 's'} to feature`;
+  } else if (filterMode === 'mostLiked') {
+    summaryLabel = `${clips.length} clip${clips.length === 1 ? '' : 's'} (most liked)`;
   } else if (filterMode === 'byGym') {
     const gn = selectedGymName || 'none selected';
     summaryLabel = `${clips.length} clip${clips.length === 1 ? '' : 's'} at ${gn}`;
@@ -554,23 +590,29 @@ export default function AdminAllClipsScreen({ navigation }) {
     <SafeAreaView style={styles.safe}>
       {renderGymPicker()}
 
-      {/* ── Filter bar ─────────────────────────────────────────────────── */}
-      <View style={styles.filterBar}>
-        {FILTER_MODES.map((mode) => {
-          const isActive = filterMode === mode.key;
-          return (
-            <TouchableOpacity
-              key={mode.key}
-              style={[styles.filterPill, isActive && styles.filterPillActive]}
-              activeOpacity={0.7}
-              onPress={() => handleFilterChange(mode.key)}
-            >
-              <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
-                {mode.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
+      {/* ── Filter bar (horizontally scrollable for narrow screens) ──── */}
+      <View style={styles.filterBarWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterBarContent}
+        >
+          {FILTER_MODES.map((mode) => {
+            const isActive = filterMode === mode.key;
+            return (
+              <TouchableOpacity
+                key={mode.key}
+                style={[styles.filterPill, isActive && styles.filterPillActive]}
+                activeOpacity={0.7}
+                onPress={() => handleFilterChange(mode.key)}
+              >
+                <Text style={[styles.filterPillText, isActive && styles.filterPillTextActive]}>
+                  {mode.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {/* Gym selector button (visible in byGym mode) */}
@@ -605,7 +647,9 @@ export default function AdminAllClipsScreen({ navigation }) {
           <Text style={styles.emptyText}>
             {filterMode === 'byGym' && !selectedGymId
               ? 'Select a gym to browse its clips.'
-              : 'No clips match the current filter.'}
+              : filterMode === 'candidates'
+                ? 'No liked, visible, un-featured clips found.'
+                : 'No clips match the current filter.'}
           </Text>
         </View>
       ) : (
@@ -714,11 +758,19 @@ export default function AdminAllClipsScreen({ navigation }) {
                   </Text>
                 </View>
 
-                {/* Clip ID */}
+                {/* Clip ID + like count */}
                 <View style={styles.metaRow}>
                   <Text style={styles.clipIdText} numberOfLines={1}>
                     {clip.id}
                   </Text>
+                  {(clip.likesCount > 0 || filterMode === 'mostLiked') && (
+                    <View style={styles.likeCountPill}>
+                      <Ionicons name="heart" size={10} color={isDark ? '#F87171' : '#DC2626'} />
+                      <Text style={styles.likeCountText}>
+                        {clip.likesCount || 0}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* ── Contextual action buttons ──────────────────────────── */}
@@ -810,16 +862,19 @@ const getStyles = (colors, isDark) =>
     },
 
     // ── Filter bar ────────────────────────────────────────────────────
-    filterBar: {
-      flexDirection: 'row',
-      paddingHorizontal: SPACING.md,
+    filterBarWrapper: {
       paddingTop: SPACING.sm,
-      paddingBottom: SPACING.xs,
+      paddingBottom: SPACING.sm,
+    },
+    filterBarContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: SPACING.md,
       gap: SPACING.xs,
     },
     filterPill: {
       paddingHorizontal: 14,
-      paddingVertical: 6,
+      paddingVertical: 10,
       borderRadius: RADIUS.full,
       backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
     },
@@ -828,6 +883,7 @@ const getStyles = (colors, isDark) =>
     },
     filterPillText: {
       fontSize: FONT_SIZES.small,
+      lineHeight: 18,
       fontWeight: FONT_WEIGHTS.medium,
       color: colors.textSecondary,
     },
@@ -1066,6 +1122,9 @@ const getStyles = (colors, isDark) =>
 
     // ── Meta row ─────────────────────────────────────────────────────
     metaRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: SPACING.md,
       marginBottom: 2,
     },
@@ -1073,6 +1132,21 @@ const getStyles = (colors, isDark) =>
       fontSize: 10,
       color: colors.textMuted,
       fontFamily: 'monospace',
+      flex: 1,
+    },
+    likeCountPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      backgroundColor: isDark ? 'rgba(248,113,113,0.12)' : '#FEE2E2',
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    likeCountText: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: isDark ? '#F87171' : '#DC2626',
     },
 
     // ── Action row ───────────────────────────────────────────────────
