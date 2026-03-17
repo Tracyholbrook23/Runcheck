@@ -56,6 +56,7 @@ import AdminReportsScreen from './screens/AdminReportsScreen';
 import AdminSuspendedUsersScreen from './screens/AdminSuspendedUsersScreen';
 import AdminHiddenClipsScreen from './screens/AdminHiddenClipsScreen';
 import AdminFeaturedClipsScreen from './screens/AdminFeaturedClipsScreen';
+import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
 
 const Stack = createNativeStackNavigator();
@@ -171,6 +172,7 @@ function ProfileStack() {
       <Stack.Screen name="AdminSuspendedUsers" component={AdminSuspendedUsersScreen} options={{ title: 'Suspended Users', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminHiddenClips" component={AdminHiddenClipsScreen} options={{ title: 'Hidden Clips', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminFeaturedClips" component={AdminFeaturedClipsScreen} options={{ title: 'Featured Clips', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="AdminAllClips" component={AdminAllClipsScreen} options={{ title: 'All Clips', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );

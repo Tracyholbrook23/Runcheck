@@ -76,6 +76,13 @@ const ADMIN_TOOLS = [
     icon: 'star-outline',
     active: true,
   },
+  {
+    id: 'all-clips',
+    label: 'All Clips',
+    subtitle: 'Browse and manage all clips across gyms',
+    icon: 'film-outline',
+    active: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -196,6 +203,8 @@ export default function AdminToolsScreen({ navigation }) {
       navigation.navigate('AdminHiddenClips');
     } else if (tool.id === 'featured-content') {
       navigation.navigate('AdminFeaturedClips');
+    } else if (tool.id === 'all-clips') {
+      navigation.navigate('AdminAllClips');
     }
   };
 
