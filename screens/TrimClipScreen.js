@@ -29,7 +29,7 @@
  * After a successful post, navigates back to RunDetails with scrollToClips:true.
  */
 
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -40,12 +40,16 @@ import {
   ActivityIndicator,
   Alert,
   PanResponder,
+  ScrollView,
 } from 'react-native';
 import { Video, ResizeMode } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { doc, getDoc } from 'firebase/firestore';
 import { trimVideo } from 'video-trimmer';
+import { useAuth } from '../hooks';
+import { db } from '../config/firebase';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 /** Maximum duration of a posted clip in seconds. Source videos longer than this
@@ -72,6 +76,7 @@ const CLIP_CATEGORIES = [
   { key: 'funny',     label: 'Funny' },
 ];
 const MAX_CAPTION_LENGTH = 100;
+const MAX_TAGGED_PLAYERS = 5;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function serializeError(err) {
@@ -127,6 +132,57 @@ export default function TrimClipScreen({ route, navigation }) {
   // ── Caption + category (optional metadata) ─────────────────────────────────
   const [caption, setCaption]   = useState('');
   const [category, setCategory] = useState(null); // null = none selected
+
+  // ── Player tagging ─────────────────────────────────────────────────────────
+  const { userId: currentUid } = useAuth();
+  const [taggedPlayers, setTaggedPlayers] = useState([]); // Array<{ uid, displayName }>
+  const [friendsList, setFriendsList]     = useState([]); // Array<{ uid, displayName }>
+  const [friendsLoading, setFriendsLoading] = useState(false);
+  const [showTagPicker, setShowTagPicker] = useState(false);
+
+  // Fetch current user's friends list with display names
+  useEffect(() => {
+    if (!currentUid) return;
+    let cancelled = false;
+
+    (async () => {
+      setFriendsLoading(true);
+      try {
+        const userSnap = await getDoc(doc(db, 'users', currentUid));
+        if (cancelled || !userSnap.exists()) { setFriendsLoading(false); return; }
+        const friendUids = userSnap.data()?.friends || [];
+        if (friendUids.length === 0) { setFriendsLoading(false); return; }
+
+        const snaps = await Promise.all(
+          friendUids.map((uid) => getDoc(doc(db, 'users', uid))),
+        );
+        if (cancelled) return;
+        const profiles = snaps
+          .filter((s) => s.exists())
+          .map((s) => ({
+            uid: s.id,
+            displayName: s.data()?.displayName || s.data()?.name || 'Unknown',
+          }))
+          .sort((a, b) => a.displayName.localeCompare(b.displayName));
+        setFriendsList(profiles);
+      } catch (err) {
+        console.error('[TrimClip] Failed to fetch friends:', err);
+      } finally {
+        if (!cancelled) setFriendsLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [currentUid]);
+
+  const toggleTagPlayer = useCallback((player) => {
+    setTaggedPlayers((prev) => {
+      const isAlreadyTagged = prev.some((p) => p.uid === player.uid);
+      if (isAlreadyTagged) return prev.filter((p) => p.uid !== player.uid);
+      if (prev.length >= MAX_TAGGED_PLAYERS) return prev;
+      return [...prev, player];
+    });
+  }, []);
 
   // ── Playback progress (0-1, updated on every status tick) ─────────────────
   // Represents position within the active preview range:
@@ -475,6 +531,7 @@ export default function TrimClipScreen({ route, navigation }) {
         durationSec,
         caption: caption.trim() || null,
         category: category || null,
+        taggedPlayers: taggedPlayers.length > 0 ? taggedPlayers : null,
       });
       console.log('[clips] finalize ✓ —', JSON.stringify(result?.data, null, 2));
     } catch (finalizeErr) {
@@ -744,6 +801,74 @@ export default function TrimClipScreen({ route, navigation }) {
                   );
                 })}
               </View>
+
+              {/* ── Tag players ── */}
+              <TouchableOpacity
+                style={styles.tagToggle}
+                activeOpacity={0.7}
+                onPress={() => setShowTagPicker((v) => !v)}
+              >
+                <Ionicons name="people-outline" size={16} color="rgba(255,255,255,0.6)" />
+                <Text style={styles.tagToggleText}>
+                  {taggedPlayers.length > 0
+                    ? `Tagged: ${taggedPlayers.map((p) => p.displayName).join(', ')}`
+                    : '+ Tag players'}
+                </Text>
+                {taggedPlayers.length > 0 && (
+                  <Text style={styles.tagCount}>{taggedPlayers.length}/{MAX_TAGGED_PLAYERS}</Text>
+                )}
+                <Ionicons
+                  name={showTagPicker ? 'chevron-up' : 'chevron-down'}
+                  size={14}
+                  color="rgba(255,255,255,0.4)"
+                  style={{ marginLeft: 'auto' }}
+                />
+              </TouchableOpacity>
+
+              {showTagPicker && (
+                <View style={styles.tagPickerContainer}>
+                  {friendsLoading ? (
+                    <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ paddingVertical: 8 }} />
+                  ) : friendsList.length === 0 ? (
+                    <Text style={styles.tagEmptyText}>No friends to tag yet</Text>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.tagChipsScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {friendsList.map((friend) => {
+                        const isSelected = taggedPlayers.some((p) => p.uid === friend.uid);
+                        const atMax = taggedPlayers.length >= MAX_TAGGED_PLAYERS && !isSelected;
+                        return (
+                          <TouchableOpacity
+                            key={friend.uid}
+                            style={[
+                              styles.tagChip,
+                              isSelected && styles.tagChipSelected,
+                              atMax && styles.tagChipDisabled,
+                            ]}
+                            activeOpacity={atMax ? 1 : 0.7}
+                            onPress={() => !atMax && toggleTagPlayer(friend)}
+                          >
+                            <Text style={[
+                              styles.tagChipText,
+                              isSelected && styles.tagChipTextSelected,
+                              atMax && styles.tagChipTextDisabled,
+                            ]}>
+                              {friend.displayName}
+                            </Text>
+                            {isSelected && (
+                              <Ionicons name="close-circle" size={14} color="#FF7A45" style={{ marginLeft: 4 }} />
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              )}
             </View>
           )}
 
@@ -1019,6 +1144,71 @@ const styles = StyleSheet.create({
   categoryChipTextSelected: {
     color: '#FF7A45',
     fontWeight: '700',
+  },
+
+  // ── Tag players ──
+  tagToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    gap: 6,
+  },
+  tagToggleText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+  },
+  tagCount: {
+    color: '#FF7A45',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  tagPickerContainer: {
+    marginTop: 8,
+  },
+  tagEmptyText: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingVertical: 8,
+  },
+  tagChipsScroll: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  tagChipSelected: {
+    backgroundColor: 'rgba(255,122,69,0.15)',
+    borderColor: '#FF7A45',
+  },
+  tagChipDisabled: {
+    opacity: 0.35,
+  },
+  tagChipText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  tagChipTextSelected: {
+    color: '#FF7A45',
+    fontWeight: '600',
+  },
+  tagChipTextDisabled: {
+    color: 'rgba(255,255,255,0.3)',
   },
 
   // ── Post button ──

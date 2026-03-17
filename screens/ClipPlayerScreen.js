@@ -50,7 +50,7 @@ export default function ClipPlayerScreen({ route, navigation }) {
   const { userId: currentUid } = useAuth();
 
   // Clip metadata fetched from Firestore
-  const [clipMeta, setClipMeta] = useState({ caption: null, category: null, uploaderUid: null });
+  const [clipMeta, setClipMeta] = useState({ caption: null, category: null, uploaderUid: null, taggedPlayers: [] });
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
@@ -66,6 +66,7 @@ export default function ClipPlayerScreen({ route, navigation }) {
             caption: d.caption || null,
             category: d.category || null,
             uploaderUid: d.uploaderUid || d.uid || null,
+            taggedPlayers: Array.isArray(d.taggedPlayers) ? d.taggedPlayers : [],
           });
         }
       } catch (_) { /* silently ignore — older clips may not exist */ }
@@ -207,8 +208,8 @@ export default function ClipPlayerScreen({ route, navigation }) {
         </TouchableOpacity>
       )}
 
-      {/* Caption + category overlay — bottom-left, TikTok-style */}
-      {(clipMeta.caption || clipMeta.category) && (
+      {/* Caption + category + tagged players overlay — bottom-left, TikTok-style */}
+      {(clipMeta.caption || clipMeta.category || clipMeta.taggedPlayers.length > 0) && (
         <View style={styles.captionOverlay}>
           {clipMeta.category && CATEGORY_CONFIG[clipMeta.category] && (
             <View style={[styles.categoryBadge, { backgroundColor: CATEGORY_CONFIG[clipMeta.category].color }]}>
@@ -221,6 +222,29 @@ export default function ClipPlayerScreen({ route, navigation }) {
             <Text style={styles.captionText} numberOfLines={3}>
               {clipMeta.caption}
             </Text>
+          )}
+          {clipMeta.taggedPlayers.length > 0 && (
+            <View style={styles.taggedRow}>
+              <Ionicons name="people" size={12} color="rgba(255,255,255,0.55)" />
+              {clipMeta.taggedPlayers.map((p) => (
+                <TouchableOpacity
+                  key={p.uid}
+                  activeOpacity={0.7}
+                  onPress={async () => {
+                    try {
+                      if (videoRef.current) {
+                        await videoRef.current.pauseAsync();
+                        await videoRef.current.unloadAsync();
+                      }
+                    } catch { /* ignore teardown */ }
+                    navigation.navigate('Home', { screen: 'UserProfile', params: { userId: p.uid } });
+                  }}
+                  hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+                >
+                  <Text style={styles.taggedChipText} numberOfLines={1}>@{p.displayName}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
         </View>
       )}
@@ -316,5 +340,20 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
     lineHeight: 20,
+  },
+  taggedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  taggedChipText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+    maxWidth: 120,
   },
 });
