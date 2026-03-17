@@ -1,31 +1,42 @@
 # RunCheck
 
-A React Native mobile app that helps basketball players find and join pickup games nearby in real time.
+A React Native mobile app that helps basketball players find and join pickup games nearby in real time. Check in to gyms, see who's playing, post highlight clips, earn rank points, and build your reputation.
 
 ## Features
 
-- **Find Nearby Games** - Discover pickup basketball games at gyms around you using GPS
-- **Check In** - GPS-validated check-in (within 50m) so players know you're actually there
-- **Live Presence** - See who's currently at each gym in real time
-- **Reliability Score** - Build your reputation by showing up when you say you will
-- **Plan Visits** - Schedule your intent to visit a gym so others know to expect you
-- **Map View** - Browse gym locations on an interactive map with directions
+- **Live Presence** - See who's currently at each gym in real time with run energy labels
+- **GPS Check-In** - Validated check-in so players know you're actually there
+- **Start & Join Runs** - Organize group runs at any gym; others can join with one tap
+- **Plan Visits** - Schedule future gym visits and browse community runs being planned
+- **Clip Posting** - Record or upload highlight clips (up to 10s), trim on-device, and post to the gym feed
+- **Player Tagging** - Tag up to 5 friends in your clips; tagged users can approve clips to appear on their profile
+- **Reliability Score** - Build your reputation (0–100) by showing up when you say you will
+- **Rank System** - Six tiers (Bronze → Legend) with perks, tracked via all-time and weekly leaderboards
+- **Weekly Winners** - Automated top-3 podium every Monday with a 24-hour celebration card
+- **Player Reviews** - Rate gyms after attending a run or checking in; "Verified Run" badge for run completers
+- **Gym Requests** - Request new gyms to be added; track your request status in-app
+- **Reporting & Moderation** - Report clips, players, runs, and gyms; auto-moderation triggers at thresholds
+- **Admin Dashboards** - Admin tools for managing reports, suspended users, hidden clips, and gym requests
+- **RunCheck Premium** - UI teaser for future premium features ($4.99/mo or $29.99/yr)
+- **Dark Mode** - Full dark/light theme support
 
 ## Tech Stack
 
-- **React Native** with **Expo** (SDK 54)
-- **Firebase** for auth, database, and backend
-- **React Navigation** (native stack + bottom tabs)
-- **React Native Maps** + **Expo Location** for GPS and maps
+- **React Native 0.81** with **Expo SDK 54** + React 19
+- **Firebase v12** — Firestore, Auth, Storage, Cloud Functions v2
+- **React Navigation v7** — native stack + bottom tabs
+- **React Native Maps** + **Expo Location** for GPS
+- **expo-dev-client** — custom dev builds (not Expo Go)
+- **video-trimmer** — local Expo native module (iOS: AVFoundation, Android: Media3)
 
 ## Getting Started
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (LTS recommended)
-- [Expo CLI](https://docs.expo.dev/get-started/installation/)
-- A Firebase project with Firestore and Authentication enabled
-- iOS Simulator (Mac) or Android Emulator, or the Expo Go app on your phone
+- Node.js v20+ (via nvm recommended)
+- EAS CLI (`npm install -g eas-cli`)
+- A Firebase project with Firestore, Auth, and Storage enabled
+- iOS Simulator (Mac) or physical device via EAS build
 
 ### Installation
 
@@ -63,7 +74,21 @@ Set `EXPO_PUBLIC_DEV_SKIP_GPS=true` to use a fake location during development.
 npm start          # Start Expo dev server
 npm run ios        # Run on iOS simulator
 npm run android    # Run on Android emulator
-npm run web        # Run in the browser
+```
+
+### Backend (Cloud Functions)
+
+The backend lives in a separate repo (`runcheck-backend`). Deploy functions with:
+
+```bash
+cd ~/Desktop/runcheck-backend
+firebase deploy --only functions
+```
+
+Deploy Firestore rules:
+
+```bash
+firebase deploy --only firestore:rules
 ```
 
 ## Testing
@@ -77,14 +102,24 @@ npm run test:coverage # Run tests with coverage report
 ## Project Structure
 
 ```
-├── screens/        # App screens (Home, Login, Signup, CheckIn, etc.)
-├── components/     # Reusable UI components (Button, Card, Input, etc.)
-├── services/       # Business logic (gym, presence, schedule, reliability)
-├── hooks/          # Custom React hooks (useAuth, useLocation, usePresence, etc.)
-├── contexts/       # React Context providers (Theme)
-├── config/         # Firebase config, rank tiers, point values, perk definitions
-├── constants/      # Theme and branding constants
-├── utils/          # Utility functions (rank helpers, perk helpers, location, maps)
-├── assets/         # Images, icons, and splash screen
-└── __tests__/      # Test files
+├── screens/           # App screens (Home, Profile, RunDetails, ClipPlayer, Admin, etc.)
+├── components/        # Reusable UI components (Button, Card, PresenceList, ReportModal, etc.)
+├── services/          # Business logic (gym, presence, schedule, reliability, points, runs, reviews)
+├── hooks/             # Custom React hooks (useAuth, usePresence, useTaggedClips, useIsAdmin, etc.)
+├── contexts/          # React Context providers (Theme)
+├── config/            # Firebase config, rank tiers, point values, perk definitions
+├── constants/         # Theme tokens, branding, gym assets
+├── utils/             # Rank helpers, perk helpers, location, maps
+├── modules/           # Local Expo native modules (video-trimmer)
+├── scripts/           # Admin scripts (weekly reset, seed gyms, migrations)
+├── assets/            # Images, icons, splash screen
+└── __tests__/         # Test files
 ```
+
+## Documentation
+
+- `PROJECT_MEMORY.md` — Full project context, features, and recent changes
+- `BACKEND_MEMORY.md` — Firestore schema, services, hooks, Cloud Functions, business rules
+- `ARCHITECTURE_MAP.md` — File-to-zone mapping for safe, scoped changes
+- `CLAUDE_WORKFLOW.md` — Development workflow rules and constraints
+- `DEV_TASKS.md` — Known issues and upcoming tasks
