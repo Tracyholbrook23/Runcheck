@@ -60,7 +60,7 @@ export const useMyGymRequests = () => {
         setLoading(false);
       },
       (err) => {
-        console.error('useMyGymRequests snapshot error:', err);
+        if (__DEV__) console.error('useMyGymRequests snapshot error:', err);
         setLoading(false);
       }
     );

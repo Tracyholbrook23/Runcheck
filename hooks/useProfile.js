@@ -48,7 +48,7 @@ export const useProfile = () => {
         setLoading(false);
       },
       (err) => {
-        console.error('useProfile snapshot error:', err);
+        if (__DEV__) console.error('useProfile snapshot error:', err);
         setLoading(false);
       }
     );

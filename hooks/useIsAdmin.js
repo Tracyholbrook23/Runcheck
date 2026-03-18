@@ -45,7 +45,7 @@ export const useIsAdmin = () => {
         setIsAdmin(snap.exists() && snap.data().isAdmin === true);
       })
       .catch((err) => {
-        console.error('useIsAdmin error:', err);
+        if (__DEV__) console.error('useIsAdmin error:', err);
         setIsAdmin(false);
       })
       .finally(() => {

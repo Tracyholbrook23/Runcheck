@@ -125,7 +125,7 @@ export default function AdminSuspendedUsersScreen() {
         setRefreshing(false);
       },
       (err) => {
-        console.error('AdminSuspendedUsersScreen: onSnapshot error', err);
+        if (__DEV__) console.error('AdminSuspendedUsersScreen: onSnapshot error', err);
         setLoading(false);
         setRefreshing(false);
       }
@@ -190,7 +190,7 @@ export default function AdminSuspendedUsersScreen() {
             try {
               await callFunction('unsuspendUser', { userId: user.id });
             } catch (err) {
-              console.error('unsuspendUser error:', err);
+              if (__DEV__) console.error('unsuspendUser error:', err);
               Alert.alert(
                 'Unsuspend Failed',
                 err?.message || 'Could not unsuspend user. Please try again.'

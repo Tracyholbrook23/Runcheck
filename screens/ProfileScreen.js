@@ -353,7 +353,7 @@ export default function ProfileScreen({ navigation }) {
         awardPoints(uid, 'completeProfile');
       }
     } catch (err) {
-      console.error('handlePickImage upload error:', err);
+      if (__DEV__) console.error('handlePickImage upload error:', err);
       Alert.alert('Upload Failed', 'Could not save your photo. Please try again.');
     } finally {
       setUploading(false);
@@ -379,7 +379,7 @@ export default function ProfileScreen({ navigation }) {
           if (data.photoURL) setPhotoUri(data.photoURL);
         }
       } catch (err) {
-        console.error('Failed to load profile:', err);
+        if (__DEV__) console.error('Failed to load profile:', err);
       } finally {
         setProfileLoading(false);
       }
@@ -394,7 +394,7 @@ export default function ProfileScreen({ navigation }) {
   // Covers: first load before getDoc resolves, and cross-device photo updates.
   useEffect(() => {
     if (liveProfile?.photoURL) {
-      console.log('[ProfileScreen] syncing photoUri from liveProfile.photoURL');
+      if (__DEV__) console.log('[ProfileScreen] syncing photoUri from liveProfile.photoURL');
       setPhotoUri(liveProfile.photoURL);
     }
   }, [liveProfile?.photoURL]);
@@ -417,7 +417,7 @@ export default function ProfileScreen({ navigation }) {
           .map((s) => ({ uid: s.id, ...s.data() }));
         setFriendsProfiles(profiles);
       } catch (err) {
-        console.error('Failed to fetch friends profiles:', err);
+        if (__DEV__) console.error('Failed to fetch friends profiles:', err);
       }
     };
     fetchFriends();
@@ -466,11 +466,11 @@ export default function ProfileScreen({ navigation }) {
 
           setPendingRequests(requests);
         } catch (err) {
-          console.error('Failed to fetch pending request profiles:', err);
+          if (__DEV__) console.error('Failed to fetch pending request profiles:', err);
         }
       },
       (err) => {
-        console.error('onSnapshot error (pending requests):', err);
+        if (__DEV__) console.error('onSnapshot error (pending requests):', err);
       }
     );
 
@@ -492,7 +492,7 @@ export default function ProfileScreen({ navigation }) {
       // Optimistic removal — onSnapshot will also sync shortly after
       setPendingRequests((prev) => prev.filter((r) => r.fromUid !== request.fromUid));
     } catch (err) {
-      console.error('Failed to accept friend request:', err);
+      if (__DEV__) console.error('Failed to accept friend request:', err);
       Alert.alert('Error', 'Could not accept request. Please try again.');
     } finally {
       setProcessingRequestId(null);
@@ -511,7 +511,7 @@ export default function ProfileScreen({ navigation }) {
       // Optimistic removal — onSnapshot will also sync shortly after
       setPendingRequests((prev) => prev.filter((r) => r.fromUid !== request.fromUid));
     } catch (err) {
-      console.error('Failed to decline friend request:', err);
+      if (__DEV__) console.error('Failed to decline friend request:', err);
       Alert.alert('Error', 'Could not decline request. Please try again.');
     } finally {
       setProcessingRequestId(null);
@@ -565,11 +565,13 @@ export default function ProfileScreen({ navigation }) {
   const displayScore = score || 0;
   const displayTier = tier || { label: 'New', color: colors.textMuted };
 
-  // Real session stats from Firestore users/{uid}.reliability
-  const displayScheduled  = reliability?.totalScheduled  ?? 0;
-  const displayAttended   = reliability?.totalAttended   ?? 0;
-  const displayNoShows    = reliability?.totalNoShow     ?? 0;
-  const displayCancelled  = reliability?.totalCancelled  ?? 0;
+  // Session stats from the same useReliability hook that provides score/tier.
+  // Previously read from a separate inline onSnapshot `reliability` state, which
+  // could resolve after reliabilityLoading cleared — causing a flash of zeroes. RC-004.
+  const displayScheduled  = stats?.totalScheduled  ?? 0;
+  const displayAttended   = stats?.totalAttended   ?? 0;
+  const displayNoShows    = stats?.totalNoShow     ?? 0;
+  const displayCancelled  = stats?.totalCancelled  ?? 0;
   const displayRunsStarted = liveProfile?.runsStarted ?? 0;
   const _completionDenom  = displayAttended + displayCancelled + displayNoShows;
   const displayAttendance = _completionDenom > 0

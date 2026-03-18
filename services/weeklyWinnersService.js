@@ -47,7 +47,7 @@ export const getLatestWeeklyWinners = async () => {
       winners:    data.winners ?? [],
     };
   } catch (err) {
-    console.error('getLatestWeeklyWinners error:', err);
+    if (__DEV__) console.error('getLatestWeeklyWinners error:', err);
     return null;
   }
 };

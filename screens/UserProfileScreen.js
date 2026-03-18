@@ -77,7 +77,7 @@ export default function UserProfileScreen({ route, navigation }) {
   // receivedRequests (meaning we already sent a request via addFriend)
   const [requestSent, setRequestSent] = useState(false);
 
-  console.log('🧑 [UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
+  if (__DEV__) console.log('[UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
 
   const { gyms } = useGyms();
   const { clips: userClips, videoUrls: clipVideoUrls, thumbnails: clipThumbnails, loading: clipsLoading } = useUserClips(userId);
@@ -93,11 +93,11 @@ export default function UserProfileScreen({ route, navigation }) {
     let cancelled = false;
 
     const fetchProfile = async () => {
-      console.log('🧑 [UserProfileScreen] fetching users/', userId);
+      if (__DEV__) console.log('[UserProfileScreen] fetching users/', userId);
       try {
         const snap = await getDoc(doc(db, 'users', userId));
         if (cancelled) return;
-        console.log('🧑 [UserProfileScreen] doc exists:', snap.exists(), '| fields:', snap.exists() ? Object.keys(snap.data()) : 'n/a');
+        if (__DEV__) console.log('[UserProfileScreen] doc exists:', snap.exists(), '| fields:', snap.exists() ? Object.keys(snap.data()) : 'n/a');
         if (snap.exists()) {
           const data = snap.data();
           setProfile(data);
@@ -105,10 +105,10 @@ export default function UserProfileScreen({ route, navigation }) {
           // target user's friends array.
           setIsFriend((data.friends || []).includes(currentUid));
         } else {
-          console.warn('🧑 [UserProfileScreen] No document at users/', userId);
+          if (__DEV__) console.warn('[UserProfileScreen] No document at users/', userId);
         }
       } catch (err) {
-        console.error('❌ [UserProfileScreen] Firestore fetch error:', err.code, err.message);
+        if (__DEV__) console.error('[UserProfileScreen] Firestore fetch error:', err.code, err.message);
         if (!cancelled) setFetchError(err.message || 'Permission denied');
       } finally {
         if (!cancelled) setLoading(false);
@@ -120,12 +120,12 @@ export default function UserProfileScreen({ route, navigation }) {
       if (currentUid && currentUid !== userId) {
         try {
           const currentUserSnap = await getDoc(doc(db, 'users', currentUid));
-          console.log('🧑 [UserProfileScreen] fetching sentRequests for currentUid:', currentUid);
+          if (__DEV__) console.log('[UserProfileScreen] fetching sentRequests for currentUid:', currentUid);
           if (!cancelled && currentUserSnap.exists()) {
             setRequestSent((currentUserSnap.data().sentRequests || []).includes(userId));
           }
         } catch (reqErr) {
-          console.warn('🧑 [UserProfileScreen] sentRequests check failed:', reqErr.message);
+          if (__DEV__) console.warn('[UserProfileScreen] sentRequests check failed:', reqErr.message);
         }
       }
     };
@@ -195,7 +195,7 @@ export default function UserProfileScreen({ route, navigation }) {
               await removeFriendFn({ friendUserId: userId });
               setIsFriend(false);
             } catch (err) {
-              console.log('Remove friend error:', err);
+              if (__DEV__) console.log('Remove friend error:', err);
             }
           },
         },
@@ -213,7 +213,7 @@ export default function UserProfileScreen({ route, navigation }) {
       const addFriendFn = httpsCallable(getFunctions(), 'addFriend');
       const result = await addFriendFn({ friendUserId: userId });
       const status = result?.data?.status;
-      console.log('🧑 [UserProfileScreen] addFriend status:', status);
+      if (__DEV__) console.log('[UserProfileScreen] addFriend status:', status);
 
       if (status === 'accepted' || status === 'already_friends') {
         setIsFriend(true);
@@ -223,7 +223,7 @@ export default function UserProfileScreen({ route, navigation }) {
         setRequestSent(true);
       }
     } catch (err) {
-      console.error('Add friend error:', err);
+      if (__DEV__) console.error('Add friend error:', err);
       Alert.alert('Error', 'Could not send friend request. Please try again.');
     } finally {
       setAddingFriend(false);

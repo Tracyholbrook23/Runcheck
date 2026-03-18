@@ -251,7 +251,7 @@ export default function LeaderboardScreen({ navigation }) {
         setAllTimeLoading(false);
       },
       (err) => {
-        console.error('Leaderboard allTime snapshot error:', err);
+        if (__DEV__) console.error('Leaderboard allTime snapshot error:', err);
         setAllTimeLoading(false);
       }
     );
@@ -274,7 +274,7 @@ export default function LeaderboardScreen({ navigation }) {
         setWeeklyLoading(false);
       },
       (err) => {
-        console.error('Leaderboard weekly snapshot error:', err);
+        if (__DEV__) console.error('Leaderboard weekly snapshot error:', err);
         setWeeklyLoading(false);
       }
     );

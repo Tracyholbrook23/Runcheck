@@ -128,6 +128,56 @@ const getRunEnergyLabel = (count) => {
 - **Upcoming Runs participant modal (2026-03-16)**: The `+N` overflow bubble on Upcoming Runs cards in `RunDetailsScreen` is now tappable — opens a bottom-sheet modal listing all participants for that run with avatar, display name, and chevron. Tapping a participant navigates to their profile via `navigation.navigate('Home', { screen: 'UserProfile', params: { userId } })`.
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
+- **Run Activation (Post-Core Polish, 2026-03-17)**: Runs now derive "live" state client-side using presence ∩ participants — no backend state added (intentional). `runHereCountMap` in RunDetailsScreen cross-references `runParticipantsMap` userIds with `uniqueActivePresences` odIds via Set intersection. Display shows: "N going" (planned, hereCount === 0), "N here · M going" (live, partial arrival), "N here" (fully arrived) with green LIVE dot. Live runs sorted above planned runs via `sortedRuns` useMemo. Zero schema changes, zero new Firestore reads, zero backend changes. When scaling: if presence list grows large, consider moving the intersection to a lightweight Cloud Function or adding a `checkedInUserIds` array on the run doc.
+
+## Planned: Verified Run History (post-launch, not a launch blocker)
+
+Captures proof that a run happened and how many people showed up. Designed 2026-03-17.
+
+- **Phase 1 (approved, post-TestFlight):** Add two new fields to `runs/{runId}` — `joinedCount` (total unique users who ever joined, never decremented) and `peakParticipantCount` (high-water mark of `participantCount`). Both written inside the existing `joinRun` transaction in `runService.js`, guarded by the same `!alreadyJoined` check that protects `participantCount`. ~5 lines, one file, no backend deploy, no UI changes. Silently accumulates data for future use.
+- **Phase 2 (deferred — post-launch, stable user base):** Formal run completion: `status: 'completed'`, `completedAt`, `actualAttendees[]`, `attendedCount`, `durationMinutes`. Triggered in `leaveRun` when `participantCount → 0`. Also needs a `completeStaleRuns` Cloud Function for abandoned runs. Medium risk — changes run lifecycle state irreversibly.
+- **Phase 3 (deferred — growth phase):** Analytics and aggregation. Per-user "Runs Attended" history, turnout estimates, `runHistory` collection, gym trust signals.
+
+---
+
+## Files Modified Recently (2026-03-17 session — Suspension Enforcement, Debug Log Cleanup, Launch Checklist Hardening, Run Activation)
+
+### Code changes
+
+- **`services/presenceService.js`** — Added suspension guard to `checkIn()`. Reads `users/{uid}`, checks `isSuspended` + `suspensionEndsAt`, throws clear error. Matches `runService.js` pattern.
+- **`runcheck-backend/functions/src/checkIn.ts`** — Added backend suspension guard after auth check, before any branching. Same pattern as `clipFunctions.ts`. **Deploy required.**
+- **`runcheck-backend/functions/src/createRun.ts`** — Added backend suspension guard after auth check, before input validation. Moved `const db` up to support the early read. **Deploy required.**
+- **`screens/HomeScreen.js`** — Gated 5 `console.error`/`console.warn` calls behind `__DEV__`. No behavior change.
+- **`screens/RunDetailsScreen.js`** — Removed 3 ungated temporary debug `console.log` calls (clips effect tracing). Gated 12 remaining `console.error`/`console.warn`/`console.log` calls behind `__DEV__`. No behavior change.
+- **`screens/ProfileScreen.js`** — Gated 1 stray `console.log` (photoURL sync) behind `__DEV__`. No behavior change.
+
+### Additional code changes (same session, later tasks)
+
+- **`screens/RunDetailsScreen.js`** — Run activation: added `runHereCountMap` (useMemo, ~8 lines) cross-referencing run participants with active presences. Added `sortedRuns` (useMemo, ~10 lines) sorting live runs above planned. Updated `renderRunParticipantAvatars` to show "N here · M going" with green LIVE dot when hereCount > 0. Added 3 new styles (`runLiveRow`, `runLiveDot`, `runLiveText`). ~45 lines total. No backend changes.
+- **`utils/locationUtils.js`** — Fixed dev GPS bypass coordinates: old `(30.4692, -97.5963)` was 595m from Cowboys Fit (outside 100m check-in radius). Updated to `(30.4673, -97.6021)` matching `seedProductionGyms.js`.
+- **`eas.json`** — Added `"appVersionSource": "remote"` to `cli` block. Resolves EAS warning.
+
+### Investigations (no code changes needed)
+
+- **Admin badge counts on ProfileScreen** — Confirmed correct: 4 real-time `onSnapshot` queries match AdminToolsScreen exactly.
+- **Full moderation cycle (report → auto-mod → enforce → resolve)** — Confirmed complete pipeline with no missing links.
+- **ProfileScreen empty/error states** — Confirmed all fields have safe fallbacks, all error callbacks resolve loading, no blank-screen scenarios.
+
+### Launch checklist items closed this session
+
+1. ✅ Verify suspended users are actually blocked from app actions (check-in, posting, joining runs)
+2. ✅ Confirm admin badge counts on ProfileScreen reflect real pending items
+3. ✅ Test full report → auto-moderate → enforce → resolve cycle end-to-end
+4. ✅ Remove or gate `__DEV__` debug logs in HomeScreen.js and RunDetailsScreen.js
+5. ✅ Empty/error states on ProfileScreen if Firestore data is missing or loading fails
+
+### Deploy reminder
+
+```bash
+cd ~/Desktop/runcheck-backend && firebase deploy --only functions:checkIn,functions:createRun
+```
+
+---
 
 ## Files Modified Recently (2026-03-17 session — Clip Tagging, Awareness, Approval, Posting Audit)
 
@@ -288,7 +338,7 @@ const getRunEnergyLabel = (count) => {
 - **`startOrJoinRun`**: validates `startTime > now` and `startTime <= now + 7 days`; checks for a mergeable run; creates or joins
 - **`joinExistingRun`**: joins a known run by ID, bypasses time validation — required for grace-window runs whose `startTime` is in the past
 - **`joinRun` (internal)**: runs a `runTransaction`; compound participant key makes joins idempotent; `!alreadyJoined` guard prevents double-counting `participantCount`
-- **`leaveRun`**: transaction deletes participant doc + `increment(-1)` on `participantCount`; no-op if user isn't in the run
+- **`leaveRun`**: transaction deletes participant doc + `increment(-1)` on `participantCount` (guarded: skips decrement if count already `<= 0`); no-op if user isn't in the run
 - **Grace window**: `subscribeToGymRuns` shows runs whose `startTime >= now - 30 min`; late joiners use `joinExistingRun`, not `startOrJoinRun`
 - **Activity feed**: `'started a run at'` is written fire-and-forget on run creation. `'joined a run at'` writes exist in the code but are **flagged for removal** before commit — they would cause feed spam when multiple users join the same run (see Known Issues)
 - **Plan a Visit — now shows community runs** — `PlanVisitScreen` subscribes to `subscribeToAllUpcomingRuns` (Zone 1 overlap) and displays a "Runs Being Planned" section separate from personal scheduled visits. Personal visits still use `scheduleService`/`useSchedules`
@@ -394,22 +444,26 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - `reliability.totalScheduled` is NOT incremented on plain check-ins (only via `createSchedule`) — this is intentional; the Session Stats "Scheduled" column reflects explicit planned visits
 - When Cloud Functions are eventually deployed for reliability/no-show tracking, the client-side `reliability.totalAttended` increment in `presenceService.checkIn()` should be removed to avoid double-counting
 - The compound presenceId (`{userId}_{gymId}`) is reused when a user checks in, checks out, and re-checks into the same gym — this is intentional for duplicate-prevention; the points idempotency key is separately `{presenceId}_{checkinTimestampMs}` so repeat visits earn points correctly
-- **`'joined a run at'` activity writes** are present in `runService.js` (both `joinExistingRun` and the merge-join branch of `startOrJoinRun`) but should be removed before commit — with many users joining one run, the feed fills with identical join events. Only `'started a run at'` should remain. The code change is two `addDoc` call deletions in `runService.js`.
+- ~~**`'joined a run at'` activity writes**~~ — **Resolved.** The join activity `addDoc` calls were removed in a prior session. Only `'started a run at'` remains in `runService.js`. Comments at the former write sites document the decision.
 - **Gym images still on external hosts**: 5 of 6 gyms still use third-party image URLs (Yelp, gstatic, Cloudinary, Life Time CDN). Only Fitness Connection has been migrated to Firebase Storage. The seed script warns on each external URL during `--validate`. Migrate remaining gyms when convenient.
 - **`addGym` Cloud Function is stale**: The existing `addGym` Cloud Function writes directly to the `gyms` collection, bypassing the seed script and not including the `status` field. Should be deprecated/removed.
 - **Cowboys Fit coordinates approximate**: Still using approximate coordinates. User will manually verify exact building pin in Google Maps before updating.
 
 ## Next Tasks
-1. Remove `__DEV__` debug logs from HomeScreen.js and RunDetailsScreen.js (after confirming counts look correct)
-2. Re-enable GPS distance enforcement in `usePresence.js` and `presenceService.js` (remove the commented-out blocks)
-3. Build the Cloud Function for auto-expiry: mark presence expired + decrement gym count + clear `activePresence`, call `checkOut(isManual=false)`
-4. Add a Firestore composite index for the `activity` collection on `(createdAt DESC)` and confirm the HomeScreen feed query is covered
-5. Set `cli.appVersionSource` in eas.json (EAS warned this will be required in the future)
-6. ~~Consider switching to timestamp-based presenceIds~~ — resolved: points idempotency key is now `{presenceId}_{checkinTimestampMs}` so each session earns points correctly; the doc ID stays as `{userId}_{gymId}` for duplicate prevention
+
+Launch-critical tasks are now tracked in `LAUNCH_CHECKLIST.md`. Deferred improvements live in `PARKING_LOT.md`.
+
+For reference, these items were previously listed here and have been moved:
+- Remove `__DEV__` debug logs → **LAUNCH_CHECKLIST.md** (App Store Readiness)
+- Re-enable GPS distance enforcement → **LAUNCH_CHECKLIST.md** (GPS & Location)
+- Build Cloud Function for auto-expiry → **LAUNCH_CHECKLIST.md** (Post-Launch / Not Required Yet)
+- Add Firestore composite index for `activity` → **LAUNCH_CHECKLIST.md** (Post-Launch / Not Required Yet)
+- Set `cli.appVersionSource` in eas.json → **LAUNCH_CHECKLIST.md** (App Store Readiness)
+- ~~Consider switching to timestamp-based presenceIds~~ — resolved (points idempotency key is `{presenceId}_{checkinTimestampMs}`)
 
 ## How to Give Claude Context at Start of Each Session
-Tell Claude: "Read PROJECT_MEMORY.md in my Runcheck folder before we start."
-Or just open a new Cowork session — Claude will find and read this file automatically.
+
+Read `SESSION_START.md` first — it defines the startup reading order, current project phase, and session rules. That file replaces the manual onboarding prompt.
 
 ## Weekly Leaderboard System
 RunCheck includes a weekly competition system alongside the permanent leaderboard.

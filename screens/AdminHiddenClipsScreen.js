@@ -111,7 +111,7 @@ export default function AdminHiddenClipsScreen({ navigation }) {
         setRefreshing(false);
       },
       (err) => {
-        console.error('AdminHiddenClipsScreen: onSnapshot error', err);
+        if (__DEV__) console.error('AdminHiddenClipsScreen: onSnapshot error', err);
         setLoading(false);
         setRefreshing(false);
       }
@@ -252,7 +252,7 @@ export default function AdminHiddenClipsScreen({ navigation }) {
             try {
               await callFunction('unhideClip', { clipId: clip.id });
             } catch (err) {
-              console.error('unhideClip error:', err);
+              if (__DEV__) console.error('unhideClip error:', err);
               Alert.alert(
                 'Unhide Failed',
                 err?.message || 'Could not unhide clip. Please try again.'

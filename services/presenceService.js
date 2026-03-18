@@ -151,6 +151,20 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     throw new Error('Unauthorized: Must be logged in as this user');
   }
 
+  // ── Suspension guard ────────────────────────────────────────────────────
+  // Block suspended users from checking in. Supports timed suspensions:
+  // if suspensionEndsAt has passed, the user is allowed through.
+  const userSnap = await getDoc(doc(db, 'users', odId));
+  if (userSnap.exists()) {
+    const userData = userSnap.data();
+    if (userData.isSuspended === true) {
+      const endsAt = userData.suspensionEndsAt?.toDate?.();
+      if (!endsAt || endsAt > new Date()) {
+        throw new Error('Your account is suspended. You cannot perform this action.');
+      }
+    }
+  }
+
   // Check for existing active presence anywhere (outside transaction for early exit)
   const existingPresence = await getActivePresence(odId);
   if (existingPresence) {
@@ -173,43 +187,43 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   // GPS validation (can be skipped for testing)
   let distanceFromGym = 0;
 
-  console.log('🔐 [CHECK-IN] Starting GPS validation...');
-  console.log('🔐 [CHECK-IN] Skip GPS validation?', options.skipGpsValidation);
+  if (__DEV__) console.log('[CHECK-IN] Starting GPS validation...');
+  if (__DEV__) console.log('[CHECK-IN] Skip GPS validation?', options.skipGpsValidation);
 
   if (!options.skipGpsValidation) {
-    console.log('🔐 [CHECK-IN] Validating user location...');
+    if (__DEV__) console.log('[CHECK-IN] Validating user location...');
 
     if (!userLocation || !userLocation.latitude || !userLocation.longitude) {
-      console.error('❌ [CHECK-IN] User location missing or invalid:', userLocation);
+      if (__DEV__) console.error('[CHECK-IN] User location missing or invalid:', userLocation);
       throw new Error('Location is required for check-in');
     }
 
-    console.log('✅ [CHECK-IN] User location valid:', userLocation);
+    if (__DEV__) console.log('[CHECK-IN] User location valid:', userLocation);
 
     if (!gymLocation || !gymLocation.latitude || !gymLocation.longitude) {
-      console.error('❌ [CHECK-IN] Gym location not configured:', gymLocation);
+      if (__DEV__) console.error('[CHECK-IN] Gym location not configured:', gymLocation);
       throw new Error('Gym location not configured');
     }
 
-    console.log('✅ [CHECK-IN] Gym location:', gymLocation);
-    console.log('🔐 [CHECK-IN] Check-in radius:', checkInRadius, 'meters');
+    if (__DEV__) console.log('[CHECK-IN] Gym location:', gymLocation);
+    if (__DEV__) console.log('[CHECK-IN] Check-in radius:', checkInRadius, 'meters');
 
     distanceFromGym = calculateDistanceMeters(userLocation, gymLocation);
 
-    console.log('📍 [CHECK-IN] Distance from gym:', distanceFromGym.toFixed(2), 'meters');
-    console.log('📍 [CHECK-IN] Required radius:', checkInRadius, 'meters');
+    if (__DEV__) console.log('[CHECK-IN] Distance from gym:', distanceFromGym.toFixed(2), 'meters');
+    if (__DEV__) console.log('[CHECK-IN] Required radius:', checkInRadius, 'meters');
 
-    // TESTING ONLY - uncomment before launch
-    // if (distanceFromGym > checkInRadius) {
-    //   console.error('❌ [CHECK-IN] TOO FAR! Distance:', distanceFromGym.toFixed(2), 'm > Radius:', checkInRadius, 'm');
-    //   throw new Error(
-    //     `You must be at the gym to check in. You are ${distanceFromGym.toFixed(0)}m away (max ${checkInRadius}m).`
-    //   );
-    // }
+    // Service-layer GPS distance gate (re-enabled for launch)
+    if (distanceFromGym > checkInRadius) {
+      if (__DEV__) console.error('[CHECK-IN] TOO FAR! Distance:', distanceFromGym.toFixed(2), 'm > Radius:', checkInRadius, 'm');
+      throw new Error(
+        `You must be at the gym to check in. You are ${distanceFromGym.toFixed(0)}m away (max ${checkInRadius}m).`
+      );
+    }
 
-    console.log('✅ [CHECK-IN] GPS validation passed! Distance OK:', distanceFromGym.toFixed(2), 'm <', checkInRadius, 'm');
+    if (__DEV__) console.log('[CHECK-IN] GPS validation passed! Distance OK:', distanceFromGym.toFixed(2), 'm <', checkInRadius, 'm');
   } else {
-    console.warn('⚠️ [CHECK-IN] GPS validation SKIPPED (testing mode)');
+    if (__DEV__) console.warn('[CHECK-IN] GPS validation SKIPPED (testing mode)');
   }
 
   // Get user data (outside transaction)
@@ -243,8 +257,8 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     createdAt: serverTimestamp(),
   };
 
-  console.log('💾 [CHECK-IN] GPS validation complete - Starting database transaction...');
-  console.log('💾 [CHECK-IN] Presence data:', {
+  if (__DEV__) console.log('[CHECK-IN] GPS validation complete - Starting database transaction...');
+  if (__DEV__) console.log('[CHECK-IN] Presence data:', {
     userName,
     gymName: gymData.name,
     distanceFromGym: distanceFromGym.toFixed(2) + 'm',
@@ -295,7 +309,9 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
     gymId,
     gymName: gymData.name,
     createdAt: Timestamp.now(),
-  }).catch((err) => console.error('Activity write error (check-in):', err));
+  }).catch((err) => {
+    if (__DEV__) console.error('Activity write error (check-in):', err);
+  });
 
   // Mark schedule as attended (outside transaction - non-critical)
   if (matchingSchedule) {
@@ -310,16 +326,16 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   // The presence document ID itself is unchanged — only the points-award key differs.
   const pointsAction = matchingSchedule ? 'checkinWithPlan' : 'checkin';
   const sessionKey = `${presenceId}_${now.getTime()}`;
-  awardPoints(odId, pointsAction, sessionKey, gymId).catch((err) =>
-    console.error('Points award error (check-in):', err)
-  );
+  awardPoints(odId, pointsAction, sessionKey, gymId).catch((err) => {
+    if (__DEV__) console.error('Points award error (check-in):', err);
+  });
 
   // ── Run follow-through reward — delegated to runService ─────────────────
   // evaluateRunReward verifies legitimacy (participantCount >= 2, creator
   // presence, time window) and handles idempotency before awarding points.
-  evaluateRunReward(odId, gymId, now).catch((err) =>
-    console.error('Run reward evaluation error:', err)
-  );
+  evaluateRunReward(odId, gymId, now).catch((err) => {
+    if (__DEV__) console.error('Run reward evaluation error:', err);
+  });
 
   // ── Record attended session in reliability stats ─────────────────────────
   // Increments reliability.totalAttended and recalculates the score.
@@ -340,7 +356,9 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
       'reliability.score': newScore,
       'reliability.lastUpdated': Timestamp.now(),
     });
-  }).catch((err) => console.error('Attendance record error (check-in):', err));
+  }).catch((err) => {
+    if (__DEV__) console.error('Attendance record error (check-in):', err);
+  });
 
   return { id: presenceId, ...presenceData };
 };
@@ -414,7 +432,9 @@ export const checkOut = async (isManual = true) => {
     )
   )
     .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id)))))
-    .catch((err) => console.error('Activity cleanup error (checkout):', err));
+    .catch((err) => {
+      if (__DEV__) console.error('Activity cleanup error (checkout):', err);
+    });
 
   return { ...activePresence, status: PRESENCE_STATUS.CHECKED_OUT };
 };
@@ -462,10 +482,12 @@ const markPresenceExpired = async (presenceId, gymId) => {
         )
       )
         .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id)))))
-        .catch((err) => console.error('Activity cleanup error (expiry):', err));
+        .catch((err) => {
+          if (__DEV__) console.error('Activity cleanup error (expiry):', err);
+        });
     }
   } catch (error) {
-    console.error('Error marking presence expired:', error);
+    if (__DEV__) console.error('Error marking presence expired:', error);
   }
 };
 
@@ -520,7 +542,7 @@ export const updateGymPresenceCount = async (gymId, delta) => {
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
-    console.error('Error updating gym presence count:', error);
+    if (__DEV__) console.error('Error updating gym presence count:', error);
   }
 };
 
@@ -560,7 +582,7 @@ export const subscribeToGymPresences = (gymId, callback) => {
       callback(presences);
     },
     (error) => {
-      console.error('Error subscribing to presences:', error);
+      if (__DEV__) console.error('Error subscribing to presences:', error);
       callback([]);
     }
   );
@@ -604,7 +626,7 @@ export const subscribeToUserPresence = (odId, callback) => {
       callback({ id: doc.id, ...data });
     },
     (error) => {
-      console.error('Error subscribing to user presence:', error);
+      if (__DEV__) console.error('Error subscribing to user presence:', error);
       callback(null);
     }
   );

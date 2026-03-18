@@ -101,7 +101,7 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
       });
     }
   } catch (err) {
-    console.error('handleFollowPoints error:', err);
+    if (__DEV__) console.error('handleFollowPoints error:', err);
   }
 };
 
@@ -199,7 +199,7 @@ export const awardPoints = async (uid, action, idempotencyKey = null, gymId = nu
     // A missing idempotencyKey means the caller has no runId — bail out rather
     // than falling through to the unconditional increment path below.
     if (action === 'runComplete' && !idempotencyKey) {
-      console.warn('awardPoints: runComplete called without idempotencyKey (runId) — skipping award');
+      if (__DEV__) console.warn('awardPoints: runComplete called without idempotencyKey (runId) — skipping award');
       return noOp;
     }
     if (action === 'runComplete' && idempotencyKey) {
@@ -237,7 +237,7 @@ export const awardPoints = async (uid, action, idempotencyKey = null, gymId = nu
     // error and silently skipped.
     if (action === 'review') {
       if (!gymId) {
-        console.warn('awardPoints: review called without gymId — skipping award');
+        if (__DEV__) console.warn('awardPoints: review called without gymId — skipping award');
         return noOp;
       }
       return await runTransaction(db, async (transaction) => {
@@ -292,7 +292,7 @@ export const awardPoints = async (uid, action, idempotencyKey = null, gymId = nu
 
     return { newTotal, rankChanged, newRank, prevRank };
   } catch (err) {
-    console.error('awardPoints error:', err);
+    if (__DEV__) console.error('awardPoints error:', err);
     return noOp;
   }
 };
@@ -325,6 +325,6 @@ export const penalizePoints = async (uid, amount) => {
       weeklyPoints: increment(-deduction),
     });
   } catch (err) {
-    console.error('penalizePoints error:', err);
+    if (__DEV__) console.error('penalizePoints error:', err);
   }
 };

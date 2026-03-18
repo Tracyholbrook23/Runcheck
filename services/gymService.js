@@ -132,7 +132,7 @@ export const subscribeToGyms = (callback) => {
       callback(gyms);
     },
     (error) => {
-      console.error('Error subscribing to gyms:', error);
+      if (__DEV__) console.error('Error subscribing to gyms:', error);
       callback([]);
     }
   );
@@ -158,7 +158,7 @@ export const subscribeToGym = (gymId, callback) => {
       callback({ id: doc.id, ...doc.data() });
     },
     (error) => {
-      console.error('Error subscribing to gym:', error);
+      if (__DEV__) console.error('Error subscribing to gym:', error);
       callback(null);
     }
   );

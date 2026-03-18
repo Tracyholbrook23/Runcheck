@@ -103,7 +103,7 @@ export default function ViewRunsScreen({ navigation }) {
       // Award or deduct points based on new follow state (exploit-safe)
       handleFollowPoints(uid, gymId, !isFollowed);
     } catch (err) {
-      console.error('toggleFollow error:', err);
+      if (__DEV__) console.error('toggleFollow error:', err);
     }
   };
 

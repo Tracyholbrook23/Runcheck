@@ -106,15 +106,9 @@ if (ENV.USE_EMULATORS && !emulatorsLinked) {
   // Functions emulator — host + port are separate params
   connectFunctionsEmulator(functions, '127.0.0.1', 5001);
 
-  console.log(
-    '\n🔧 [RunCheck] Firebase Emulator Suite connected\n' +
-    '   Auth      → http://127.0.0.1:9099\n' +
-    '   Firestore → http://127.0.0.1:8080\n' +
-    '   Functions → http://127.0.0.1:5001\n' +
-    '   UI        → http://127.0.0.1:4000\n'
-  );
+  if (__DEV__) console.log('[RunCheck] Emulator Suite connected (Auth:9099, Firestore:8080, Functions:5001)');
 } else if (!ENV.USE_EMULATORS) {
-  console.log('🔥 [RunCheck] Firebase connected to PRODUCTION (runcheck-567a3)');
+  if (__DEV__) console.log('[RunCheck] Firebase connected to PRODUCTION (runcheck-567a3)');
 }
 
 // ─── Callable function helper ─────────────────────────────────────────────────
@@ -171,7 +165,7 @@ export async function callHttpFunction(functionName, queryParams = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  console.log(`[callHttpFunction] GET ${url}`);
+  if (__DEV__) console.log(`[callHttpFunction] GET ${url}`);
 
   const res = await fetch(url, { headers });
   if (!res.ok) {

@@ -53,7 +53,7 @@ export const registerPushToken = async () => {
 
     // Step 3: Bail out gracefully if permission is denied
     if (finalStatus !== 'granted') {
-      console.log('notifications: push permission not granted');
+      if (__DEV__) console.log('notifications: push permission not granted');
       return null;
     }
 
@@ -70,7 +70,7 @@ export const registerPushToken = async () => {
     return token;
   } catch (err) {
     // Non-critical — log but do not surface to the user
-    console.warn('registerPushToken error:', err);
+    if (__DEV__) console.warn('registerPushToken error:', err);
     return null;
   }
 };

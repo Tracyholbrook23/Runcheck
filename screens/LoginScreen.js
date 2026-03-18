@@ -74,7 +74,7 @@ export default function LoginScreen({ navigation }) {
       await signInWithEmailAndPassword(auth, email, password);
       navigation.navigate('Main');
     } catch (error) {
-      console.error('Login error:', error);
+      if (__DEV__) console.error('Login error:', error);
       let errorMessage = 'Login failed. Please try again.';
       if (error.code === 'auth/user-not-found') {
         errorMessage = 'No account found with this email.';

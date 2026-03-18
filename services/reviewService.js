@@ -65,7 +65,7 @@ export const checkReviewEligibility = async (uid, gymId) => {
       hasVerifiedRun: runGyms.includes(gymId),
     };
   } catch (err) {
-    console.error('checkReviewEligibility error:', err);
+    if (__DEV__) console.error('checkReviewEligibility error:', err);
     return ineligible;
   }
 };
@@ -132,7 +132,7 @@ export const submitReview = async (
 
     return { success: true, alreadyReviewed: false, pointsResult };
   } catch (err) {
-    console.error('submitReview error:', err);
+    if (__DEV__) console.error('submitReview error:', err);
     return failure;
   }
 };

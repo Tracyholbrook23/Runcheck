@@ -208,7 +208,7 @@ export default function AdminGymRequestDetailScreen({ route, navigation }) {
         setLoading(false);
       },
       (err) => {
-        console.error('AdminGymRequestDetail snapshot error:', err);
+        if (__DEV__) console.error('AdminGymRequestDetail snapshot error:', err);
         setLoading(false);
       }
     );

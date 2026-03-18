@@ -106,7 +106,7 @@ export default function UsersScreen() {
       setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setError(null);
     } catch (err) {
-      console.error('[UsersScreen]', err);
+      if (__DEV__) console.error('[UsersScreen]', err);
       setError(err.message ?? 'Failed to load users');
     }
   }, []);

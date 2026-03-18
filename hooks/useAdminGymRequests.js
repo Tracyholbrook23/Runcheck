@@ -67,7 +67,7 @@ export const useAdminGymRequests = () => {
         setLoading(false);
       },
       (err) => {
-        console.error('useAdminGymRequests snapshot error:', err);
+        if (__DEV__) console.error('useAdminGymRequests snapshot error:', err);
         setLoading(false);
       }
     );

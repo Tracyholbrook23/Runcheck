@@ -111,7 +111,7 @@ export const useFeaturedClip = (gyms) => {
         }
       },
       (err) => {
-        console.error('[useFeaturedClip] onSnapshot error:', err.code, err.message);
+        if (__DEV__) console.error('[useFeaturedClip] onSnapshot error:', err.code, err.message);
         setError(err.message);
         setLoading(false);
       }
@@ -136,7 +136,7 @@ export const useFeaturedClip = (gyms) => {
         url = await getDownloadURL(ref(storage, clip.storagePath));
         if (!cancelled) setVideoUrl(url);
       } catch (err) {
-        console.warn('[useFeaturedClip] getDownloadURL failed:', err.message);
+        if (__DEV__) console.warn('[useFeaturedClip] getDownloadURL failed:', err.message);
         return;
       }
 

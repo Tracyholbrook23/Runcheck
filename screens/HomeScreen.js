@@ -53,7 +53,7 @@ import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip } from '../ho
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
-import { collection, query, orderBy, limit, where, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 // Instagram community link — used by both the header icon and the footer card.
@@ -172,9 +172,16 @@ const HomeScreen = ({ navigation }) => {
       limit(10)
     );
 
+    // RC-002 safety: `gen` increments on every snapshot so an older in-flight
+    // async resolution never overwrites a newer one; `cancelled` prevents
+    // setState after unmount/unsubscribe.
+    let gen = 0;
+    let cancelled = false;
+
     const unsubscribe = onSnapshot(
       q,
-      (snapshot) => {
+      async (snapshot) => {
+        const thisGen = ++gen;
         const now = new Date();
         const items = snapshot.docs
           .map((d) => ({ id: d.id, ...d.data() }))
@@ -195,15 +202,40 @@ const HomeScreen = ({ navigation }) => {
             }
             return true;
           });
-        setActivityFeed(items);
+
+        // RC-002: Cross-reference 'started a run at' items against the actual run doc.
+        // Exclude activity if the run no longer exists, was removed, or is empty.
+        const verified = await Promise.all(
+          items.map(async (item) => {
+            if (item.action === 'started a run at' && item.runId) {
+              try {
+                const runSnap = await getDoc(doc(db, 'runs', item.runId));
+                if (!runSnap.exists()) return null;
+                const run = runSnap.data();
+                if (run.isRemoved === true) return null;
+                if ((run.participantCount ?? 0) <= 0) return null;
+              } catch (err) {
+                // On fetch failure, hide the item to avoid showing stale data.
+                if (__DEV__) console.warn('[HomeScreen] RC-002 run check failed:', item.runId, err);
+                return null;
+              }
+            }
+            return item;
+          })
+        );
+
+        // Only apply if this is still the latest snapshot and component is mounted.
+        if (!cancelled && thisGen === gen) {
+          setActivityFeed(verified.filter(Boolean));
+        }
       },
       (error) => {
-        console.error('Error subscribing to activity feed:', error);
-        setActivityFeed([]);
+        if (__DEV__) console.error('Error subscribing to activity feed:', error);
+        if (!cancelled) setActivityFeed([]);
       }
     );
 
-    return () => unsubscribe();
+    return () => { cancelled = true; unsubscribe(); };
   }, []);
 
   /**
@@ -245,7 +277,7 @@ const HomeScreen = ({ navigation }) => {
               await checkOut();
               Alert.alert('Checked Out', "You've successfully checked out.");
             } catch (error) {
-              console.error('Check-out error:', error);
+              if (__DEV__) console.error('Check-out error:', error);
               Alert.alert('Error', error.message || 'Failed to check out.');
             }
           },
@@ -436,16 +468,16 @@ const HomeScreen = ({ navigation }) => {
           params: { gymId: item.gymId, gymName: item.gymName },
         });
       } else if (item.userId) {
-        console.warn('⚠️ [FriendsActivity] gymId missing, falling back to UserProfile');
+        if (__DEV__) console.warn('[FriendsActivity] gymId missing, falling back to UserProfile');
         navigation.push('UserProfile', { userId: item.userId });
       } else {
-        console.warn('⚠️ [FriendsActivity] gymId and userId both missing, cannot navigate');
+        if (__DEV__) console.warn('[FriendsActivity] gymId and userId both missing, cannot navigate');
       }
     };
 
     const navigateToUser = () => {
       if (!item.userId) {
-        console.warn('⚠️ [FriendsActivity] userId missing on avatar tap');
+        if (__DEV__) console.warn('[FriendsActivity] userId missing on avatar tap');
         return;
       }
       navigation.push('UserProfile', { userId: item.userId });

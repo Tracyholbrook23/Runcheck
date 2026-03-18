@@ -96,7 +96,7 @@ export default function SignupScreen({ navigation }) {
       alert('Signup successful!');
       navigation.navigate('CityGate');
     } catch (error) {
-      console.error('Signup error:', error);
+      if (__DEV__) console.error('Signup error:', error);
       alert(error.message);
     } finally {
       setLoading(false);

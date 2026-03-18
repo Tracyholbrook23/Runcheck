@@ -104,7 +104,7 @@ export const useTaggedClips = (uid) => {
         // Resolve media for all tagged clips
         resolveClipMedia(all);
       } catch (err) {
-        console.error('[useTaggedClips] error:', err.message);
+        if (__DEV__) console.error('[useTaggedClips] error:', err.message);
       } finally {
         setLoading(false);
       }
@@ -123,7 +123,7 @@ export const useTaggedClips = (uid) => {
           url = await getDownloadURL(ref(storage, c.storagePath));
           setVideoUrls((prev) => (prev[c.id] ? prev : { ...prev, [c.id]: url }));
         } catch (err) {
-          console.warn('[useTaggedClips] getDownloadURL failed for', c.id, err.message);
+          if (__DEV__) console.warn('[useTaggedClips] getDownloadURL failed for', c.id, err.message);
           resolvedIdsRef.current.delete(c.id);
           return;
         }

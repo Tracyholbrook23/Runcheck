@@ -78,27 +78,27 @@ export const getUserReliability = async (odId) => {
 
 /** @deprecated Reliability is now written by Cloud Functions. No-op. */
 export const initializeReliability = async (_odId) => {
-  console.warn('[reliabilityService] initializeReliability is deprecated — backend handles this.');
+  if (__DEV__) console.warn('[reliabilityService] initializeReliability is deprecated — backend handles this.');
 };
 
 /** @deprecated Reliability is now written by Cloud Functions. No-op. */
 export const updateReliabilityOnAttend = async (_odId) => {
-  console.warn('[reliabilityService] updateReliabilityOnAttend is deprecated — backend handles this.');
+  if (__DEV__) console.warn('[reliabilityService] updateReliabilityOnAttend is deprecated — backend handles this.');
 };
 
 /** @deprecated Reliability is now written by Cloud Functions. No-op. */
 export const updateReliabilityOnNoShow = async (_odId) => {
-  console.warn('[reliabilityService] updateReliabilityOnNoShow is deprecated — backend handles this.');
+  if (__DEV__) console.warn('[reliabilityService] updateReliabilityOnNoShow is deprecated — backend handles this.');
 };
 
 /** @deprecated Reliability is now written by Cloud Functions. No-op. */
 export const updateReliabilityOnCancel = async (_odId, _isLateCancellation) => {
-  console.warn('[reliabilityService] updateReliabilityOnCancel is deprecated — backend handles this.');
+  if (__DEV__) console.warn('[reliabilityService] updateReliabilityOnCancel is deprecated — backend handles this.');
 };
 
 /** @deprecated Reliability is now written by Cloud Functions. No-op. */
 export const incrementScheduledCount = async (_odId) => {
-  console.warn('[reliabilityService] incrementScheduledCount is deprecated — backend handles this.');
+  if (__DEV__) console.warn('[reliabilityService] incrementScheduledCount is deprecated — backend handles this.');
 };
 
 /**

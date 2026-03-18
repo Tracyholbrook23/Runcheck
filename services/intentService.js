@@ -226,7 +226,7 @@ export const subscribeToUserIntents = (odId, callback) => {
       });
     callback(intents);
   }, (error) => {
-    console.error('Error subscribing to intents:', error);
+    if (__DEV__) console.error('Error subscribing to intents:', error);
     callback([]);
   });
 };
@@ -268,7 +268,7 @@ export const subscribeToGymIntents = (gymId, callback) => {
 
     callback(intents, intentsBySlot);
   }, (error) => {
-    console.error('Error subscribing to gym intents:', error);
+    if (__DEV__) console.error('Error subscribing to gym intents:', error);
     callback([], {});
   });
 };
@@ -288,7 +288,7 @@ const markIntentExpired = async (intentId) => {
       await updateGymIntentCount(data.gymId, data.timeSlot, -1);
     }
   } catch (error) {
-    console.error('Error marking intent expired:', error);
+    if (__DEV__) console.error('Error marking intent expired:', error);
   }
 };
 
@@ -301,7 +301,7 @@ const updateGymIntentCount = async (gymId, timeSlot, delta) => {
     const gymDoc = await getDoc(gymRef);
 
     if (!gymDoc.exists()) {
-      console.warn(`Gym ${gymId} not found`);
+      if (__DEV__) console.warn(`Gym ${gymId} not found`);
       return;
     }
 
@@ -320,7 +320,7 @@ const updateGymIntentCount = async (gymId, timeSlot, delta) => {
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
-    console.error('Error updating gym intent count:', error);
+    if (__DEV__) console.error('Error updating gym intent count:', error);
   }
 };
 
@@ -362,7 +362,7 @@ export const fulfillIntent = async (odId, gymId) => {
 
     return false;
   } catch (error) {
-    console.error('Error fulfilling intent:', error);
+    if (__DEV__) console.error('Error fulfilling intent:', error);
     return false;
   }
 };

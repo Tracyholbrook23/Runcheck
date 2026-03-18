@@ -149,11 +149,11 @@ export default function RunsScreen() {
       try {
         if (!auth.currentUser) {
           await signInAnonymously(auth);
-          console.log('[RunsScreen] Anonymous sign-in OK  uid=', auth.currentUser?.uid);
+          if (__DEV__) console.log('Anonymous sign-in OK  uid=', auth.currentUser?.uid);
         }
         setAuthReady(true);
       } catch (err) {
-        console.error('[RunsScreen] Auth error:', err);
+        if (__DEV__) console.error('Auth error:', err);
         setError('Auth failed: ' + err.message);
       }
     })();
@@ -168,7 +168,7 @@ export default function RunsScreen() {
         setGyms(list);
         if (list.length > 0) setSelectedGymId(list[0].id);
       })
-      .catch((err) => console.error('[RunsScreen] Gyms load error:', err));
+      .catch((err) => { if (__DEV__) console.error('Gyms load error:', err); });
   }, []);
 
   // ── Step 3: Fetch runs via the getRuns Cloud Function ────────────────────
@@ -179,7 +179,7 @@ export default function RunsScreen() {
       setRuns(data.runs ?? []);
       setError(null);
     } catch (err) {
-      console.error('[RunsScreen] getRuns error:', err);
+      if (__DEV__) console.error('getRuns error:', err);
       setError(err.message ?? 'Failed to load runs');
     }
   }, [authReady, selectedGymId]);

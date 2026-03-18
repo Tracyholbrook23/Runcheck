@@ -158,7 +158,7 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
         setRefreshing(false);
       },
       (err) => {
-        console.error('AdminFeaturedClipsScreen: onSnapshot error', err);
+        if (__DEV__) console.error('AdminFeaturedClipsScreen: onSnapshot error', err);
         setLoading(false);
         setRefreshing(false);
       }
@@ -297,7 +297,7 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
             try {
               await callFunction('unfeatureClip', { clipId: clip.id });
             } catch (err) {
-              console.error('unfeatureClip error:', err);
+              if (__DEV__) console.error('unfeatureClip error:', err);
               Alert.alert(
                 'Unfeature Failed',
                 err?.message || 'Could not unfeature clip. Please try again.'

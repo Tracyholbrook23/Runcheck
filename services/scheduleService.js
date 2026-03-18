@@ -389,7 +389,7 @@ export const subscribeToUserSchedules = (odId, callback) => {
       callback(schedules);
     },
     (error) => {
-      console.error('Error subscribing to schedules:', error);
+      if (__DEV__) console.error('Error subscribing to schedules:', error);
       callback([]);
     }
   );
@@ -435,7 +435,7 @@ export const subscribeToGymSchedules = (gymId, callback) => {
       callback(schedules, byTimeSlot);
     },
     (error) => {
-      console.error('Error subscribing to gym schedules:', error);
+      if (__DEV__) console.error('Error subscribing to gym schedules:', error);
       callback([], {});
     }
   );
@@ -483,7 +483,7 @@ export const processOverdueSchedules = async () => {
       await markScheduleNoShow(schedule.id);
       count++;
     } catch (error) {
-      console.error(`Failed to mark schedule ${schedule.id} as no-show:`, error);
+      if (__DEV__) console.error(`Failed to mark schedule ${schedule.id} as no-show:`, error);
     }
   }
 
@@ -503,7 +503,7 @@ const updateGymScheduleCount = async (gymId, timeSlot, delta) => {
     const gymDoc = await getDoc(gymRef);
 
     if (!gymDoc.exists()) {
-      console.warn(`Gym ${gymId} not found`);
+      if (__DEV__) console.warn(`Gym ${gymId} not found`);
       return;
     }
 
@@ -522,6 +522,6 @@ const updateGymScheduleCount = async (gymId, timeSlot, delta) => {
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
-    console.error('Error updating gym schedule count:', error);
+    if (__DEV__) console.error('Error updating gym schedule count:', error);
   }
 };

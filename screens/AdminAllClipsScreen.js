@@ -255,7 +255,7 @@ export default function AdminAllClipsScreen({ navigation }) {
         setRefreshing(false);
       },
       (err) => {
-        console.error('AdminAllClipsScreen: onSnapshot error', err);
+        if (__DEV__) console.error('AdminAllClipsScreen: onSnapshot error', err);
         setLoading(false);
         setRefreshing(false);
       }
@@ -422,7 +422,7 @@ export default function AdminAllClipsScreen({ navigation }) {
                 Alert.alert('Clip Featured', 'This clip has been added to featured clips.');
               }
             } catch (err) {
-              console.error('featureClip error:', err);
+              if (__DEV__) console.error('featureClip error:', err);
               Alert.alert('Feature Failed', err?.message || 'Could not feature clip.');
             } finally {
               setActioning(null);
@@ -449,7 +449,7 @@ export default function AdminAllClipsScreen({ navigation }) {
             try {
               await callFunction('unfeatureClip', { clipId: clip.id });
             } catch (err) {
-              console.error('unfeatureClip error:', err);
+              if (__DEV__) console.error('unfeatureClip error:', err);
               Alert.alert('Unfeature Failed', err?.message || 'Could not unfeature clip.');
             } finally {
               setActioning(null);
@@ -482,7 +482,7 @@ export default function AdminAllClipsScreen({ navigation }) {
                 Alert.alert('Clip Hidden', 'This clip has been hidden from users.');
               }
             } catch (err) {
-              console.error('hideClip error:', err);
+              if (__DEV__) console.error('hideClip error:', err);
               Alert.alert('Hide Failed', err?.message || 'Could not hide clip.');
             } finally {
               setActioning(null);
@@ -509,7 +509,7 @@ export default function AdminAllClipsScreen({ navigation }) {
             try {
               await callFunction('unhideClip', { clipId: clip.id });
             } catch (err) {
-              console.error('unhideClip error:', err);
+              if (__DEV__) console.error('unhideClip error:', err);
               Alert.alert('Unhide Failed', err?.message || 'Could not unhide clip.');
             } finally {
               setActioning(null);

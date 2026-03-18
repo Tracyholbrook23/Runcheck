@@ -9,9 +9,10 @@ import * as Location from 'expo-location';
 import { distanceBetween } from 'geofire-common';
 
 // Cowboys Fit - Pflugerville coordinates for dev testing
+// Must match seedProductionGyms.js → cowboys-fit-pflugerville.location
 const DEV_LOCATION = {
-  latitude: 30.4692,
-  longitude: -97.5963,
+  latitude: 30.4673,
+  longitude: -97.6021,
 };
 
 const isDevGps = () => process.env.EXPO_PUBLIC_DEV_SKIP_GPS === 'true';
@@ -36,24 +37,21 @@ export const requestLocationPermission = async () => {
  * @throws {Error} If permission denied or location unavailable
  */
 export const getCurrentLocation = async () => {
-  console.log('🔍 [GPS] Checking location mode...');
-  console.log('🔍 [GPS] DEV_SKIP_GPS =', process.env.EXPO_PUBLIC_DEV_SKIP_GPS);
+  if (__DEV__) {
+    console.log('[GPS] DEV_SKIP_GPS =', process.env.EXPO_PUBLIC_DEV_SKIP_GPS);
+  }
 
   if (isDevGps()) {
-    console.warn('⚠️ [GPS] DEV MODE ENABLED - Using fake Cowboys Fit location');
-    console.warn('⚠️ [GPS] Fake location:', DEV_LOCATION);
+    if (__DEV__) console.warn('[GPS] Dev mode — using fake Cowboys Fit location');
     return DEV_LOCATION;
   }
 
-  console.log('✅ [GPS] REAL GPS MODE - Requesting location permission...');
   const granted = await requestLocationPermission();
 
   if (!granted) {
-    console.error('❌ [GPS] Location permission denied');
+    if (__DEV__) console.error('[GPS] Location permission denied');
     throw new Error('Location permission denied. Please enable location services in your device settings.');
   }
-
-  console.log('✅ [GPS] Permission granted - Getting current position...');
 
   try {
     const position = await Location.getCurrentPositionAsync({
@@ -65,12 +63,11 @@ export const getCurrentLocation = async () => {
       longitude: position.coords.longitude,
     };
 
-    console.log('✅ [GPS] Real user location obtained:', userLocation);
-    console.log('✅ [GPS] Accuracy:', position.coords.accuracy, 'meters');
+    if (__DEV__) console.log('[GPS] Location obtained:', userLocation, 'accuracy:', position.coords.accuracy, 'm');
 
     return userLocation;
   } catch (err) {
-    console.error('❌ [GPS] Failed to get location:', err.message);
+    if (__DEV__) console.error('[GPS] Failed to get location:', err.message);
     throw new Error('Unable to retrieve your location. Please check that GPS is enabled and try again.');
   }
 };
@@ -84,10 +81,6 @@ export const getCurrentLocation = async () => {
  * @returns {number} Distance in meters
  */
 export const calculateDistanceMeters = (coord1, coord2) => {
-  console.log('📏 [DISTANCE] Calculating distance...');
-  console.log('📏 [DISTANCE] From:', coord1);
-  console.log('📏 [DISTANCE] To:', coord2);
-
   // geofire-common's distanceBetween returns distance in kilometers
   const distanceKm = distanceBetween(
     [coord1.latitude, coord1.longitude],
@@ -96,7 +89,7 @@ export const calculateDistanceMeters = (coord1, coord2) => {
 
   const distanceMeters = distanceKm * 1000; // Convert to meters
 
-  console.log('📏 [DISTANCE] Distance:', distanceMeters.toFixed(2), 'meters');
+  if (__DEV__) console.log('[DISTANCE]', distanceMeters.toFixed(2), 'm');
 
   return distanceMeters;
 };

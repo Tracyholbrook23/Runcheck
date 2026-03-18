@@ -166,7 +166,7 @@ export default function TrimClipScreen({ route, navigation }) {
           .sort((a, b) => a.displayName.localeCompare(b.displayName));
         setFriendsList(profiles);
       } catch (err) {
-        console.error('[TrimClip] Failed to fetch friends:', err);
+        if (__DEV__) console.error('Failed to fetch friends:', err);
       } finally {
         if (!cancelled) setFriendsLoading(false);
       }
@@ -394,26 +394,26 @@ export default function TrimClipScreen({ route, navigation }) {
     if (postingRef.current) return;
     postingRef.current = true;
 
-    console.log('[clips] ── handlePostClip called ──────────────────────────');
-    console.log('[clips] sourceVideoUri   :', sourceVideoUri);
-    console.log('[clips] gymId            :', gymId);
-    console.log('[clips] presenceId       :', presenceId);
-    console.log('[clips] videoDuration    :', videoDurationRef.current.toFixed(2), 's');
-    console.log('[clips] needsTrim        :', needsTrim);
+    if (__DEV__) console.log('[clips] ── handlePostClip called ──────────────────────────');
+    if (__DEV__) console.log('[clips] sourceVideoUri   :', sourceVideoUri);
+    if (__DEV__) console.log('[clips] gymId            :', gymId);
+    if (__DEV__) console.log('[clips] presenceId       :', presenceId);
+    if (__DEV__) console.log('[clips] videoDuration    :', videoDurationRef.current.toFixed(2), 's');
+    if (__DEV__) console.log('[clips] needsTrim        :', needsTrim);
     if (needsTrim) {
-      console.log('[clips] trimStart        :', trimStartRef.current.toFixed(2), 's');
-      console.log('[clips] trimEnd          :', trimEndRef.current.toFixed(2), 's');
+      if (__DEV__) console.log('[clips] trimStart        :', trimStartRef.current.toFixed(2), 's');
+      if (__DEV__) console.log('[clips] trimEnd          :', trimEndRef.current.toFixed(2), 's');
     }
 
     // ── 1. Validate local params before hitting the network ─────────────────
     if (!sourceVideoUri) {
-      console.warn('[clips] VALIDATION FAILED — sourceVideoUri is missing');
+      if (__DEV__) console.warn('[clips] VALIDATION FAILED sourceVideoUri is missing');
       postingRef.current = false;
       Alert.alert('Missing video', 'No video found. Please go back and try again.');
       return;
     }
     if (!gymId || typeof gymId !== 'string' || gymId.trim() === '') {
-      console.warn('[clips] VALIDATION FAILED — gymId is missing or empty:', gymId);
+      if (__DEV__) console.warn('[clips] VALIDATION FAILED gymId is missing or empty:', gymId);
       postingRef.current = false;
       Alert.alert('Missing gym', 'Gym ID is missing. Please go back and try again.');
       return;
@@ -430,12 +430,12 @@ export default function TrimClipScreen({ route, navigation }) {
       const end   = trimEndRef.current;
       setUploadState(TRIMMING);
       try {
-        console.log('[clips] trimVideo — start:', start.toFixed(2), '| end:', end.toFixed(2));
+        if (__DEV__) console.log('[clips] trimVideo start:', start.toFixed(2), '| end:', end.toFixed(2));
         uploadUri   = await trimVideo(sourceVideoUri, start, end);
         durationSec = end - start;
-        console.log('[clips] trimVideo complete ✓ — uri:', uploadUri, '| duration:', durationSec.toFixed(2), 's');
+        if (__DEV__) console.log('[clips] trimVideo complete uri:', uploadUri, '| duration:', durationSec.toFixed(2), 's');
       } catch (trimErr) {
-        console.error('[clips] TRIM ERROR ✗ —', serializeError(trimErr));
+        if (__DEV__) console.error('[clips] TRIM ERROR', serializeError(trimErr));
         postingRef.current = false;
         setUploadState(IDLE);
         Alert.alert(
@@ -452,10 +452,10 @@ export default function TrimClipScreen({ route, navigation }) {
 
     let clipId, storagePath;
     try {
-      console.log('[clips] createClipSession — gymId:', gymId, '| presenceId:', presenceId);
+      if (__DEV__) console.log('[clips] createClipSession gymId:', gymId, '| presenceId:', presenceId);
       const fn  = httpsCallable(getFunctions(undefined, FUNCTIONS_REGION), 'createClipSession');
       const res = await fn({ gymId, presenceId });
-      console.log('[clips] createClipSession ✓ —', JSON.stringify(res?.data, null, 2));
+      if (__DEV__) console.log('[clips] createClipSession', JSON.stringify(res?.data, null, 2));
 
       clipId      = res.data?.clipId;
       storagePath = res.data?.storagePath;
@@ -464,7 +464,7 @@ export default function TrimClipScreen({ route, navigation }) {
         throw new Error('Session response is missing clipId or storagePath.');
       }
     } catch (sessionErr) {
-      console.error('[clips] CREATE SESSION ERROR ✗ —', serializeError(sessionErr));
+      if (__DEV__) console.error('[clips] CREATE SESSION ERROR', serializeError(sessionErr));
       postingRef.current = false;
       setUploadState(IDLE);
       Alert.alert(
@@ -474,8 +474,8 @@ export default function TrimClipScreen({ route, navigation }) {
       return;
     }
 
-    console.log('[clips] clipId           :', clipId);
-    console.log('[clips] storagePath      :', storagePath);
+    if (__DEV__) console.log('[clips] clipId           :', clipId);
+    if (__DEV__) console.log('[clips] storagePath      :', storagePath);
 
     // ── 4a. Upload to Firebase Storage ──────────────────────────────────────
     setUploadState(UPLOADING);
@@ -483,13 +483,13 @@ export default function TrimClipScreen({ route, navigation }) {
 
     try {
       const storage = getStorage();
-      console.log('[clips] upload started — storagePath:', storagePath, '| uri:', uploadUri);
+      if (__DEV__) console.log('[clips] upload started storagePath:', storagePath, '| uri:', uploadUri);
 
       const fileRef  = ref(storage, storagePath);
       const response = await fetch(uploadUri);
-      console.log('[clips] fetch status:', response.status, response.ok ? 'OK' : 'NOT OK');
+      if (__DEV__) console.log('[clips] fetch status:', response.status, response.ok ? 'OK' : 'NOT OK');
       const blob = await response.blob();
-      console.log('[clips] blob size (bytes):', blob.size, '| type:', blob.type);
+      if (__DEV__) console.log('[clips] blob size (bytes):', blob.size, '| type:', blob.type);
 
       // uploadBytesResumable exposes progress events; wrap in a Promise so the
       // rest of the async flow (finalize → navigate) stays linear.
@@ -505,9 +505,9 @@ export default function TrimClipScreen({ route, navigation }) {
           () => resolve(),
         );
       });
-      console.log('[clips] upload ✓');
+      if (__DEV__) console.log('[clips] upload complete');
     } catch (uploadErr) {
-      console.error('[clips] UPLOAD ERROR ✗ —', serializeError(uploadErr));
+      if (__DEV__) console.error('[clips] UPLOAD ERROR', serializeError(uploadErr));
       postingRef.current = false;
       setUploadState(IDLE);
       Alert.alert(
@@ -523,7 +523,7 @@ export default function TrimClipScreen({ route, navigation }) {
     try {
       const functions    = getFunctions(undefined, FUNCTIONS_REGION);
       const finalizeClip = httpsCallable(functions, 'finalizeClipUpload');
-      console.log('[clips] finalize — clipId:', clipId, '| durationSec:', durationSec);
+      if (__DEV__) console.log('[clips] finalize clipId:', clipId, '| durationSec:', durationSec);
 
       const result = await finalizeClip({
         clipId,
@@ -533,9 +533,9 @@ export default function TrimClipScreen({ route, navigation }) {
         category: category || null,
         taggedPlayers: taggedPlayers.length > 0 ? taggedPlayers : null,
       });
-      console.log('[clips] finalize ✓ —', JSON.stringify(result?.data, null, 2));
+      if (__DEV__) console.log('[clips] finalize', JSON.stringify(result?.data, null, 2));
     } catch (finalizeErr) {
-      console.error('[clips] FINALIZE ERROR ✗ —', serializeError(finalizeErr));
+      if (__DEV__) console.error('[clips] FINALIZE ERROR', serializeError(finalizeErr));
       postingRef.current = false;
       setUploadState(IDLE);
       Alert.alert(
@@ -548,7 +548,7 @@ export default function TrimClipScreen({ route, navigation }) {
     // ── 5. Full success ──────────────────────────────────────────────────────
     // Do NOT reset uploadState or postingRef here — navigation removes the
     // screen, so there is nothing to re-enable and no risk of a second tap.
-    console.log('[clips] ── post clip complete ✓ ────────────────────────────');
+    if (__DEV__) console.log('[clips] ── post clip complete ────────────────────────────');
 
     Alert.alert('Posted! 🎉', 'Your clip has been posted.', [
       {

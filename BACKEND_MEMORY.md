@@ -324,7 +324,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 ### `runService.js`
 - **`startOrJoinRun(gymId, gymName, startTime)`** — merge rule: queries `upcoming` runs at this gym, joins an existing one if `|existingStartTime - requestedStartTime| <= 60 min`, otherwise creates a new run. Validates `startTime > now` and `<= now + 7 days`. Returns `{ runId, created: boolean }`.
 - **`joinExistingRun(runId, gymId, gymName)`** — joins a known run by ID; skips time validation. Use this (not `startOrJoinRun`) for run cards shown in the grace window whose `startTime` is already in the past.
-- **`leaveRun(runId)`** — transaction: deletes `runParticipants/{runId}_{uid}`, decrements `participantCount`. No-op if user isn't in the run.
+- **`leaveRun(runId)`** — transaction: deletes `runParticipants/{runId}_{uid}`, decrements `participantCount` (guarded: skips decrement if count already `<= 0`). No-op if user isn't in the run.
 - **`subscribeToGymRuns(gymId, callback)`** — real-time; filters `status == 'upcoming'`, grace window `startTime >= now - 30 min`.
 - **`subscribeToUserRunsAtGym(userId, gymId, callback)`** — real-time; user's own participant docs at a specific gym (`userId + gymId + status == 'going'`).
 - **`subscribeToRunParticipants(runId, callback)`** — real-time; all participants in a run (for future "who's going" list).
@@ -412,8 +412,8 @@ Single source of truth for all moderation actions. Both admin callables and auto
 |----------|------|------|
 | `submitGymRequest` | `submitGymRequest.ts` | User callable: gym request with 7-day rate limit. |
 | `weeklyReset` | `weeklyReset.ts` | Scheduled: Monday 00:05 CT. Saves top 3 winners, resets `weeklyPoints`. |
-| `checkIn` | `checkIn.ts` | Check-in with GPS validation. |
-| `createRun` | `createRun.ts` | Create a new run. |
+| `checkIn` | `checkIn.ts` | Check-in with GPS validation. Suspension guard added 2026-03-17 (reads `users/{uid}`, rejects if `isSuspended` + active `suspensionEndsAt`). |
+| `createRun` | `createRun.ts` | Create a new run. Suspension guard added 2026-03-17 (reads `users/{uid}`, rejects if `isSuspended` + active `suspensionEndsAt`). |
 | `expirePresence` | `expirePresence.ts` | Server-side presence expiry. |
 | `onScheduleWrite` | `onScheduleWrite.ts` | Firestore trigger on schedule writes. |
 | `createClipSession` | `clipFunctions.ts` | Clip session creation. |
@@ -488,8 +488,8 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 3. **`gym.currentPresenceCount` lags real-time** — it's a denormalized counter updated by transactions; not filtered by `expiresAt`. The UI must NOT use it for display — always use `useLivePresenceMap` / `subscribeToGymPresences`. All screens now use the correct source. (`PlanVisitScreen` was the last remaining violation; fixed 2026-03-13 — replaced with `countMap[gym.id]` from `useLivePresenceMap`.)
 4. **`activity` index** — confirm composite Firestore index exists for `createdAt DESC` inequality query on HomeScreen feed
 5. **Reliability writes** — currently all in Cloud Functions (backend). Do not re-add to client code.
-6. **`'joined a run at'` activity writes** — present in `runService.js` but should be removed before commit. With multiple users joining one run, the feed produces identical spam entries. Only `'started a run at'` should be kept. Requires deleting the `addDoc` calls inside `joinExistingRun` and the merge-join branch of `startOrJoinRun`.
-7. **`participantCount` floor** — `increment(-1)` in `leaveRun` is not clamped. A retry race could push the counter negative. Acceptable for MVP; add a Security Rule floor (`participantCount >= 0`) or Cloud Function validation before launch.
+6. **~~`'joined a run at'` activity writes~~** — ✅ RESOLVED. Activity writes removed from `runService.js`; existing Firestore docs suppressed by client-side filter in HomeScreen.js (`item.action === 'joined a run at'` → `return false`).
+7. **~~`participantCount` floor~~** — ✅ RESOLVED. `leaveRun` transaction now reads `participantCount` from `runSnap` and skips `increment(-1)` when count is already `<= 0`. Existing negative counts (if any) are not repaired — only new negatives are prevented. A one-time cleanup script can fix historical data if needed.
 8. **Runs indexes** — three new composite indexes required (see Required Firestore Indexes #8–10). Create these in the Firebase console or `firestore.indexes.json` to avoid "index required" errors at query time.
 
 ---

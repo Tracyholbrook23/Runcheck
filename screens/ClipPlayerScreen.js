@@ -54,6 +54,11 @@ export default function ClipPlayerScreen({ route, navigation }) {
   const [deleting, setDeleting] = useState(false);
   const [addingToProfile, setAddingToProfile] = useState(false);
 
+  // Playback state — loading, buffering, and error feedback
+  const [videoLoaded, setVideoLoaded] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [playbackError, setPlaybackError] = useState(false);
+
   // Derived: is the current user tagged in this clip?
   const myTagEntry = currentUid
     ? clipMeta.taggedPlayers.find((p) => p.uid === currentUid)
@@ -94,7 +99,7 @@ export default function ClipPlayerScreen({ route, navigation }) {
         Alert.alert('Clip Featured', 'This clip has been added to featured clips.');
       }
     } catch (err) {
-      console.error('featureClip error:', err);
+      if (__DEV__) console.error('featureClip error:', err);
       Alert.alert('Feature Failed', err?.message || 'Could not feature clip. Please try again.');
     } finally {
       setFeaturing(false);
@@ -121,7 +126,7 @@ export default function ClipPlayerScreen({ route, navigation }) {
               // Navigate back regardless — clip is gone from feeds
               navigation.goBack();
             } catch (err) {
-              console.error('deleteClip error:', err);
+              if (__DEV__) console.error('deleteClip error:', err);
               Alert.alert('Delete Failed', err?.message || 'Could not delete clip. Please try again.');
               setDeleting(false);
             }
@@ -143,7 +148,7 @@ export default function ClipPlayerScreen({ route, navigation }) {
       setClipMeta((prev) => ({ ...prev, taggedPlayers: updatedTaggedPlayers }));
       Alert.alert('Added!', 'This clip now appears on your profile.');
     } catch (err) {
-      console.error('addToProfile error:', err);
+      if (__DEV__) console.error('addToProfile error:', err);
       Alert.alert('Failed', err?.message || 'Could not add clip to your profile.');
     } finally {
       setAddingToProfile(false);
@@ -177,11 +182,44 @@ export default function ClipPlayerScreen({ route, navigation }) {
         isLooping={false}
         useNativeControls
         onPlaybackStatusUpdate={(status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            console.log('[ClipPlayer] playback finished');
+          if (status.isLoaded) {
+            if (!videoLoaded) setVideoLoaded(true);
+            setIsBuffering(status.isBuffering === true);
+            if (status.didJustFinish) {
+              if (__DEV__) console.log('playback finished');
+            }
           }
         }}
+        onError={(err) => {
+          if (__DEV__) console.error('playback error:', err);
+          setPlaybackError(true);
+        }}
       />
+
+      {/* Playback error state — full-screen overlay with recovery action */}
+      {playbackError && (
+        <View style={styles.playbackOverlay}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" style={{ marginBottom: 12 }} />
+          <Text style={styles.playbackErrorText}>Couldn't play this clip</Text>
+          <TouchableOpacity style={styles.playbackGoBackBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.playbackGoBackText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Loading spinner — shown until video reports isLoaded */}
+      {!videoLoaded && !playbackError && (
+        <View style={styles.playbackOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="#fff" />
+        </View>
+      )}
+
+      {/* Buffering spinner — shown when playback stalls mid-video */}
+      {videoLoaded && isBuffering && !playbackError && (
+        <View style={styles.playbackOverlay} pointerEvents="none">
+          <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" />
+        </View>
+      )}
 
       {/* Close button — top-right, white circle */}
       <TouchableOpacity
@@ -318,6 +356,30 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+  playbackOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  playbackErrorText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  playbackGoBackBtn: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  playbackGoBackText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   closeButton: {
     position: 'absolute',

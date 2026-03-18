@@ -100,7 +100,7 @@ export default function CheckInScreen({ navigation }) {
         [{ text: 'OK' }]
       );
     } catch (error) {
-      console.error('Check-out error:', error);
+      if (__DEV__) console.error('Check-out error:', error);
       Alert.alert('Check-out Failed', error.message || 'Please try again.');
     }
   };

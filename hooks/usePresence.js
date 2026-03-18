@@ -112,52 +112,51 @@ export const usePresence = () => {
       throw new Error('Must be logged in to check in');
     }
 
-    console.log('🎯 [HOOK] Starting check-in for gym:', gymId);
+    if (__DEV__) console.log('[HOOK] Starting check-in for gym:', gymId);
 
     setCheckingIn(true);
     setError(null);
 
     try {
       // 1. Get device location (handles permission + retrieval)
-      console.log('🎯 [HOOK] Step 1: Getting user location...');
+      if (__DEV__) console.log('[HOOK] Step 1: Getting user location...');
       const userLocation = await getCurrentLocation();
-      console.log('🎯 [HOOK] User location obtained:', userLocation);
+      if (__DEV__) console.log('[HOOK] User location obtained:', userLocation);
 
       // 2. Client-side distance check before hitting Firestore
-      console.log('🎯 [HOOK] Step 2: Fetching gym data...');
+      if (__DEV__) console.log('[HOOK] Step 2: Fetching gym data...');
       const gym = await getGym(gymId);
 
       if (!gym?.location) {
-        console.error('❌ [HOOK] Gym has no location configured');
+        if (__DEV__) console.error('[HOOK] Gym has no location configured');
         throw new Error('Gym location not configured');
       }
 
-      console.log('🎯 [HOOK] Gym:', gym.name);
-      console.log('🎯 [HOOK] Gym location:', gym.location);
+      if (__DEV__) console.log('[HOOK] Gym:', gym.name);
+      if (__DEV__) console.log('[HOOK] Gym location:', gym.location);
 
       // Calculate straight-line distance between the user and the gym entrance
       const distance = calculateDistanceMeters(userLocation, gym.location);
       const radius = gym.checkInRadiusMeters || DEFAULT_CHECK_IN_RADIUS_METERS;
 
-      console.log('🎯 [HOOK] Client-side distance check:', distance.toFixed(2), 'm (max:', radius, 'm)');
+      if (__DEV__) console.log('[HOOK] Client-side distance check:', distance.toFixed(2), 'm (max:', radius, 'm)');
 
-      // TODO: Re-enable GPS validation before launch — currently disabled for testing
-      // TESTING ONLY - uncomment before launch
-// if (distance > radius) {
-//   console.error('❌ [HOOK] Client-side validation FAILED - Too far from gym');
-//   throw new Error(`You must be at the gym to check in. You are ${distance.toFixed(0)}m away (max ${radius}m).`);
-// }
+      // Client-side GPS distance gate (re-enabled for launch)
+      if (distance > radius) {
+        if (__DEV__) console.error('[HOOK] Client-side validation FAILED - Too far from gym');
+        throw new Error(`You must be at the gym to check in. You are ${distance.toFixed(0)}m away (max ${radius}m).`);
+      }
 
-      console.log('✅ [HOOK] Client-side validation PASSED');
-      console.log('🎯 [HOOK] Step 3: Calling service-layer check-in...');
+      if (__DEV__) console.log('[HOOK] Client-side validation PASSED');
+      if (__DEV__) console.log('[HOOK] Step 3: Calling service-layer check-in...');
 
       // 3. Service-layer check-in (second safety layer validates again)
       const result = await checkInService(auth.currentUser.uid, gymId, userLocation);
 
-      console.log('✅ [HOOK] Check-in successful!');
+      if (__DEV__) console.log('[HOOK] Check-in successful!');
       return result;
     } catch (err) {
-      console.error('❌ [HOOK] Check-in failed:', err.message);
+      if (__DEV__) console.error('[HOOK] Check-in failed:', err.message);
       setError(err.message);
       throw err;
     } finally {

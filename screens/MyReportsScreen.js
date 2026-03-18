@@ -135,7 +135,7 @@ export default function MyReportsScreen() {
         setRefreshing(false);
       },
       (err) => {
-        console.error('MyReportsScreen: onSnapshot error', err);
+        if (__DEV__) console.error('MyReportsScreen: onSnapshot error', err);
         setLoading(false);
         setRefreshing(false);
       }

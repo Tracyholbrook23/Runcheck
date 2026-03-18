@@ -5,6 +5,21 @@ These rules exist to keep changes safe, minimal, and auditable.
 
 ---
 
+## Scope Gate (Read This First)
+
+Before starting any task, verify one of the following is true:
+
+1. **The task is on `LAUNCH_CHECKLIST.md`** — it's launch-critical and already approved.
+2. **The user explicitly requested it this session** — even if it's not on the checklist, the user has approved it as an exception.
+
+If neither is true, **do not start the work**. Instead:
+- Note the idea in `PARKING_LOT.md` with a brief description.
+- Tell the user: "This doesn't appear to be on the launch checklist. I've added it to PARKING_LOT.md. Want me to proceed anyway?"
+
+This rule exists to prevent scope creep during pre-launch. It applies to all work — bug fixes, features, refactors, and polish.
+
+---
+
 ## Core Principles
 
 ### 1. Make the Smallest Safe Change Possible
@@ -87,6 +102,22 @@ Before writing any code for a task:
 - Check `ARCHITECTURE_MAP.md` to confirm which zone owns the code in question
 - If a file's ownership is ambiguous, note it under "Possible Zone Overlap" rather than guessing
 - If a fix would require changes in more than two zones simultaneously, flag it before proceeding
+
+---
+
+## End-of-Session Documentation
+
+After every session where code or architecture changed, update documentation before closing out:
+
+1. **`PROJECT_MEMORY.md`** — Add a "Files Modified Recently" entry with the session date, files touched, and what changed in each.
+2. **`BACKEND_MEMORY.md`** — Update if any backend schema, service behavior, business rules, or Cloud Function logic changed.
+3. **`ARCHITECTURE_MAP.md`** — Update if new files were created, files were moved, or zone ownership changed.
+4. **`LAUNCH_CHECKLIST.md`** — Check off completed items. Update status notes on in-progress items.
+5. **`PARKING_LOT.md`** — Add any ideas that surfaced during the session but were deferred.
+
+Also reconcile: compare what was planned at session start vs. what actually happened. If the session drifted from the original task, note why.
+
+If the session was documentation-only (like this one), no memory update is required beyond updating the files themselves.
 
 ---
 

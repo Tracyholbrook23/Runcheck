@@ -276,7 +276,9 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
     gymName,
     runId,
     createdAt: Timestamp.now(),
-  }).catch((err) => console.error('[runService] activity write error (start):', err));
+  }).catch((err) => {
+    if (__DEV__) console.error('[runService] activity write error (start):', err);
+  });
 
   return { runId, created: true };
 };
@@ -361,15 +363,19 @@ export const leaveRun = async (runId) => {
     }
 
     txn.delete(participantRef);
-    // Use increment(-1) — Firestore Security Rules or cleanup can clamp to 0
-    txn.update(runRef, { participantCount: increment(-1) });
+    // Only decrement if the run exists and count is still positive — prevents
+    // participantCount from being driven below 0 during retries or stale-data races.
+    const currentCount = runSnap.exists() ? (runSnap.data().participantCount ?? 0) : 0;
+    if (currentCount > 0) {
+      txn.update(runRef, { participantCount: increment(-1) });
+    }
   });
 
   // Apply penalty after the transaction — fire-and-forget, non-critical.
   if (penaltyAmount > 0) {
-    penalizePoints(uid, penaltyAmount).catch((err) =>
-      console.error('Leave-run penalty error:', err)
-    );
+    penalizePoints(uid, penaltyAmount).catch((err) => {
+      if (__DEV__) console.error('Leave-run penalty error:', err);
+    });
   }
 };
 
@@ -419,7 +425,7 @@ export const subscribeToGymRuns = (gymId, callback) => {
       callback(runs);
     },
     (err) => {
-      console.error('[runService] subscribeToGymRuns error:', err);
+      if (__DEV__) console.error('[runService] subscribeToGymRuns error:', err);
       callback([]);
     }
   );
@@ -468,7 +474,7 @@ export const subscribeToAllUpcomingRuns = (callback) => {
       callback(runs);
     },
     (err) => {
-      console.error('[runService] subscribeToAllUpcomingRuns error:', err);
+      if (__DEV__) console.error('[runService] subscribeToAllUpcomingRuns error:', err);
       callback([]);
     }
   );
@@ -504,7 +510,7 @@ export const subscribeToUserRunsAtGym = (userId, gymId, callback) => {
       callback(participants);
     },
     (err) => {
-      console.error('[runService] subscribeToUserRunsAtGym error:', err);
+      if (__DEV__) console.error('[runService] subscribeToUserRunsAtGym error:', err);
       callback([]);
     }
   );
@@ -534,7 +540,7 @@ export const subscribeToRunParticipants = (runId, callback) => {
       callback(participants);
     },
     (err) => {
-      console.error('[runService] subscribeToRunParticipants error:', err);
+      if (__DEV__) console.error('[runService] subscribeToRunParticipants error:', err);
       callback([]);
     }
   );

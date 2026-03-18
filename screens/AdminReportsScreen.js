@@ -137,7 +137,7 @@ export default function AdminReportsScreen() {
         setRefreshing(false);
       },
       (err) => {
-        console.error('AdminReportsScreen: onSnapshot error', err);
+        if (__DEV__) console.error('AdminReportsScreen: onSnapshot error', err);
         setLoading(false);
         setRefreshing(false);
       }
@@ -300,7 +300,7 @@ export default function AdminReportsScreen() {
       setExpandedId(null);
       setNoteText('');
     } catch (err) {
-      console.error('moderateReport error:', err);
+      if (__DEV__) console.error('moderateReport error:', err);
       Alert.alert(
         'Update Failed',
         err?.message || 'Could not update report. Please try again.'
@@ -339,7 +339,7 @@ export default function AdminReportsScreen() {
               setExpandedId(null);
               setNoteText('');
             } catch (err) {
-              console.error('hideClip error:', err);
+              if (__DEV__) console.error('hideClip error:', err);
               Alert.alert(
                 'Hide Failed',
                 err?.message || 'Could not hide clip. Please try again.'
@@ -377,7 +377,7 @@ export default function AdminReportsScreen() {
               setExpandedId(null);
               setNoteText('');
             } catch (err) {
-              console.error('removeRun error:', err);
+              if (__DEV__) console.error('removeRun error:', err);
               Alert.alert(
                 'Remove Failed',
                 err?.message || 'Could not remove run. Please try again.'
@@ -427,7 +427,7 @@ export default function AdminReportsScreen() {
               setExpandedId(null);
               setNoteText('');
             } catch (err) {
-              console.error('suspendUser error:', err);
+              if (__DEV__) console.error('suspendUser error:', err);
               Alert.alert(
                 'Suspend Failed',
                 err?.message || 'Could not suspend user. Please try again.'

@@ -215,11 +215,11 @@ export default function PlanVisitScreen({ navigation }) {
         if (newSchedule?.id) {
           updateDoc(doc(db, 'schedules', newSchedule.id), {
             activityId: activityRef.id,
-          }).catch((err) => console.error('activityId backlink error:', err));
+          }).catch((err) => { if (__DEV__) console.error('activityId backlink error:', err); });
         }
       } catch (err) {
         // Activity write failure is non-fatal — the schedule itself succeeded.
-        console.error('Activity write error (plan):', err);
+        if (__DEV__) console.error('Activity write error (plan):', err);
       }
 
       // Show the confirmation screen instead of a native alert.
@@ -260,7 +260,7 @@ export default function PlanVisitScreen({ navigation }) {
               if (uid) {
                 if (schedule.activityId) {
                   deleteDoc(doc(db, 'activity', schedule.activityId))
-                    .catch((err) => console.error('Activity cleanup error (cancel plan):', err));
+                    .catch((err) => { if (__DEV__) console.error('Activity cleanup error (cancel plan):', err); });
                 } else {
                   getDocs(
                     query(
@@ -274,7 +274,7 @@ export default function PlanVisitScreen({ navigation }) {
                     .then((snap) =>
                       Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id))))
                     )
-                    .catch((err) => console.error('Activity cleanup error (cancel plan):', err));
+                    .catch((err) => { if (__DEV__) console.error('Activity cleanup error (cancel plan):', err); });
                 }
               }
             } catch (error) {

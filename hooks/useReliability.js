@@ -90,7 +90,7 @@ export const useReliability = (userId = null) => {
         setLoading(false);
       },
       (err) => {
-        console.error('useReliability snapshot error:', err);
+        if (__DEV__) console.error('useReliability snapshot error:', err);
         setError(err.message);
         setReliability(null);
         setLoading(false);

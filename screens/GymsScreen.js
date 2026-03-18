@@ -113,7 +113,7 @@ export default function GymsScreen() {
       setGyms(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
       setError(null);
     } catch (err) {
-      console.error('[GymsScreen]', err);
+      if (__DEV__) console.error('[GymsScreen]', err);
       setError(err.message ?? 'Failed to load gyms');
     }
   }, []);

@@ -402,7 +402,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         [{ text: 'OK' }]
       );
     } catch (error) {
-      console.error('[RunDetails] Check-in error:', error);
+      if (__DEV__) console.error('[RunDetails] Check-in error:', error);
       if (error.message?.includes('permission denied')) {
         Alert.alert(
           'Location Required',
@@ -531,7 +531,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         setHasRunAttended(canReview);
         setHasVerifiedRun(runVerified);
       })
-      .catch((err) => console.error('checkReviewEligibility error:', err));
+      .catch((err) => { if (__DEV__) console.error('checkReviewEligibility error:', err); });
   }, [uid, gymId]);
 
 
@@ -544,7 +544,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     const unsub = onSnapshot(q, (snap) => {
       setReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, (err) => {
-      console.error('[reviews] error:', err.code, err.message);
+      if (__DEV__) console.error('[reviews] error:', err.code, err.message);
     });
     return unsub;
   }, [gymId]);
@@ -584,9 +584,6 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Gym Clips — daily highlight + 24-hour feed, both live via onSnapshot
   useEffect(() => {
     const authedUid = auth.currentUser?.uid;
-    console.log('[clips effect] uid (from component scope):', uid);
-    console.log('[clips effect] auth.currentUser?.uid (live):', authedUid);
-    console.log('[clips effect] db.app.options.projectId:', db.app.options.projectId, '| auth.app.options.projectId:', auth.app.options.projectId);
     if (!authedUid || !gymId) return;
     setClipsLoading(true);
     /**
@@ -621,7 +618,7 @@ export default function RunDetailsScreen({ route, navigation }) {
               return { ...prev, [c.id]: url };
             });
           } catch (err) {
-            console.warn('[clips] getDownloadURL failed for', c.id, err.message);
+            if (__DEV__) console.warn('[clips] getDownloadURL failed for', c.id, err.message);
             // Remove from the set so a future retry is possible.
             resolvedClipIdsRef.current.delete(c.id);
             return;
@@ -702,7 +699,7 @@ export default function RunDetailsScreen({ route, navigation }) {
       setClipsLoading(false);
       resolveClipUrls(readyList);
     }, (err) => {
-      console.error('[gymClips feed] error:', err.code, err.message);
+      if (__DEV__) console.error('[gymClips feed] error:', err.code, err.message);
       setClipsLoading(false);
     });
 
@@ -750,7 +747,7 @@ export default function RunDetailsScreen({ route, navigation }) {
       // Award or deduct points based on new follow state (exploit-safe)
       handleFollowPoints(uid, gymId, !isFollowed);
     } catch (err) {
-      console.error('toggleFollow error:', err);
+      if (__DEV__) console.error('toggleFollow error:', err);
     } finally {
       setFollowLoading(false);
     }
@@ -771,7 +768,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         homeCourtId: isHomeCourt ? null : gymId,
       });
     } catch (err) {
-      console.error('toggleHomeCourt error:', err);
+      if (__DEV__) console.error('toggleHomeCourt error:', err);
     } finally {
       setHomeCourtLoading(false);
     }
@@ -799,7 +796,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             try {
               await deleteDoc(doc(db, 'gyms', gymId, 'reviews', reviewId));
             } catch (err) {
-              console.error('deleteReview error:', err);
+              if (__DEV__) console.error('deleteReview error:', err);
               Alert.alert('Error', 'Could not delete your review. Please try again.');
             }
           },
@@ -839,7 +836,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   const uploadFromLibrary = async () => {
     closeClipSheet(async () => {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('[clips] photo library permission status:', status);
+      if (__DEV__) console.log('[clips] photo library permission status:', status);
       // 'limited' = iOS 14+ partial access — the picker still works, so allow it.
       if (status !== 'granted' && status !== 'limited') {
         Alert.alert(
@@ -856,7 +853,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           quality: 1,
         });
       } catch (err) {
-        console.log('Video picker error:', err);
+        if (__DEV__) console.log('Video picker error:', err);
         Alert.alert('Error', 'Could not open the video picker. Please try again.');
         return;
       }
@@ -948,7 +945,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         : 'Review submitted! +15 pts 🎉';
       Alert.alert(message);
     } catch (err) {
-      console.error('handleSubmitReview error:', err);
+      if (__DEV__) console.error('handleSubmitReview error:', err);
       Alert.alert('Error', 'Could not submit your review. Please try again.');
     } finally {
       setSubmittingReview(false);
@@ -1015,9 +1012,25 @@ export default function RunDetailsScreen({ route, navigation }) {
           )}
         </View>
         <Text style={styles.runParticipantNames} numberOfLines={1}>{namePreview}</Text>
-        <Text style={styles.runCardMeta}>
-          {count === 1 ? '1 player going' : `${count} players going`}
-        </Text>
+        {/* Here vs Going — derived from presence intersection */}
+        {(() => {
+          const hereCount = runHereCountMap[runId] || 0;
+          if (hereCount > 0) {
+            return (
+              <View style={styles.runLiveRow}>
+                <View style={styles.runLiveDot} />
+                <Text style={styles.runLiveText}>
+                  {hereCount} here{hereCount < count ? ` · ${count} going` : ''}
+                </Text>
+              </View>
+            );
+          }
+          return (
+            <Text style={styles.runCardMeta}>
+              {count === 1 ? '1 player going' : `${count} players going`}
+            </Text>
+          );
+        })()}
       </View>
     );
   };
@@ -1061,6 +1074,32 @@ export default function RunDetailsScreen({ route, navigation }) {
       return true;
     });
   }, [presences]);
+
+  // ── Run activation: "here" count per run ───────────────────────────────
+  // Cross-reference run participants with active presences at this gym.
+  // hereCount = participants who are also physically checked in right now.
+  // Pure derivation — no schema changes, no new Firestore reads.
+  const runHereCountMap = useMemo(() => {
+    const hereUids = new Set(uniqueActivePresences.map((p) => p.odId));
+    const map = {};
+    Object.entries(runParticipantsMap).forEach(([runId, participants]) => {
+      map[runId] = participants.filter((p) => hereUids.has(p.userId)).length;
+    });
+    return map;
+  }, [runParticipantsMap, uniqueActivePresences]);
+
+  // Sort runs: live (hereCount > 0) first, then by startTime ascending within each group
+  const sortedRuns = useMemo(() => {
+    return [...runs].sort((a, b) => {
+      const aLive = (runHereCountMap[a.id] || 0) > 0 ? 1 : 0;
+      const bLive = (runHereCountMap[b.id] || 0) > 0 ? 1 : 0;
+      if (bLive !== aLive) return bLive - aLive; // live runs first
+      // Within same group, preserve time ordering
+      const aTime = a.startTime?.toMillis?.() ?? 0;
+      const bTime = b.startTime?.toMillis?.() ?? 0;
+      return aTime - bTime;
+    });
+  }, [runs, runHereCountMap]);
 
   // Debug — remove once counts are confirmed stable
   if (__DEV__) {
@@ -1208,7 +1247,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         }
       });
     } catch (err) {
-      console.error('[toggleLike] error:', err.message);
+      if (__DEV__) console.error('[toggleLike] error:', err.message);
     }
   };
 
@@ -1446,13 +1485,13 @@ export default function RunDetailsScreen({ route, navigation }) {
             </TouchableOpacity>
           </View>
 
-          {runs.length === 0 ? (
+          {sortedRuns.length === 0 ? (
             <View style={styles.runsEmptyState}>
               <Text style={styles.runsEmptyText}>No runs planned yet</Text>
               <Text style={styles.runsEmptySubtext}>Be the first to start one</Text>
             </View>
           ) : (
-            runs.map((run) => {
+            sortedRuns.map((run) => {
               const isJoined = joinedRunIds.has(run.id);
               const isLeaving = leavingRunId === run.id;
               return (
@@ -3421,6 +3460,24 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  // Run activation — LIVE indicator row
+  runLiveRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  runLiveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: colors.success,
+    marginRight: 5,
+  },
+  runLiveText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.success,
   },
   runCardRight: {
     alignItems: 'flex-end',

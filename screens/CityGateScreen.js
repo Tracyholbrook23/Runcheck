@@ -106,7 +106,7 @@ export default function CityGateScreen({ navigation }) {
         await updateDoc(doc(db, 'users', uid), { cityGateShown: true });
       }
     } catch (err) {
-      console.warn('CityGate: could not save cityGateShown flag:', err);
+      if (__DEV__) console.warn('CityGate: could not save cityGateShown flag:', err);
     }
   };
 
@@ -146,7 +146,7 @@ export default function CityGateScreen({ navigation }) {
         setOutOfRange(true);
       }
     } catch (err) {
-      console.error('CityGate location error:', err);
+      if (__DEV__) console.error('CityGate location error:', err);
       alert("Couldn't get your location. You can still explore the app!");
       await proceedToMain();
     } finally {

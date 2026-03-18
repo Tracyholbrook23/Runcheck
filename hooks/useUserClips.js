@@ -109,7 +109,7 @@ export const useUserClips = (uid) => {
               return { ...prev, [c.id]: url };
             });
           } catch (err) {
-            console.warn('[useUserClips] getDownloadURL failed for', c.id, err.message);
+            if (__DEV__) console.warn('[useUserClips] getDownloadURL failed for', c.id, err.message);
             resolvedIdsRef.current.delete(c.id);
             return;
           }
@@ -150,7 +150,7 @@ export const useUserClips = (uid) => {
         resolveClipMedia(readyList);
       },
       (err) => {
-        console.error('[useUserClips] error:', err.code, err.message);
+        if (__DEV__) console.error('[useUserClips] error:', err.code, err.message);
         setError(err.message);
         setLoading(false);
       }

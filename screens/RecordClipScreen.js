@@ -156,7 +156,7 @@ export default function RecordClipScreen({ route, navigation }) {
       setIsRecording(false);
       // Suppress expected cancellation errors (user navigated away mid-recording)
       if (err?.message?.includes('cancelled') || err?.message?.includes('unmounted')) return;
-      console.warn('[RecordClip] recordAsync error:', err);
+      if (__DEV__) console.warn('recordAsync error:', err);
       Alert.alert('Error', 'Recording failed. Please try again.');
     }
   }, [isRecording, gymId, presenceId, goToPreviewPost]);
