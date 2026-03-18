@@ -30,7 +30,7 @@
  * every state change.
  */
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  RefreshControl,
   ImageBackground,
   Image,
   Animated,
@@ -111,6 +112,13 @@ const BlinkingDot = ({ active, style }) => {
  */
 const HomeScreen = ({ navigation }) => {
   const { colors, isDark, themeStyles } = useTheme();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    // Data is live via Firestore listeners — brief visual feedback only
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
 
   // Recompute styles only when the theme changes
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -565,6 +573,13 @@ const HomeScreen = ({ navigation }) => {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
         >
           {/* Welcome hero text — copy adapts to checked-in state */}
           <View style={[styles.welcomeSection, isCheckedIn && styles.welcomeSectionActive]}>

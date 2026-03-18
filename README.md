@@ -123,3 +123,4 @@ npm run test:coverage # Run tests with coverage report
 - `ARCHITECTURE_MAP.md` — File-to-zone mapping for safe, scoped changes
 - `CLAUDE_WORKFLOW.md` — Development workflow rules and constraints
 - `DEV_TASKS.md` — Known issues and upcoming tasks
+ 

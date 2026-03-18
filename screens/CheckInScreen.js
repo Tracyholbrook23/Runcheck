@@ -32,6 +32,7 @@ import { Logo } from '../components';
 import { usePresence, useGyms, useProfile, useLivePresenceMap } from '../hooks';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { isLocationGranted } from '../utils/locationUtils';
+import { hapticLight } from '../utils/haptics';
 
 /**
  * GymThumbnail — Small rounded gym image, falling back to an icon.
@@ -139,6 +140,7 @@ export default function CheckInScreen({ navigation }) {
   const handleCheckOut = async () => {
     try {
       await checkOut();
+      hapticLight();
       Alert.alert(
         'Checked Out',
         "You've been checked out. Your session has been recorded.",

@@ -44,6 +44,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
+import { hapticSuccess } from '../utils/haptics';
 import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { doc, getDoc } from 'firebase/firestore';
@@ -559,6 +560,7 @@ export default function TrimClipScreen({ route, navigation }) {
     // screen, so there is nothing to re-enable and no risk of a second tap.
     if (__DEV__) console.log('[clips] ── post clip complete ────────────────────────────');
 
+    hapticSuccess();
     Alert.alert('Posted! 🎉', 'Your clip has been posted.', [
       {
         text: 'OK',

@@ -43,7 +43,7 @@ Nothing in this file should be worked on during a session unless the user explic
 - Gym search by amenities, court type, hours
 - City-level discovery page (browse gyms outside home city)
 - Trending gyms / hot spots indicator
-- Integration with Google Maps for directions
+- ~~Integration with Google Maps for directions~~ — **Done.** `openDirections` utility already works on ViewRunsScreen and RunDetailsScreen.
 
 ---
 
@@ -61,11 +61,12 @@ Nothing in this file should be worked on during a session unless the user explic
 ## UI & Polish
 
 - Dark mode refinement and per-screen audit
+- **Swipe between tabs** — Swipe left/right to navigate between Home, Runs, Check In, Plan, Profile. Requires `@react-navigation/material-top-tabs` + `react-native-pager-view` (both already installed in package.json). Implementation: replace `createBottomTabNavigator` with `createMaterialTopTabNavigator` at `tabBarPosition="bottom"` + custom tab bar. **Requires native rebuild** (`react-native-pager-view` has native code).
 - Animated transitions between screens
 - Skeleton loading screens (replace spinners with content placeholders)
-- Haptic feedback on key actions (check-in, join run, post clip)
-- Pull-to-refresh on all list screens
-- Onboarding tutorial / walkthrough for new users
+- ~~Haptic feedback on key actions (check-in, join run, post clip)~~ — **Done.** `utils/haptics.js` helper wrapping `expo-haptics`. Success haptic on check-in, join run, post clip. Medium impact on record button press. Light on checkout.
+- ~~Pull-to-refresh on all list screens~~ — **Done.** Added to HomeScreen, ProfileScreen, RunDetailsScreen, LeaderboardScreen (plus ViewRunsScreen and admin screens already had it).
+- ~~Onboarding tutorial / walkthrough for new users~~ — **Done.** 3-step onboarding flow implemented (Welcome → Home Court → Location + Finish).
 - Accessibility audit (VoiceOver, Dynamic Type, contrast)
 
 ---
@@ -83,7 +84,7 @@ Nothing in this file should be worked on during a session unless the user explic
 
 ## Technical Improvements (Non-Blocking)
 
-- **GPS timeout + stale-fix hardening** — `getCurrentPositionAsync` in `locationUtils.js` currently uses no explicit `timeout` or `maximumAge`. Add `timeout: 15000` (15s hard ceiling) and `maximumAge: 30000` (reject fixes older than 30s) to prevent indefinite spinner hangs indoors and reduce stale-cache risk. 2-line change, existing catch block already handles the thrown error. Low risk.
+- ~~**GPS timeout + stale-fix hardening**~~ — **Done.** Added `timeout: 15000` and `maximumAge: 30000` to `getCurrentPositionAsync` in `locationUtils.js`.
 - **Silent-error banners on core screens** — HomeScreen, ViewRunsScreen, and RunDetailsScreen currently swallow fetch/snapshot errors and fall back to empty states silently. Add a dismissible error banner ("Something went wrong — pull to refresh") so users know data may be stale vs. genuinely empty. Low risk, post-launch quality improvement.
 - **Deduplicate reliability subscriptions on ProfileScreen** — `useReliability()` hook and an inline `onSnapshot` both listen to `users/{uid}` and both extract `reliability`. The inline listener also reads `receivedRequests` and other fields, so it can't be removed outright, but the `reliability` state variable (line ~215) is redundant with the hook's `stats` return value. Consolidate to a single source when convenient.
 - Migrate remaining gym images to Firebase Storage
@@ -97,5 +98,5 @@ Nothing in this file should be worked on during a session unless the user explic
 
 ---
 
-_Last updated: 2026-03-17_
+_Last updated: 2026-03-18_
 _To add an idea: append it to the relevant section with a brief description. Do not act on it without explicit approval._

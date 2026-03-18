@@ -38,6 +38,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
+import { hapticMedium } from '../utils/haptics';
 import * as ImagePicker from 'expo-image-picker';
 
 // Maximum recording duration for in-app capture
@@ -176,6 +177,7 @@ export default function RecordClipScreen({ route, navigation }) {
     if (!cameraRef.current || isRecording || recordingLockRef.current) return;
     recordingLockRef.current = true;
 
+    hapticMedium();
     setIsRecording(true);
     setElapsedSec(0);
 

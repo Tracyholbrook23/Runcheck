@@ -68,6 +68,8 @@ export const getCurrentLocation = async () => {
   try {
     const position = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.High,
+      timeout: 15000,    // 15s hard ceiling — prevents indefinite spinner indoors
+      maximumAge: 30000, // reject cached fixes older than 30s
     });
 
     const userLocation = {

@@ -38,6 +38,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -171,6 +172,12 @@ function GymThumbnail({ gym, fallbackIcon, iconColor, style }) {
 export default function ProfileScreen({ navigation }) {
   const { isDark, colors, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
 
   const { user } = useAuth();
   const { score, tier, stats, loading: reliabilityLoading } = useReliability();
@@ -568,7 +575,16 @@ export default function ProfileScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
         {/* ── Avatar & User Info ─────────────────────────────────────────── */}
         <LinearGradient
           colors={['#3D1E00', '#1A0A00', '#000000']}

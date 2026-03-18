@@ -32,6 +32,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
   Image,
@@ -226,6 +227,17 @@ export default function LeaderboardScreen({ navigation }) {
   const [weeklyUsers,    setWeeklyUsers]    = useState([]);
   const [weeklyLoading,  setWeeklyLoading]  = useState(true);
   const [selectedRank,   setSelectedRank]   = useState(null);   // rank object for bottom sheet
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
+
+  // Collapsible section state — all default collapsed to keep screen short
+  const [showRankTiers, setShowRankTiers] = useState(false);
+  const [showEarnPoints, setShowEarnPoints] = useState(false);
+  const [showRewards, setShowRewards] = useState(false);
   const modalSlide = useRef(new Animated.Value(0)).current;
   const currentUid = auth.currentUser?.uid;
 
@@ -327,7 +339,17 @@ export default function LeaderboardScreen({ navigation }) {
         <View style={{ width: 38 }} />
       </View>
 
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.scroll}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
 
         {/* ── My Rank summary card ─────────────────────────────────── */}
         <View style={[styles.myRankCard, { borderColor: currentRank.color + '55' }]}>
@@ -603,79 +625,127 @@ export default function LeaderboardScreen({ navigation }) {
           </View>
         )}
 
-        {/* ── Rank Tiers — unified tappable list ───────────────── */}
-        <Text style={styles.sectionTitle}>Rank Tiers</Text>
-        <View style={styles.listCard}>
-          {RANKS.map((r, index) => {
-            const isCurrentRank = r.name === currentRank.name;
-            return (
-              <TouchableOpacity
-                key={r.name}
-                activeOpacity={0.7}
-                onPress={() => openRankSheet(r)}
-                style={[
-                  styles.tierRow,
-                  isCurrentRank && { backgroundColor: r.color + '18' },
-                  index < RANKS.length - 1 && styles.rowBorder,
-                ]}
-              >
-                <Text style={styles.tierIcon}>{r.icon}</Text>
-                <View style={styles.tierInfo}>
-                  <View style={styles.tierNameRow}>
-                    <Text style={[styles.tierName, { color: r.color }]}>{r.name}</Text>
-                    {isCurrentRank && (
-                      <View style={[styles.currentBadge, { borderColor: r.color + '60' }]}>
-                        <Text style={[styles.currentBadgeText, { color: r.color }]}>You</Text>
-                      </View>
+        {/* ── Rank Tiers — collapsible ───────────────────────── */}
+        <TouchableOpacity
+          style={styles.sectionToggle}
+          activeOpacity={0.7}
+          onPress={() => setShowRankTiers(!showRankTiers)}
+        >
+          <View style={styles.toggleLeft}>
+            <View style={[styles.toggleIcon, { backgroundColor: 'rgba(255,215,0,0.15)' }]}>
+              <Ionicons name="ribbon-outline" size={18} color="#FFD700" />
+            </View>
+            <Text style={styles.toggleLabel}>Rank Tiers</Text>
+          </View>
+          <Ionicons
+            name={showRankTiers ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+        {showRankTiers && (
+          <View style={styles.listCard}>
+            {RANKS.map((r, index) => {
+              const isCurrentRank = r.name === currentRank.name;
+              return (
+                <TouchableOpacity
+                  key={r.name}
+                  activeOpacity={0.7}
+                  onPress={() => openRankSheet(r)}
+                  style={[
+                    styles.tierRow,
+                    isCurrentRank && { backgroundColor: r.color + '18' },
+                    index < RANKS.length - 1 && styles.rowBorder,
+                  ]}
+                >
+                  <Text style={styles.tierIcon}>{r.icon}</Text>
+                  <View style={styles.tierInfo}>
+                    <View style={styles.tierNameRow}>
+                      <Text style={[styles.tierName, { color: r.color }]}>{r.name}</Text>
+                      {isCurrentRank && (
+                        <View style={[styles.currentBadge, { borderColor: r.color + '60' }]}>
+                          <Text style={[styles.currentBadgeText, { color: r.color }]}>You</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.tierTagline}>{RANK_TAGLINES[r.name]}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
+        {/* ── How to Earn Points — collapsible ────────────────── */}
+        <TouchableOpacity
+          style={styles.sectionToggle}
+          activeOpacity={0.7}
+          onPress={() => setShowEarnPoints(!showEarnPoints)}
+        >
+          <View style={styles.toggleLeft}>
+            <View style={[styles.toggleIcon, { backgroundColor: 'rgba(249,115,22,0.15)' }]}>
+              <Ionicons name="flash-outline" size={18} color="#F97316" />
+            </View>
+            <Text style={styles.toggleLabel}>How to Earn Points</Text>
+          </View>
+          <Ionicons
+            name={showEarnPoints ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+        {showEarnPoints && (
+          <View style={styles.listCard}>
+            {ACTION_LABELS.map((item, index) => {
+              const iconColor = item.iconColor ?? colors.primary;
+              return (
+                <View
+                  key={item.action}
+                  style={[
+                    styles.actionRow,
+                    index < ACTION_LABELS.length - 1 && styles.rowBorder,
+                  ]}
+                >
+                  <View style={[styles.actionIconCircle, { backgroundColor: iconColor + '20' }]}>
+                    <Ionicons name={item.ionicon} size={17} color={iconColor} />
+                  </View>
+                  <View style={styles.actionInfo}>
+                    <Text style={styles.actionLabel}>{item.label}</Text>
+                    {item.note && (
+                      <Text style={styles.actionNote}>{item.note}</Text>
                     )}
                   </View>
-                  <Text style={styles.tierTagline}>{RANK_TAGLINES[r.name]}</Text>
+                  <View style={[styles.ptsBadge, { backgroundColor: iconColor + '18' }]}>
+                    <Text style={[styles.ptsBadgeText, { color: iconColor }]}>
+                      +{item.points} pts
+                    </Text>
+                  </View>
                 </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.textMuted + '80'} />
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+              );
+            })}
+          </View>
+        )}
 
-        {/* ── How to Earn Points ───────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>How to Earn Points</Text>
-        <View style={styles.listCard}>
-          {ACTION_LABELS.map((item, index) => {
-            const iconColor = item.iconColor ?? colors.primary;
-            return (
-              <View
-                key={item.action}
-                style={[
-                  styles.actionRow,
-                  index < ACTION_LABELS.length - 1 && styles.rowBorder,
-                ]}
-              >
-                {/* Icon inside a tinted circle */}
-                <View style={[styles.actionIconCircle, { backgroundColor: iconColor + '20' }]}>
-                  <Ionicons name={item.ionicon} size={17} color={iconColor} />
-                </View>
-
-                {/* Label + optional note */}
-                <View style={styles.actionInfo}>
-                  <Text style={styles.actionLabel}>{item.label}</Text>
-                  {item.note && (
-                    <Text style={styles.actionNote}>{item.note}</Text>
-                  )}
-                </View>
-
-                {/* Points badge */}
-                <View style={[styles.ptsBadge, { backgroundColor: iconColor + '18' }]}>
-                  <Text style={[styles.ptsBadgeText, { color: iconColor }]}>
-                    +{item.points} pts
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        {/* ── Rewards & Recognition ────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>Rewards & Recognition</Text>
+        {/* ── Rewards & Recognition — collapsible ──────────────── */}
+        <TouchableOpacity
+          style={styles.sectionToggle}
+          activeOpacity={0.7}
+          onPress={() => setShowRewards(!showRewards)}
+        >
+          <View style={styles.toggleLeft}>
+            <View style={[styles.toggleIcon, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+              <Ionicons name="gift-outline" size={18} color="#22C55E" />
+            </View>
+            <Text style={styles.toggleLabel}>Rewards & Recognition</Text>
+          </View>
+          <Ionicons
+            name={showRewards ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+        {showRewards && (
         <View style={styles.listCard}>
           {[
             {
@@ -714,6 +784,7 @@ export default function LeaderboardScreen({ navigation }) {
             </View>
           ))}
         </View>
+        )}
 
         <View style={{ height: SPACING.xl }} />
       </ScrollView>
@@ -921,6 +992,33 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
 
   // ── Shared section titles & card container ────────────────────────────────
+  sectionToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  toggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  toggleIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  toggleLabel: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
   sectionTitle: {
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.bold,

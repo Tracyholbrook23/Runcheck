@@ -194,11 +194,6 @@ function ProfileStack() {
 /**
  * MainTabs — Bottom tab navigator shown after authentication.
  *
- * Reads the active theme's color tokens to style the tab bar so it
- * respects dark/light mode without a full re-mount. Tab icons are
- * resolved from the route name using a simple lookup inside
- * `tabBarIcon`.
- *
  * @returns {JSX.Element} Bottom tab navigator with five top-level tabs.
  */
 function MainTabs() {
@@ -223,7 +218,6 @@ function MainTabs() {
           elevation: 0,
           shadowOpacity: 0,
         },
-        // Map each tab's route name to an Ionicons icon name
         tabBarIcon: ({ color, size }) => {
           let iconName;
           if (route.name === 'Home') iconName = 'home-outline';
@@ -240,10 +234,6 @@ function MainTabs() {
         name="Runs"
         component={RunsStack}
         listeners={({ navigation }) => ({
-          // Always reset the Runs stack to the gym list when the Runs tab is pressed.
-          // Without this, React Navigation restores the last-visited screen (e.g. RunDetails)
-          // instead of returning the user to ViewRunsMain. e.preventDefault() suppresses the
-          // default state-restoration; the navigate call handles the actual tab switch + pop.
           tabPress: (e) => {
             e.preventDefault();
             navigation.navigate('Runs', { screen: 'ViewRunsMain' });

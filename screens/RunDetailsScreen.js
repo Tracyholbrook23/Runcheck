@@ -32,6 +32,7 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  RefreshControl,
   FlatList,
   ActivityIndicator,
   TouchableOpacity,
@@ -56,6 +57,7 @@ import { openDirections } from '../utils/openMapsDirections';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import * as Location from 'expo-location';
 import { isLocationGranted } from '../utils/locationUtils';
+import { hapticSuccess } from '../utils/haptics';
 import { useTheme } from '../contexts';
 
 const courtImage = require('../assets/images/court-bg.jpg');
@@ -229,6 +231,12 @@ export default function RunDetailsScreen({ route, navigation }) {
   const { gymId, gymName, imageUrl: paramImageUrl, plannedToday: paramPlannedToday, plannedTomorrow: paramPlannedTomorrow, players: paramPlayers } = route.params;
   const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 800);
+  }, []);
 
   // Subscribe to live Firestore data for this gym
   const { gym, loading: gymLoading } = useGym(gymId);
@@ -388,6 +396,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     const gymDisplayName = gym?.name || gymName;
     try {
       await joinExistingRun(run.id, gymId, gymDisplayName);
+      hapticSuccess();
       Alert.alert(
         'You\'re In!',
         `You\'ve joined the run at ${gymDisplayName}.`,
@@ -437,6 +446,7 @@ export default function RunDetailsScreen({ route, navigation }) {
         ? 'Nice follow-through! You earned a +5 bonus.'
         : 'Keep showing up to earn more points.';
 
+      hapticSuccess();
       Alert.alert(
         `Checked In! ${ptsLabel}`,
         `You're now checked in at ${gymDisplayName}. ${bonusNote}`,
@@ -1330,7 +1340,17 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView ref={scrollViewRef} style={styles.container}>
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
         {/* Hero image header with an absolute-positioned back button */}
         <View style={styles.heroContainer}>
           <Image
