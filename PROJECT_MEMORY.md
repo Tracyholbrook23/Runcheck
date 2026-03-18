@@ -437,7 +437,7 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 
 ## Known Issues / Risks
 - **Firestore rules live in the backend repo only** — `~/Desktop/runcheck-backend/firestore.rules` is the single source of truth. This frontend repo no longer contains `firestore.rules` or `firebase.json`. All rule changes must be made in the backend repo and deployed with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`.
-- GPS distance enforcement is commented out in both `usePresence.js` and `presenceService.js` — must be re-enabled before launch
+- ~~GPS distance enforcement is commented out~~ — **Resolved.** Re-enabled in both `usePresence.js` (client-side gate) and `presenceService.js` (service-layer gate). Both throw user-facing errors when distance exceeds `checkInRadiusMeters`.
 - Auto-expiry is client-side only; a Cloud Function is needed to expire presences server-side without deducting points
 - No composite Firestore index for `activity` collection query (`createdAt >= X, orderBy createdAt`) — may need manual index creation for scale
 - `gym.currentPresenceCount` is a stale denormalized counter — do NOT use it for display; always use `useLivePresenceMap` / `subscribeToGymPresences`. All screens now use the correct source (`PlanVisitScreen` was the last violation; fixed 2026-03-13)
@@ -722,3 +722,33 @@ cd ~/Desktop/runcheck-backend && firebase deploy --only functions:deleteAccount
 - `screens/ClaimUsernameScreen.js` — routes to onboarding or Main based on flag
 - `App.js` — registered 3 onboarding routes
 - `BACKEND_MEMORY.md` — documented new fields
+
+## Check-In UX + iOS Location Permission Fix (2026-03-18)
+
+### What was changed
+- **Check-in helper text** — Both CheckInScreen and RunDetailsScreen now tell users "You must be at the gym to check in" before they attempt to check in.
+- **Location permission CTA** — CheckInScreen shows a full "Enable Location" card, RunDetailsScreen shows a compact CTA row. Both only appear when foreground location permission is not granted. Both disappear once permission is granted.
+- **Permission request logic fixed** — `handleEnableLocation` now checks `canAskAgain` via `getForegroundPermissionsAsync()`. If undetermined: triggers the native iOS prompt. If permanently denied: opens device Settings. Previously it always called `requestForegroundPermissionsAsync()` which returned `denied` silently when the plist key was missing.
+- **iOS Info.plist fix** — Added `locationWhenInUsePermission` to the `expo-location` plugin in `app.json`. Without this, `NSLocationWhenInUseUsageDescription` was never injected into Info.plist, so iOS silently blocked all foreground location requests and the app never appeared in Settings > Location Services. **This was the root cause of the permission issue.**
+- **Expected check-in failures cleaned up** — "Too far away" errors now show a friendly "Too Far Away" alert with guidance copy. Permission denied errors now offer an "Enable Location" action in the alert. All expected failure logging downgraded from `console.error` to `console.warn` across `usePresence.js`, `presenceService.js`, `locationUtils.js`, and `RunDetailsScreen.js`.
+- **CityGateScreen removed** — Dead code. No navigation path reached it after onboarding was added. File deleted, import + route removed from App.js.
+- **Reliability hint in onboarding** — Added "Showing up builds your reputation — players trust reliable hoopers." to OnboardingFinishScreen's "You're All Set" state.
+- **Home court accent bar** — ViewRunsScreen home court card now uses a 3px left accent bar instead of a full orange border.
+- **Post-onboarding empty states** — ViewRunsScreen sorts home court first with "Your Home Court" badge. HomeScreen empty state shows a "Your Home Court" quick-action card and "Find a Gym" CTA.
+- **Gym image consistency** — OnboardingHomeCourtScreen now uses the same `GYM_LOCAL_IMAGES` → `imageUrl` → fallback pattern as all other screens.
+
+### Files changed
+- `app.json` — added `locationWhenInUsePermission` to expo-location plugin
+- `utils/locationUtils.js` — added `isLocationGranted()` helper, downgraded error logs to warn
+- `screens/CheckInScreen.js` — added location CTA card + permission state tracking + helper text
+- `screens/RunDetailsScreen.js` — added location CTA row + helper text + fixed check-in error alerts
+- `hooks/usePresence.js` — downgraded expected failure logs from error to warn
+- `services/presenceService.js` — downgraded "too far" log from error to warn
+- `screens/OnboardingFinishScreen.js` — added reliability hint text
+- `screens/ViewRunsScreen.js` — home court accent bar, sort logic, empty state improvements
+- `screens/HomeScreen.js` — home court quick-action card, "Find a Gym" CTA in empty state
+- `screens/OnboardingHomeCourtScreen.js` — added GYM_LOCAL_IMAGES for correct gym thumbnails, "Request gym" hint
+- `App.js` — removed CityGateScreen
+
+### Important: requires native rebuild
+The `app.json` change (adding `locationWhenInUsePermission`) only takes effect after `npx expo prebuild --clean` + a new EAS/Xcode build. The Info.plist must be regenerated.

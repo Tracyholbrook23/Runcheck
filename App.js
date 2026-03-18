@@ -8,8 +8,8 @@
  *     ├── Splash    → Animated intro screen
  *     ├── Login     → Email/password sign-in
  *     ├── Signup    → New account registration
- *     ├── CityGate  → One-time city availability gate (shown after signup)
- *     └── Main      → MainTabs (authenticated shell)
+ *     ├── Onboarding → Welcome → HomeCourt → Finish (first-time only)
+ *     └── Main       → MainTabs (authenticated shell)
  *
  *   MainTabs (bottom tab navigator):
  *     ├── Home      → HomeStack  (HomeScreen)
@@ -44,7 +44,6 @@ import ProfileScreen from './screens/ProfileScreen';
 import { ThemeProvider, useTheme } from './contexts';
 import SplashScreen from './screens/SplashScreen';
 import GymReviewsScreen from './screens/GymReviewsScreen';
-import CityGateScreen from './screens/CityGateScreen';
 import VerifyEmailScreen from './screens/VerifyEmailScreen';
 import ClaimUsernameScreen from './screens/ClaimUsernameScreen';
 import SettingsScreen from './screens/SettingsScreen';
@@ -279,7 +278,6 @@ function AppContent() {
         <Stack.Screen name="OnboardingWelcome" component={OnboardingWelcomeScreen} />
         <Stack.Screen name="OnboardingHomeCourt" component={OnboardingHomeCourtScreen} />
         <Stack.Screen name="OnboardingFinish" component={OnboardingFinishScreen} />
-        <Stack.Screen name="CityGate" component={CityGateScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>

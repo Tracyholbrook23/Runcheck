@@ -148,7 +148,13 @@ Zone assignments are based on file content, service dependencies, and the data m
 |------|------|
 | `screens/HomeScreen.js` | Main dashboard: hero section, Presence Card, Quick Actions, LIVE indicator, Live Runs scroll, Recent Activity feed |
 | `screens/SplashScreen.jsx` | Animated intro/loading screen |
-| `screens/CityGateScreen.js` | One-time post-signup city availability gate |
+| `screens/OnboardingWelcomeScreen.js` | First-time onboarding step 1: branded welcome |
+| `screens/OnboardingHomeCourtScreen.js` | First-time onboarding step 2: gym/home court picker |
+| `screens/OnboardingFinishScreen.js` | First-time onboarding step 3: location permission + finish |
+| `screens/VerifyEmailScreen.js` | Email verification gate (post-signup / post-login) |
+| `screens/ClaimUsernameScreen.js` | Username migration gate for existing users |
+| `screens/SettingsScreen.js` | Account settings: sign out, delete account, preferences |
+| `screens/SearchUsersScreen.js` | User search by username prefix (live suggestions) |
 | `screens/PremiumScreen.js` | Premium features screen |
 | `screens/LeaderboardScreen.js` | Community leaderboard |
 | `screens/CheckInScreen.js` | GPS check-in flow |
@@ -442,5 +448,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-17_
+_Last updated: 2026-03-18_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._
