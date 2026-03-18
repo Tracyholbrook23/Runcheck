@@ -143,7 +143,7 @@ export const usePresence = () => {
 
       // Client-side GPS distance gate (re-enabled for launch)
       if (distance > radius) {
-        if (__DEV__) console.error('[HOOK] Client-side validation FAILED - Too far from gym');
+        if (__DEV__) console.warn('[HOOK] Client-side: too far from gym');
         throw new Error(`You must be at the gym to check in. You are ${distance.toFixed(0)}m away (max ${radius}m).`);
       }
 
@@ -156,7 +156,7 @@ export const usePresence = () => {
       if (__DEV__) console.log('[HOOK] Check-in successful!');
       return result;
     } catch (err) {
-      if (__DEV__) console.error('[HOOK] Check-in failed:', err.message);
+      if (__DEV__) console.warn('[HOOK] Check-in failed:', err.message);
       setError(err.message);
       throw err;
     } finally {

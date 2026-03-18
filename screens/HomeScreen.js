@@ -49,7 +49,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip } from '../hooks';
+import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip, useProfile } from '../hooks';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
@@ -125,6 +125,13 @@ const HomeScreen = ({ navigation }) => {
   } = usePresence();
 
   const { gyms } = useGyms();
+  const { homeCourtId } = useProfile();
+
+  // Resolve home court gym object for quick-action card
+  const homeCourtGym = useMemo(() => {
+    if (!homeCourtId || !gyms.length) return null;
+    return gyms.find((g) => g.id === homeCourtId) || null;
+  }, [homeCourtId, gyms]);
 
   // Weekly winners — used for the 24-hour celebration card after each reset.
   const {
@@ -912,18 +919,43 @@ const HomeScreen = ({ navigation }) => {
 
           {totalActive === 0 ? (
             // Empty state — no real-time active presences anywhere
-            <BlurView intensity={40} tint="dark" style={styles.liveRunsEmpty}>
-              <Text style={styles.liveRunsEmptyText}>
-                No live runs right now — be the first to check in.
-              </Text>
-              <TouchableOpacity
-                style={styles.liveRunsEmptyButton}
-                onPress={() => goToTab('CheckIn')}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.liveRunsEmptyButtonText}>Check In</Text>
-              </TouchableOpacity>
-            </BlurView>
+            <View>
+              <BlurView intensity={40} tint="dark" style={styles.liveRunsEmpty}>
+                <Text style={styles.liveRunsEmptyText}>
+                  No live runs right now — be the first to check in.
+                </Text>
+                <TouchableOpacity
+                  style={styles.liveRunsEmptyButton}
+                  onPress={() => goToTab('Runs')}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.liveRunsEmptyButtonText}>Find a Gym</Text>
+                </TouchableOpacity>
+              </BlurView>
+
+              {/* Home court quick-action — shown when user has a home court */}
+              {homeCourtGym && (
+                <TouchableOpacity
+                  style={styles.homeCourtCard}
+                  activeOpacity={0.8}
+                  onPress={() =>
+                    navigation.navigate('Runs', {
+                      screen: 'RunDetails',
+                      params: { gymId: homeCourtGym.id, gymName: homeCourtGym.name },
+                    })
+                  }
+                >
+                  <View style={styles.homeCourtIcon}>
+                    <Ionicons name="home" size={18} color="#F97316" />
+                  </View>
+                  <View style={styles.homeCourtInfo}>
+                    <Text style={styles.homeCourtLabel}>Your Home Court</Text>
+                    <Text style={styles.homeCourtName} numberOfLines={1}>{homeCourtGym.name}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
           ) : (
             <ScrollView
               horizontal
@@ -1691,6 +1723,43 @@ actionCard: {
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
     color: 'rgba(255,255,255,0.7)',
+  },
+
+  // Home court quick-action card (shown in empty state)
+  homeCourtCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginTop: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(249,115,22,0.25)',
+  },
+  homeCourtIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(249,115,22,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: SPACING.sm,
+  },
+  homeCourtInfo: {
+    flex: 1,
+  },
+  homeCourtLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F97316',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginBottom: 2,
+  },
+  homeCourtName: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
   },
 
   // Live Runs card (replaces courtCard)

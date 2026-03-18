@@ -10,7 +10,7 @@
  *   3. Not Checked In — status message, "Find a Run" CTA, optional followed-gym shortcuts.
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -19,15 +19,18 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
 import { usePresence, useGyms, useProfile, useLivePresenceMap } from '../hooks';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { isLocationGranted } from '../utils/locationUtils';
 
 /**
  * GymThumbnail — Small rounded gym image, falling back to an icon.
@@ -80,6 +83,46 @@ export default function CheckInScreen({ navigation }) {
     checkingOut,
     getTimeRemaining,
   } = usePresence();
+
+  // ── Location permission state ─────────────────────────────────────────────
+  const [locationEnabled, setLocationEnabled] = useState(true); // optimistic default
+
+  const checkLocationStatus = useCallback(async () => {
+    const granted = await isLocationGranted();
+    setLocationEnabled(granted);
+  }, []);
+
+  useEffect(() => { checkLocationStatus(); }, [checkLocationStatus]);
+
+  const handleEnableLocation = async () => {
+    // First check the current status to decide whether to request or open Settings
+    const { status: currentStatus, canAskAgain } = await Location.getForegroundPermissionsAsync();
+
+    if (currentStatus === 'granted') {
+      setLocationEnabled(true);
+      return;
+    }
+
+    // If we can still ask (undetermined or soft-denied), show the native prompt
+    if (canAskAgain) {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        setLocationEnabled(true);
+      }
+      // If denied, do nothing — the CTA stays visible for next tap
+      return;
+    }
+
+    // Permission permanently denied — must go to Settings
+    Alert.alert(
+      'Location Permission',
+      'Location was previously denied. Please enable it in Settings for RunCheck.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+      ],
+    );
+  };
 
   // Hide the default stack header — this screen uses its own layout
   useEffect(() => {
@@ -238,10 +281,26 @@ export default function CheckInScreen({ navigation }) {
 
           <Text style={styles.notCheckedTitle}>Not Checked In</Text>
           <Text style={styles.notCheckedSubtitle}>
-            You're not checked into a gym right now. Find a run and tap{' '}
+            You must be at the gym to check in. Find a run and tap{' '}
             <Text style={styles.emphasis}>Check In Here</Text>
-            {' '}to join.
+            {' '}when you arrive.
           </Text>
+
+          {/* Location permission CTA — shown when location is not granted */}
+          {!locationEnabled && (
+            <TouchableOpacity style={styles.locationCard} activeOpacity={0.8} onPress={handleEnableLocation}>
+              <View style={styles.locationCardIcon}>
+                <Ionicons name="location" size={20} color="#F97316" />
+              </View>
+              <View style={styles.locationCardContent}>
+                <Text style={styles.locationCardTitle}>Enable Location</Text>
+                <Text style={styles.locationCardSubtitle}>
+                  Required for check-in. Also enables automatic check-out.
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
 
           {/* Primary CTA */}
           <TouchableOpacity
@@ -412,6 +471,42 @@ const getStyles = (colors, isDark) =>
     emphasis: {
       fontWeight: FONT_WEIGHTS.semibold,
       color: colors.primary,
+    },
+
+    // ── Location CTA card ────────────────────────────────
+    locationCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
+      padding: SPACING.md,
+      marginBottom: SPACING.lg,
+      width: '100%',
+      borderWidth: 1,
+      borderColor: 'rgba(249,115,22,0.25)',
+    },
+    locationCardIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: 'rgba(249,115,22,0.12)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: SPACING.sm,
+    },
+    locationCardContent: {
+      flex: 1,
+    },
+    locationCardTitle: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textPrimary,
+      marginBottom: 2,
+    },
+    locationCardSubtitle: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textMuted,
+      lineHeight: 16,
     },
 
     // ── Shared buttons ────────────────────────────────────

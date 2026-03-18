@@ -18,6 +18,18 @@ const DEV_LOCATION = {
 const isDevGps = () => process.env.EXPO_PUBLIC_DEV_SKIP_GPS === 'true';
 
 /**
+ * Check if foreground location permission is currently granted
+ * without prompting the user.
+ *
+ * @returns {Promise<boolean>} true if granted
+ */
+export const isLocationGranted = async () => {
+  if (isDevGps()) return true;
+  const { status } = await Location.getForegroundPermissionsAsync();
+  return status === 'granted';
+};
+
+/**
  * Request foreground location permission
  *
  * @returns {Promise<boolean>} true if granted
@@ -49,7 +61,7 @@ export const getCurrentLocation = async () => {
   const granted = await requestLocationPermission();
 
   if (!granted) {
-    if (__DEV__) console.error('[GPS] Location permission denied');
+    if (__DEV__) console.warn('[GPS] Location permission not granted');
     throw new Error('Location permission denied. Please enable location services in your device settings.');
   }
 
@@ -67,7 +79,7 @@ export const getCurrentLocation = async () => {
 
     return userLocation;
   } catch (err) {
-    if (__DEV__) console.error('[GPS] Failed to get location:', err.message);
+    if (__DEV__) console.warn('[GPS] Failed to get location:', err.message);
     throw new Error('Unable to retrieve your location. Please check that GPS is enabled and try again.');
   }
 };

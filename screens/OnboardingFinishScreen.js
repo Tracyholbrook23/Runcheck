@@ -80,6 +80,9 @@ export default function OnboardingFinishScreen({ navigation }) {
           <Text style={styles.subtext}>
             Find a gym, jump into a run, and start hooping.
           </Text>
+          <Text style={styles.reliabilityHint}>
+            Showing up builds your reputation — players trust reliable hoopers.
+          </Text>
           <View style={styles.buttonArea}>
             <Button
               title="Find a Run"
@@ -166,6 +169,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     paddingHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+  },
+  reliabilityHint: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.40)',
+    textAlign: 'center',
+    lineHeight: 18,
+    paddingHorizontal: SPACING.xl,
     marginBottom: SPACING.xl,
   },
   buttonArea: {

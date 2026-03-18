@@ -26,7 +26,7 @@
  *   - Falls back to param values if Firestore data hasn't arrived yet.
  */
 
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,7 @@ import {
   Keyboard,
   Platform,
   Alert,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as VideoThumbnails from 'expo-video-thumbnails';
@@ -52,6 +53,8 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { PresenceList, Logo, ReportModal } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import * as Location from 'expo-location';
+import { isLocationGranted } from '../utils/locationUtils';
 import { useTheme } from '../contexts';
 
 const courtImage = require('../assets/images/court-bg.jpg');
@@ -255,6 +258,42 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Compared by gymId so a user checked into a different gym still sees "Check In Here".
   const isCheckedInHere = !!presence && presence.gymId === gymId;
 
+  // ── Location permission state ─────────────────────────────────────────────
+  const [locationEnabled, setLocationEnabled] = useState(true);
+
+  const checkLocationStatus = useCallback(async () => {
+    const granted = await isLocationGranted();
+    setLocationEnabled(granted);
+  }, []);
+
+  useEffect(() => { checkLocationStatus(); }, [checkLocationStatus]);
+
+  const handleEnableLocation = async () => {
+    const { status: currentStatus, canAskAgain } = await Location.getForegroundPermissionsAsync();
+
+    if (currentStatus === 'granted') {
+      setLocationEnabled(true);
+      return;
+    }
+
+    if (canAskAgain) {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        setLocationEnabled(true);
+      }
+      return;
+    }
+
+    Alert.alert(
+      'Location Permission',
+      'Location was previously denied. Please enable it in Settings for RunCheck.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+      ],
+    );
+  };
+
   // ── Runs ──────────────────────────────────────────────────────────────────
   // Real-time runs at this gym and the current user's participation state.
   const { runs, joinedRunIds } = useGymRuns(gymId);
@@ -402,19 +441,34 @@ export default function RunDetailsScreen({ route, navigation }) {
         [{ text: 'OK' }]
       );
     } catch (error) {
-      if (__DEV__) console.error('[RunDetails] Check-in error:', error);
-      if (error.message?.includes('permission denied')) {
+      // Expected check-in failures (too far, no permission) are normal UX —
+      // log at warn level, not error, to avoid noisy dev output.
+      if (__DEV__) console.warn('[RunDetails] Check-in:', error.message);
+
+      const msg = error.message || '';
+
+      if (msg.includes('must be at the gym') || msg.includes('away')) {
+        // Distance failure — expected UX case
+        Alert.alert(
+          'Too Far Away',
+          'You need to be at the gym to check in. Head over and try again when you arrive.',
+        );
+      } else if (msg.includes('permission denied') || msg.includes('Permission denied')) {
         Alert.alert(
           'Location Required',
-          'Please enable location services to check in. We use your location to verify you are at the gym.'
+          'RunCheck needs your location to verify you are at the gym.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Enable Location', onPress: handleEnableLocation },
+          ],
         );
-      } else if (error.message?.includes('Unable to retrieve')) {
+      } else if (msg.includes('Unable to retrieve') || msg.includes('GPS')) {
         Alert.alert(
           'GPS Unavailable',
-          'Could not get your location. Please check that GPS is enabled and try again.'
+          'Could not get your location. Please check that GPS is enabled and try again.',
         );
       } else {
-        Alert.alert('Check-in Failed', error.message || 'Please try again.');
+        Alert.alert('Check-in Failed', msg || 'Please try again.');
       }
     }
   };
@@ -1393,6 +1447,22 @@ export default function RunDetailsScreen({ route, navigation }) {
               <Text style={styles.checkInButtonText}>Check In Here</Text>
             )}
           </TouchableOpacity>
+
+          {/* Check-in helper text */}
+          {!isCheckedInHere && (
+            <Text style={styles.checkInHelper}>
+              You must be at the gym to check in.
+            </Text>
+          )}
+
+          {/* Location permission CTA — shown when not granted and not already checked in */}
+          {!locationEnabled && !isCheckedInHere && (
+            <TouchableOpacity style={styles.locationCTA} activeOpacity={0.8} onPress={handleEnableLocation}>
+              <Ionicons name="location" size={16} color="#F97316" />
+              <Text style={styles.locationCTAText}>Enable location for check-in</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
 
           {/* Location block — address, directions, type, and notes grouped together */}
           <View style={styles.locationBlock}>
@@ -2938,6 +3008,31 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: '#fff',
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  checkInHelper: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.xs,
+  },
+  locationCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.sm,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.sm,
+    backgroundColor: 'rgba(249,115,22,0.08)',
+  },
+  locationCTAText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: '#F97316',
+    flex: 1,
   },
   planButton: {
     backgroundColor: 'transparent',

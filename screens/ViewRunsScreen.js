@@ -56,7 +56,7 @@ import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
  */
 export default function ViewRunsScreen({ navigation }) {
   const { gyms, loading } = useGyms();
-  const { followedGyms } = useProfile();
+  const { followedGyms, homeCourtId } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { colors, isDark } = useTheme();
@@ -177,13 +177,27 @@ export default function ViewRunsScreen({ navigation }) {
    */
   const filteredGyms = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return gyms;
-    return gyms.filter((gym) => {
-      const name    = gym.name?.toLowerCase()    ?? '';
-      const address = gym.address?.toLowerCase() ?? '';
-      return name.includes(q) || address.includes(q);
-    });
-  }, [gyms, searchQuery]);
+    let result = gyms;
+    if (q) {
+      result = gyms.filter((gym) => {
+        const name    = gym.name?.toLowerCase()    ?? '';
+        const address = gym.address?.toLowerCase() ?? '';
+        return name.includes(q) || address.includes(q);
+      });
+    }
+    // Sort: home court first, then active gyms, then the rest
+    if (homeCourtId) {
+      result = [...result].sort((a, b) => {
+        if (a.id === homeCourtId) return -1;
+        if (b.id === homeCourtId) return 1;
+        // Secondary sort: active gyms above empty gyms
+        const aCount = liveCountMap[a.id] ?? 0;
+        const bCount = liveCountMap[b.id] ?? 0;
+        return bCount - aCount;
+      });
+    }
+    return result;
+  }, [gyms, searchQuery, homeCourtId, liveCountMap]);
 
   if (loading) {
     return (
@@ -249,13 +263,15 @@ export default function ViewRunsScreen({ navigation }) {
             <View style={styles.emptyState}>
               {searchQuery.trim().length > 0 ? (
                 <>
+                  <Ionicons name="search-outline" size={28} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
                   <Text style={styles.emptyText}>No gyms found</Text>
                   <Text style={styles.emptySubtext}>Try another gym name or area</Text>
                 </>
               ) : (
                 <>
-                  <Text style={styles.emptyText}>No gyms available</Text>
-                  <Text style={styles.emptySubtext}>Pull down to refresh</Text>
+                  <Ionicons name="basketball-outline" size={28} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
+                  <Text style={styles.emptyText}>No gyms available yet</Text>
+                  <Text style={styles.emptySubtext}>We're adding courts in your area — check back soon!</Text>
                 </>
               )}
             </View>
@@ -267,11 +283,12 @@ export default function ViewRunsScreen({ navigation }) {
               const runStatus = getRunStatusLabel(count);
 
               const isFollowed = followedGyms.includes(gym.id);
+              const isHomeCourt = homeCourtId === gym.id;
 
               return (
                 <TouchableOpacity
                   key={gym.id}
-                  style={styles.gymCard}
+                  style={[styles.gymCard, isHomeCourt && styles.homeCourtCard]}
                   onPress={() =>
                     // Pass all display data as route params so RunDetailsScreen
                     // can render immediately without an extra Firestore read
@@ -285,6 +302,9 @@ export default function ViewRunsScreen({ navigation }) {
                     })
                   }
                 >
+                  {/* Left accent bar for home court */}
+                  {isHomeCourt && <View style={styles.homeCourtAccent} />}
+
                   <Image
                     source={
                       GYM_LOCAL_IMAGES[gym.id]
@@ -297,6 +317,12 @@ export default function ViewRunsScreen({ navigation }) {
                   />
 
                   <View style={styles.gymInfo}>
+                    {isHomeCourt && (
+                      <View style={styles.homeCourtBadge}>
+                        <Ionicons name="home" size={10} color="#F97316" />
+                        <Text style={styles.homeCourtBadgeText}>Your Home Court</Text>
+                      </View>
+                    )}
                     <View style={styles.gymRow}>
                       <Text style={[styles.gymName, { flex: 1 }]} numberOfLines={2}>{gym.name}</Text>
                       {/* Activity badge — color dynamically set by getActivityLevel */}
@@ -496,6 +522,26 @@ loadingText: {
   ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
   ...(isDark && SHADOWS.lg),
 },
+  homeCourtCard: {
+    // No border — accent bar handles the visual cue
+  },
+  homeCourtAccent: {
+    width: 3,
+    backgroundColor: '#F97316',
+  },
+  homeCourtBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  homeCourtBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#F97316',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
   thumbnail: {
   width: 100,
   height: 100,

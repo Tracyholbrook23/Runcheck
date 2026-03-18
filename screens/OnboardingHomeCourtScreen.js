@@ -21,6 +21,7 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Button } from '../components';
 import { useGyms } from '../hooks';
+import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { auth, db } from '../config/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 
@@ -60,8 +61,15 @@ export default function OnboardingHomeCourtScreen({ navigation }) {
         activeOpacity={0.7}
         onPress={() => setSelectedGymId(selected ? null : item.id)}
       >
-        {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={styles.gymThumb} />
+        {GYM_LOCAL_IMAGES[item.id] || item.imageUrl ? (
+          <Image
+            source={
+              GYM_LOCAL_IMAGES[item.id]
+                ? GYM_LOCAL_IMAGES[item.id]
+                : { uri: item.imageUrl }
+            }
+            style={styles.gymThumb}
+          />
         ) : (
           <View style={[styles.gymThumb, styles.gymThumbFallback]}>
             <Ionicons name="basketball-outline" size={20} color={colors.textMuted} />
@@ -100,6 +108,14 @@ export default function OnboardingHomeCourtScreen({ navigation }) {
           renderItem={renderGym}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          ListFooterComponent={
+            <View style={styles.listFooter}>
+              <Ionicons name="add-circle-outline" size={14} color={colors.textMuted} />
+              <Text style={styles.listFooterText}>
+                Don't see your gym? You can request it once you're in the app.
+              </Text>
+            </View>
+          }
         />
       )}
 
@@ -182,6 +198,19 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.textMuted,
     marginTop: 2,
+  },
+  listFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+  },
+  listFooterText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    lineHeight: 18,
   },
   footer: {
     paddingHorizontal: SPACING.lg,

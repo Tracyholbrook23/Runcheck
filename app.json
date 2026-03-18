@@ -49,6 +49,7 @@
       [
         "expo-location",
         {
+          "locationWhenInUsePermission": "RunCheck uses your location to verify check-ins at gyms near you.",
           "locationAlwaysAndWhenInUsePermission": "Allow RunCheck to use your location to check in at nearby gyms."
         }
       ],

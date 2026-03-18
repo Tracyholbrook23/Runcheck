@@ -215,7 +215,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
 
     // Service-layer GPS distance gate (re-enabled for launch)
     if (distanceFromGym > checkInRadius) {
-      if (__DEV__) console.error('[CHECK-IN] TOO FAR! Distance:', distanceFromGym.toFixed(2), 'm > Radius:', checkInRadius, 'm');
+      if (__DEV__) console.warn('[CHECK-IN] Too far:', distanceFromGym.toFixed(0), 'm > max:', checkInRadius, 'm');
       throw new Error(
         `You must be at the gym to check in. You are ${distanceFromGym.toFixed(0)}m away (max ${checkInRadius}m).`
       );
