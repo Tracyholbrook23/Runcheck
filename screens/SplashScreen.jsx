@@ -39,7 +39,7 @@ const logo = require('../assets/logo/runcheck-logo-transparent.png');
  * @returns {JSX.Element}
  */
 export default function SplashScreen({ navigation }) {
-  const { user, loading, emailVerified, hasUsername, profileLoading } = useAuth();
+  const { user, loading, emailVerified, hasUsername, onboardingCompleted, profileLoading } = useAuth();
   const [minTimePassed, setMinTimePassed] = useState(false);
   const hasNavigated = useRef(false);
 
@@ -103,10 +103,12 @@ export default function SplashScreen({ navigation }) {
       navigation.replace('VerifyEmail');
     } else if (!hasUsername) {
       navigation.replace('ClaimUsername');
+    } else if (!onboardingCompleted) {
+      navigation.replace('OnboardingWelcome');
     } else {
       navigation.replace('Main');
     }
-  }, [loading, profileLoading, minTimePassed, user, emailVerified, hasUsername]);
+  }, [loading, profileLoading, minTimePassed, user, emailVerified, hasUsername, onboardingCompleted]);
 
   return (
     <View style={styles.container}>

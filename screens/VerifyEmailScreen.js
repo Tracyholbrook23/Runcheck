@@ -99,6 +99,8 @@ export default function VerifyEmailScreen({ navigation }) {
           const data = userDoc.data();
           if (!data?.username) {
             navigation.replace('ClaimUsername');
+          } else if (!data?.onboardingCompleted) {
+            navigation.replace('OnboardingWelcome');
           } else {
             navigation.replace('Main');
           }

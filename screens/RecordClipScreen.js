@@ -6,9 +6,9 @@
  *   - Back/X button to exit
  *   - Camera flip button (header right + bottom right)
  *   - Library shortcut (bottom left) — opens ImagePicker, validates, navigates to preview
- *   - Hold-to-record button with progress bar
+ *   - Hold-to-record button with circular progress ring
+ *   - Slide-to-zoom: drag finger up/down while holding record to zoom
  *   - Double-tap anywhere on the camera preview to flip
- *   - Pinch-to-zoom via native CameraView support
  *   - Elapsed timer and countdown while recording
  *   - Max record length: 30 seconds
  *
@@ -23,13 +23,13 @@
  *                                   per-session clip deduplication
  */
 
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Pressable,
+  PanResponder,
   Alert,
   ActivityIndicator,
   Animated,
@@ -37,8 +37,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import { PinchGestureHandler, State } from 'react-native-gesture-handler';
+import Svg, { Circle } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
+
 // Maximum recording duration for in-app capture
 const MAX_DURATION_SEC = 30;
 
@@ -51,6 +52,18 @@ const formatTime = (sec) => {
 
 // Maximum clip length enforced on library uploads
 const MAX_LIBRARY_DURATION_SEC = 30;
+
+// ── Progress ring constants ──────────────────────────────────────────────────
+const RING_SIZE = 96;            // Outer diameter of the progress ring
+const RING_STROKE = 4;           // Ring stroke width
+const RING_RADIUS = (RING_SIZE - RING_STROKE) / 2;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+// ── Slide-to-zoom constants ──────────────────────────────────────────────────
+// Dragging 200pt upward goes from 0 → 1 zoom
+const ZOOM_SENSITIVITY = 200;
+
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
 export default function RecordClipScreen({ route, navigation }) {
   const { gymId, presenceId, gymName } = route.params ?? {};
@@ -73,35 +86,35 @@ export default function RecordClipScreen({ route, navigation }) {
 
   // Guard against duplicate start/stop from rapid press events
   const recordingLockRef = useRef(false);
+  // Track recording state in a ref so PanResponder callbacks read fresh value
+  const isRecordingRef = useRef(false);
 
   // ── Recording pulse animation (pulsing REC dot) ─────────────────────────
   const recPulse = useRef(new Animated.Value(1)).current;
 
-  // ── Pinch-to-zoom ────────────────────────────────────────────────────────
-  const zoomAtPinchStart = useRef(0);
+  // ── Progress ring animation ─────────────────────────────────────────────
+  const ringProgress = useRef(new Animated.Value(0)).current;
+  const ringAnimRef = useRef(null);
 
-  const onPinchGestureEvent = useCallback((event) => {
-    // scale: 1 = no change, >1 = zoom in, <1 = zoom out
-    // Map scale to a zoom delta: (scale - 1) * 0.5 gives smooth feel
-    const delta = (event.nativeEvent.scale - 1) * 0.5;
-    const newZoom = Math.min(1, Math.max(0, zoomAtPinchStart.current + delta));
-    setZoom(newZoom);
-  }, []);
-
-  const onPinchHandlerStateChange = useCallback((event) => {
-    if (event.nativeEvent.state === State.BEGAN) {
-      zoomAtPinchStart.current = zoom;
-    }
-  }, [zoom]);
+  // ── Slide-to-zoom refs ─────────────────────────────────────────────────
+  const zoomAtDragStart = useRef(0);
+  const zoomRef = useRef(0); // mirror of zoom state for PanResponder
 
   // ── Double-tap tracking ───────────────────────────────────────────────────
   const lastTapRef = useRef(0);
+
+  // Keep zoomRef in sync
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
+
+  // Keep isRecordingRef in sync
+  useEffect(() => { isRecordingRef.current = isRecording; }, [isRecording]);
 
   // Clean up timers on unmount so nothing fires after the component is gone
   useEffect(() => {
     return () => {
       clearTimeout(autoStopTimerRef.current);
       clearInterval(countdownIntervalRef.current);
+      if (ringAnimRef.current) ringAnimRef.current.stop();
     };
   }, []);
 
@@ -129,17 +142,15 @@ export default function RecordClipScreen({ route, navigation }) {
 
   // ── Flip camera ───────────────────────────────────────────────────────────
   const flipCamera = useCallback(() => {
-    if (isRecording) return; // never flip mid-recording
+    if (isRecording) return;
     setFacing((f) => (f === 'back' ? 'front' : 'back'));
-    setZoom(0); // reset zoom on flip
+    setZoom(0);
   }, [isRecording]);
 
   // ── Double-tap on camera preview → flip ──────────────────────────────────
-  // Two taps within 300 ms on the middle tap zone triggers a flip.
   const handleDoubleTap = useCallback(() => {
     const now = Date.now();
     if (now - lastTapRef.current < 300) {
-      // Second tap within window → double-tap
       flipCamera();
       lastTapRef.current = 0;
     } else {
@@ -148,9 +159,6 @@ export default function RecordClipScreen({ route, navigation }) {
   }, [flipCamera]);
 
   // ── Navigate to PreviewPost after a video is ready ────────────────────────
-  // No clip session is created here. Session creation is deferred to the
-  // moment the user taps Post Clip in TrimClipScreen so that backing out of
-  // the preview screen never consumes a session slot.
   const goToPreviewPost = useCallback(
     (recordedUri) => {
       navigation.navigate('TrimClipScreen', {
@@ -171,7 +179,16 @@ export default function RecordClipScreen({ route, navigation }) {
     setIsRecording(true);
     setElapsedSec(0);
 
-    // Tick elapsed time every second for the progress bar + countdown display
+    // Start the progress ring animation (0 → 1 over MAX_DURATION_SEC)
+    ringProgress.setValue(0);
+    ringAnimRef.current = Animated.timing(ringProgress, {
+      toValue: 1,
+      duration: MAX_DURATION_SEC * 1000,
+      useNativeDriver: false, // strokeDashoffset can't use native driver
+    });
+    ringAnimRef.current.start();
+
+    // Tick elapsed time every second
     countdownIntervalRef.current = setInterval(() => {
       setElapsedSec((prev) => {
         const next = prev + 1;
@@ -183,7 +200,7 @@ export default function RecordClipScreen({ route, navigation }) {
       });
     }, 1000);
 
-    // Auto-stop after MAX_DURATION_SEC so the recordAsync promise resolves
+    // Auto-stop after MAX_DURATION_SEC
     autoStopTimerRef.current = setTimeout(() => {
       cameraRef.current?.stopRecording();
     }, MAX_DURATION_SEC * 1000);
@@ -194,6 +211,7 @@ export default function RecordClipScreen({ route, navigation }) {
       });
 
       clearTimers();
+      if (ringAnimRef.current) ringAnimRef.current.stop();
       setIsRecording(false);
       recordingLockRef.current = false;
 
@@ -203,14 +221,12 @@ export default function RecordClipScreen({ route, navigation }) {
         return;
       }
 
-      // Navigate directly to the preview screen — no session is reserved yet.
-      // createClipSession is called only when the user taps Post Clip.
       goToPreviewPost(recordedUri);
     } catch (err) {
       clearTimers();
+      if (ringAnimRef.current) ringAnimRef.current.stop();
       setIsRecording(false);
       recordingLockRef.current = false;
-      // Suppress expected cancellation errors (user navigated away mid-recording)
       if (err?.message?.includes('cancelled') || err?.message?.includes('unmounted')) return;
       if (__DEV__) console.warn('recordAsync error:', err);
       Alert.alert('Error', 'Recording failed. Please try again.');
@@ -219,22 +235,43 @@ export default function RecordClipScreen({ route, navigation }) {
 
   // ── Stop recording (called on press-out / release) ──────────────────────
   const stopRecording = useCallback(() => {
-    if (!isRecording) return;
+    if (!isRecordingRef.current) return;
     clearTimers();
-    // stopRecording() resolves recordAsync() in startRecording — all post-stop
-    // logic (session creation, navigation) runs there, not here.
+    if (ringAnimRef.current) ringAnimRef.current.stop();
     cameraRef.current?.stopRecording();
-  }, [isRecording]);
+  }, []);
+
+  // ── PanResponder for record button (hold + slide-to-zoom) ────────────────
+  // Uses refs to avoid stale closures in PanResponder callbacks.
+  const recordPanRef = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+
+      onPanResponderGrant: () => {
+        // Capture zoom at drag start for delta calculation
+        zoomAtDragStart.current = zoomRef.current;
+      },
+
+      onPanResponderMove: (_, gesture) => {
+        if (!isRecordingRef.current) return;
+        // Negative dy = finger moving up = zoom in
+        const delta = -gesture.dy / ZOOM_SENSITIVITY;
+        const newZoom = Math.min(1, Math.max(0, zoomAtDragStart.current + delta));
+        setZoom(newZoom);
+      },
+
+      // Release is handled by the View's onTouchEnd → stopRecording
+      onPanResponderRelease: () => {},
+      onPanResponderTerminate: () => {},
+    }),
+  ).current;
 
   // ── Pick from library ─────────────────────────────────────────────────────
-  // Shortcut available within the recorder so the user doesn't have to go back
-  // to the bottom sheet. Validates duration, reserves a session, then navigates
-  // to PreviewPost — same flow as RecordClipScreen but without recording.
   const pickFromLibrary = useCallback(async () => {
     if (isRecording) return;
 
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    // 'limited' = iOS 14+ partial access — the picker still works
     if (status !== 'granted' && status !== 'limited') {
       Alert.alert(
         'Permission required',
@@ -259,7 +296,6 @@ export default function RecordClipScreen({ route, navigation }) {
     const asset = pickerResult.assets?.[0];
     if (!asset?.uri) return;
 
-    // Duration is in milliseconds from expo-image-picker
     if (asset.duration != null && asset.duration / 1000 > MAX_LIBRARY_DURATION_SEC) {
       Alert.alert(
         'Clip too long',
@@ -268,8 +304,6 @@ export default function RecordClipScreen({ route, navigation }) {
       return;
     }
 
-    // Validation passed — navigate to preview. No session is reserved yet.
-    // createClipSession is called only when the user taps Post Clip.
     goToPreviewPost(asset.uri);
   }, [isRecording, gymId, presenceId, goToPreviewPost]);
 
@@ -306,7 +340,11 @@ export default function RecordClipScreen({ route, navigation }) {
   }
 
   // ── Derived UI values ─────────────────────────────────────────────────────
-  const progressFraction = Math.min(elapsedSec / MAX_DURATION_SEC, 1);
+  // Ring stroke dashoffset — animated from full circumference (0%) to 0 (100%)
+  const strokeDashoffset = ringProgress.interpolate({
+    inputRange: [0, 1],
+    outputRange: [RING_CIRCUMFERENCE, 0],
+  });
 
   return (
     <View style={styles.container}>
@@ -324,7 +362,6 @@ export default function RecordClipScreen({ route, navigation }) {
 
         {/* ── Header row: [X] [gym name + REC badge] [flip] ── */}
         <View style={styles.header} pointerEvents="auto">
-          {/* Close / back button */}
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={() => navigation.goBack()}
@@ -338,7 +375,6 @@ export default function RecordClipScreen({ route, navigation }) {
             />
           </TouchableOpacity>
 
-          {/* Center: gym name + REC badge */}
           <View style={styles.headerCenter}>
             {gymName ? (
               <Text style={styles.gymNameLabel} numberOfLines={1}>{gymName}</Text>
@@ -351,7 +387,6 @@ export default function RecordClipScreen({ route, navigation }) {
             )}
           </View>
 
-          {/* Flip button */}
           <TouchableOpacity
             style={styles.headerBtn}
             onPress={flipCamera}
@@ -366,56 +401,37 @@ export default function RecordClipScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* ── Middle tap zone — captures double-tap + pinch-to-zoom ── */}
-        <PinchGestureHandler
-          onGestureEvent={onPinchGestureEvent}
-          onHandlerStateChange={onPinchHandlerStateChange}
+        {/* ── Middle tap zone — double-tap to flip ── */}
+        <TouchableOpacity
+          style={styles.tapZone}
+          activeOpacity={1}
+          onPress={handleDoubleTap}
+          pointerEvents="auto"
         >
-          <View style={styles.tapZone} pointerEvents="auto">
-            <TouchableOpacity
-              style={StyleSheet.absoluteFill}
-              activeOpacity={1}
-              onPress={handleDoubleTap}
-            >
-              <View style={styles.tapZoneInner}>
-                {/* Double-tap hint (idle) / Elapsed timer (recording) */}
-                {isRecording ? (
-                  <View style={styles.elapsedTimerWrap} pointerEvents="none">
-                    <Text style={styles.elapsedTimer}>{formatTime(elapsedSec)}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.doubleTapHintWrap} pointerEvents="none">
-                    <Text style={styles.doubleTapHint}>Double-tap to flip · Pinch to zoom</Text>
-                  </View>
-                )}
+          <View style={styles.tapZoneInner}>
+            {isRecording ? (
+              <View style={styles.elapsedTimerWrap} pointerEvents="none">
+                <Text style={styles.elapsedTimer}>{formatTime(elapsedSec)}</Text>
               </View>
-            </TouchableOpacity>
+            ) : (
+              <View style={styles.doubleTapHintWrap} pointerEvents="none">
+                <Text style={styles.doubleTapHint}>Double-tap to flip</Text>
+              </View>
+            )}
           </View>
-        </PinchGestureHandler>
+        </TouchableOpacity>
 
-        {/* ── Bottom area: progress bar + hint + controls ── */}
+        {/* ── Bottom area: hint + controls ── */}
         <View style={styles.bottomArea} pointerEvents="auto">
-
-          {/* Recording progress bar (full-width, visible while recording) */}
-          {isRecording && (
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${progressFraction * 100}%` },
-                ]}
-              />
-            </View>
-          )}
 
           {/* Hint text */}
           <Text style={styles.hintText}>
             {isRecording
-              ? 'Release to stop'
-              : 'Hold to record · up to 30 seconds'}
+              ? 'Slide up to zoom · Release to stop'
+              : 'Hold to record · Slide up to zoom'}
           </Text>
 
-          {/* Controls row: [library] [record] [flip] */}
+          {/* Controls row: [library] [record+ring] [flip] */}
           <View style={styles.controlsRow}>
 
             {/* Library shortcut */}
@@ -438,21 +454,50 @@ export default function RecordClipScreen({ route, navigation }) {
               </Text>
             </TouchableOpacity>
 
-            {/* Record button — hold to record, release to stop */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.recordBtn,
-                isRecording && styles.recordBtnActive,
-                pressed && !isRecording && styles.recordBtnPressed,
-              ]}
-              onPressIn={startRecording}
-              onPressOut={stopRecording}
+            {/* Record button with progress ring + slide-to-zoom */}
+            <View
+              style={styles.recordBtnWrap}
+              onTouchStart={() => { if (!isRecording && !recordingLockRef.current) startRecording(); }}
+              onTouchEnd={() => { stopRecording(); }}
+              {...recordPanRef.panHandlers}
             >
-              {isRecording
-                ? <View style={styles.stopIcon} />
-                : <View style={styles.recordIcon} />
-              }
-            </Pressable>
+              {/* SVG progress ring */}
+              <Svg width={RING_SIZE} height={RING_SIZE} style={styles.ringOverlay}>
+                {/* Background track */}
+                <Circle
+                  cx={RING_SIZE / 2}
+                  cy={RING_SIZE / 2}
+                  r={RING_RADIUS}
+                  stroke="rgba(255,255,255,0.2)"
+                  strokeWidth={RING_STROKE}
+                  fill="transparent"
+                />
+                {/* Animated progress arc */}
+                {isRecording && (
+                  <AnimatedCircle
+                    cx={RING_SIZE / 2}
+                    cy={RING_SIZE / 2}
+                    r={RING_RADIUS}
+                    stroke="#EF4444"
+                    strokeWidth={RING_STROKE}
+                    fill="transparent"
+                    strokeDasharray={RING_CIRCUMFERENCE}
+                    strokeDashoffset={strokeDashoffset}
+                    strokeLinecap="round"
+                    rotation="-90"
+                    origin={`${RING_SIZE / 2}, ${RING_SIZE / 2}`}
+                  />
+                )}
+              </Svg>
+
+              {/* Inner button (centered inside the ring) */}
+              <View style={[styles.recordBtnInner, isRecording && styles.recordBtnInnerActive]}>
+                {isRecording
+                  ? <View style={styles.stopIcon} />
+                  : <View style={styles.recordIcon} />
+                }
+              </View>
+            </View>
 
             {/* Flip shortcut (bottom) */}
             <TouchableOpacity
@@ -604,7 +649,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
 
-  // ── Middle tap zone (double-tap to flip + pinch to zoom) ──────────────────
+  // ── Middle tap zone (double-tap to flip) ──────────────────────────────────
   tapZone: {
     flex: 1,
   },
@@ -646,21 +691,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Progress bar shown while recording
-  progressTrack: {
-    width: '100%',
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-    backgroundColor: '#EF4444',
-  },
-
   hintText: {
     color: 'rgba(255,255,255,0.8)',
     fontSize: 13,
@@ -694,41 +724,42 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
 
-  // Record / Stop button
-  recordBtn: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 4,
+  // Record button wrapper — holds the SVG ring + inner button
+  recordBtnWrap: {
+    width: RING_SIZE,
+    height: RING_SIZE,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  ringOverlay: {
+    position: 'absolute',
+  },
+  // Inner button circle (sits inside the ring)
+  recordBtnInner: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    borderWidth: 3,
     borderColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'transparent',
-    // Subtle shadow so it pops off the camera preview
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 6,
   },
-  recordBtnActive: {
-    borderColor: '#EF4444',
-  },
-  recordBtnPressed: {
-    transform: [{ scale: 0.92 }],
+  recordBtnInnerActive: {
+    borderColor: 'rgba(255,255,255,0.4)',
   },
   // Red filled circle = idle (hold to start)
   recordIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#EF4444',
   },
   // White rounded square = recording (release to stop)
   stopIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 5,
     backgroundColor: '#fff',
   },
 

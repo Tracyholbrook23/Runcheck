@@ -690,3 +690,35 @@ cd ~/Desktop/runcheck-backend && firebase deploy --only functions:deleteAccount
 - Minimum 2 characters to trigger search
 - Max 20 results per query
 - Requires Firestore index on `usernameLower ASC` (auto-created by first query or add to `firestore.indexes.json`)
+
+## First-Time Onboarding (2026-03-18)
+
+### What was added
+- **3-step onboarding flow** for first-time users: Welcome → Pick Home Court → Location Permission + Finish
+- **OnboardingWelcomeScreen** — branded welcome with "Find runs. Show up. Hoop." headline
+- **OnboardingHomeCourtScreen** — gym picker using existing `useGyms` hook, saves `homeCourtId` to profile, skippable
+- **OnboardingFinishScreen** — location permission request with explanation + "You're All Set" state, saves `onboardingCompleted: true`, final button goes to Runs tab
+- **Navigation gate** added to SplashScreen, LoginScreen, VerifyEmailScreen, and ClaimUsernameScreen — routes to onboarding when `onboardingCompleted` is falsy
+
+### New fields on `users/{uid}`
+- `onboardingCompleted: boolean` — flag to skip onboarding on subsequent launches
+- `homeCourtId: string | null` — already used by ProfileScreen/UserProfileScreen, now set during onboarding
+
+### Navigation gate order (updated)
+1. Not logged in → Login
+2. Logged in, email not verified → VerifyEmail
+3. Logged in, verified, no username → ClaimUsername
+4. Logged in, verified, username exists, onboarding incomplete → OnboardingWelcome
+5. Logged in, verified, username exists, onboarding complete → Main
+
+### Files changed
+- `hooks/useAuth.js` — added `onboardingCompleted` to profile snapshot + return value
+- `screens/OnboardingWelcomeScreen.js` — new file
+- `screens/OnboardingHomeCourtScreen.js` — new file
+- `screens/OnboardingFinishScreen.js` — new file
+- `screens/SplashScreen.jsx` — added onboarding gate
+- `screens/LoginScreen.js` — added onboarding gate
+- `screens/VerifyEmailScreen.js` — added onboarding gate
+- `screens/ClaimUsernameScreen.js` — routes to onboarding or Main based on flag
+- `App.js` — registered 3 onboarding routes
+- `BACKEND_MEMORY.md` — documented new fields

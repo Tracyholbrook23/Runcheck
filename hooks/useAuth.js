@@ -37,6 +37,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
  *   userId: string | null,                      The current user's UID, or null if not signed in.
  *   emailVerified: boolean,                     True when Firebase Auth confirms the user's email is verified.
  *   hasUsername: boolean,                        True when the user's Firestore profile has a username field.
+ *   onboardingCompleted: boolean,               True when the user has completed first-time onboarding.
  *   profileLoading: boolean,                    True while the Firestore profile is being fetched.
  * }}
  */
@@ -44,6 +45,7 @@ export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasUsername, setHasUsername] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
 
   useEffect(() => {
@@ -54,6 +56,7 @@ export const useAuth = () => {
       // If no user, reset profile state immediately
       if (!firebaseUser) {
         setHasUsername(false);
+        setOnboardingCompleted(false);
         setProfileLoading(false);
       }
     });
@@ -65,6 +68,7 @@ export const useAuth = () => {
   useEffect(() => {
     if (!user?.uid) {
       setHasUsername(false);
+      setOnboardingCompleted(false);
       setProfileLoading(false);
       return;
     }
@@ -75,11 +79,13 @@ export const useAuth = () => {
       (snap) => {
         const data = snap.data();
         setHasUsername(!!data?.username);
+        setOnboardingCompleted(!!data?.onboardingCompleted);
         setProfileLoading(false);
       },
       (error) => {
         if (__DEV__) console.error('[useAuth] Profile snapshot error:', error);
         setHasUsername(false);
+        setOnboardingCompleted(false);
         setProfileLoading(false);
       },
     );
@@ -94,6 +100,7 @@ export const useAuth = () => {
     userId: user?.uid || null,
     emailVerified: !!user?.emailVerified,
     hasUsername,
+    onboardingCompleted,
     profileLoading,
   };
 };

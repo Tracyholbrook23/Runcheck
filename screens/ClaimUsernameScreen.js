@@ -34,7 +34,7 @@ import { useTheme } from '../contexts';
 import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
-import { doc, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, runTransaction } from 'firebase/firestore';
 
 /**
  * USERNAME_REGEX — Same validation pattern as SignupScreen.
@@ -109,8 +109,14 @@ export default function ClaimUsernameScreen({ navigation }) {
         });
       });
 
-      // Success — navigate to main app
-      navigation.replace('Main');
+      // Check if onboarding is already complete (existing users who just needed a username)
+      const userSnap = await getDoc(doc(db, 'users', user.uid));
+      const userData = userSnap.data();
+      if (userData?.onboardingCompleted) {
+        navigation.replace('Main');
+      } else {
+        navigation.replace('OnboardingWelcome');
+      }
     } catch (err) {
       if (__DEV__) console.error('Claim username error:', err);
       if (err.message === 'USERNAME_TAKEN') {

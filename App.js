@@ -49,6 +49,9 @@ import VerifyEmailScreen from './screens/VerifyEmailScreen';
 import ClaimUsernameScreen from './screens/ClaimUsernameScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import SearchUsersScreen from './screens/SearchUsersScreen';
+import OnboardingWelcomeScreen from './screens/OnboardingWelcomeScreen';
+import OnboardingHomeCourtScreen from './screens/OnboardingHomeCourtScreen';
+import OnboardingFinishScreen from './screens/OnboardingFinishScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import ClipPlayerScreen from './screens/ClipPlayerScreen';
@@ -273,6 +276,9 @@ function AppContent() {
         <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         <Stack.Screen name="ClaimUsername" component={ClaimUsernameScreen} />
+        <Stack.Screen name="OnboardingWelcome" component={OnboardingWelcomeScreen} />
+        <Stack.Screen name="OnboardingHomeCourt" component={OnboardingHomeCourtScreen} />
+        <Stack.Screen name="OnboardingFinish" component={OnboardingFinishScreen} />
         <Stack.Screen name="CityGate" component={CityGateScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
