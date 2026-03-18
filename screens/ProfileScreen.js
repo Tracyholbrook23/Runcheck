@@ -53,6 +53,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips, useTaggedClips } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
+import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   doc,
@@ -1312,6 +1313,34 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.brandingFooter}>
           <Logo size="small" />
         </View>
+
+        {/* ── Quick Sign Out ──────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.quickSignOut}
+          onPress={() => {
+            Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Sign Out',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await signOut(auth);
+                    navigation.getParent()?.getParent()?.reset({
+                      index: 0,
+                      routes: [{ name: 'Login' }],
+                    });
+                  } catch (err) {
+                    Alert.alert('Error', err.message || 'Failed to sign out.');
+                  }
+                },
+              },
+            ]);
+          }}
+        >
+          <Ionicons name="log-out-outline" size={16} color={colors.textMuted} />
+          <Text style={styles.quickSignOutText}>Sign Out</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* ── Reliability Info Modal ─────────────────────────────────────── */}
@@ -1716,6 +1745,18 @@ const getStyles = (colors, isDark) =>
       alignItems: 'center',
       paddingVertical: SPACING.md,
       opacity: 0.6,
+    },
+    quickSignOut: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: SPACING.sm,
+      marginBottom: SPACING.lg,
+    },
+    quickSignOutText: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textMuted,
     },
     // My Courts
     courtRow: {

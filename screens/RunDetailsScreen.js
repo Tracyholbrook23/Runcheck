@@ -47,6 +47,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -266,7 +267,8 @@ export default function RunDetailsScreen({ route, navigation }) {
     setLocationEnabled(granted);
   }, []);
 
-  useEffect(() => { checkLocationStatus(); }, [checkLocationStatus]);
+  // Re-check on every focus (e.g. after returning from Settings)
+  useFocusEffect(useCallback(() => { checkLocationStatus(); }, [checkLocationStatus]));
 
   const handleEnableLocation = async () => {
     const { status: currentStatus, canAskAgain } = await Location.getForegroundPermissionsAsync();

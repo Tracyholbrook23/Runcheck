@@ -22,6 +22,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -92,7 +93,8 @@ export default function CheckInScreen({ navigation }) {
     setLocationEnabled(granted);
   }, []);
 
-  useEffect(() => { checkLocationStatus(); }, [checkLocationStatus]);
+  // Re-check on every focus (e.g. after returning from Settings)
+  useFocusEffect(useCallback(() => { checkLocationStatus(); }, [checkLocationStatus]));
 
   const handleEnableLocation = async () => {
     // First check the current status to decide whether to request or open Settings

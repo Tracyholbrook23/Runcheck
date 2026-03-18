@@ -91,16 +91,26 @@ export default function LoginScreen({ navigation }) {
         }
       }
     } catch (error) {
-      if (__DEV__) console.error('Login error:', error);
+      // Expected auth failures are normal UX — log at warn, not error
+      if (__DEV__) console.warn('[Login] Auth error:', error.code);
+
       let errorMessage = 'Login failed. Please try again.';
-      if (error.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email.';
-      } else if (error.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.';
-      } else if (error.code === 'auth/invalid-email') {
-        errorMessage = 'Please enter a valid email address.';
-      } else if (error.code === 'auth/too-many-requests') {
-        errorMessage = 'Too many failed attempts. Please try again later.';
+      switch (error.code) {
+        case 'auth/user-not-found':
+        case 'auth/wrong-password':
+        case 'auth/invalid-credential':
+        case 'auth/invalid-login-credentials':
+          errorMessage = 'Invalid email or password.';
+          break;
+        case 'auth/invalid-email':
+          errorMessage = 'Please enter a valid email address.';
+          break;
+        case 'auth/too-many-requests':
+          errorMessage = 'Too many failed attempts. Please try again later.';
+          break;
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error. Check your connection and try again.';
+          break;
       }
       alert(errorMessage);
     } finally {
