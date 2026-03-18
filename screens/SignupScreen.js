@@ -36,11 +36,23 @@ import { useTheme } from '../contexts';
 import { formatSkillLevel } from '../services/models';
 import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { setDoc, doc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
+import { setDoc, doc, getDoc, runTransaction } from 'firebase/firestore';
 
 /** The three play-style options a user can choose from during registration. */
 const SKILL_OPTIONS = ['Casual', 'Competitive', 'Either'];
+
+/**
+ * USERNAME_REGEX — Validation pattern for RunCheck usernames.
+ *
+ * Rules:
+ *   - Must start with a letter (a-z, A-Z)
+ *   - Followed by 2–19 characters that are letters, digits, dots, or underscores
+ *   - Total length: 3–20 characters
+ *
+ * Casing is preserved for display; lowercase is used for uniqueness checks.
+ */
+const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9._]{2,19}$/;
 
 /**
  * SignupScreen — Account creation form.
@@ -53,6 +65,7 @@ const SKILL_OPTIONS = ['Casual', 'Competitive', 'Either'];
 export default function SignupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
   const [age, setAge] = useState('');
   const [skillLevel, setSkillLevel] = useState('');
   const [email, setEmail] = useState('');
@@ -63,41 +76,90 @@ export default function SignupScreen({ navigation }) {
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   /**
-   * handleSignup — Validates the form then creates the Firebase Auth user
-   * and Firestore profile document.
+   * handleSignup — Validates the form, creates the Firebase Auth user,
+   * reserves the username atomically, and sends a verification email.
    *
-   * Firestore write path: `users/{uid}` with fields:
-   *   { name, age, skillLevel, email }
+   * Flow:
+   *   1. Client-side validation (all fields + username regex)
+   *   2. Create Firebase Auth account
+   *   3. Firestore transaction:
+   *      a. Read usernames/{usernameLower} — if exists, abort ("username taken")
+   *      b. Write usernames/{usernameLower} reservation doc
+   *      c. Write users/{uid} profile doc
+   *   4. Send email verification
+   *   5. Navigate to VerifyEmail screen
    *
-   * Both the Auth creation and Firestore write must succeed for the user
-   * to proceed. If either fails, the raw Firebase error message is shown.
+   * If the transaction fails after Auth creation, the user can retry —
+   * the Auth account exists but the profile doesn't, so the next attempt
+   * will fail at createUserWithEmailAndPassword. The user can log in and
+   * will be routed to ClaimUsername to complete setup.
    */
   const handleSignup = async () => {
-    if (!name || !email || !password || !age || !skillLevel) {
+    if (!name || !username || !email || !password || !age || !skillLevel) {
       alert('Please fill out all fields');
       return;
     }
 
+    // Validate username format
+    if (!USERNAME_REGEX.test(username)) {
+      alert(
+        'Username must be 3–20 characters, start with a letter, and contain only letters, numbers, dots, or underscores.',
+      );
+      return;
+    }
+
     setLoading(true);
+    const usernameLower = username.toLowerCase();
 
     try {
       // Step 1: Create the Firebase Auth account
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Step 2: Write the user profile to Firestore under users/{uid}
-      await setDoc(doc(db, 'users', user.uid), {
-        name,
-        age,
-        skillLevel,
-        email,
+      // Step 2: Atomic transaction — reserve username + write profile
+      const usernameRef = doc(db, 'usernames', usernameLower);
+      const userRef = doc(db, 'users', user.uid);
+
+      await runTransaction(db, async (transaction) => {
+        const usernameSnap = await transaction.get(usernameRef);
+        if (usernameSnap.exists()) {
+          throw new Error('USERNAME_TAKEN');
+        }
+
+        // Reserve the username
+        transaction.set(usernameRef, {
+          uid: user.uid,
+          createdAt: new Date(),
+        });
+
+        // Write the user profile
+        transaction.set(userRef, {
+          name,
+          username,
+          usernameLower,
+          phoneNumber: null,
+          age,
+          skillLevel,
+          email,
+        });
       });
 
-      alert('Signup successful!');
-      navigation.navigate('CityGate');
+      // Step 3: Send email verification (only after transaction succeeds)
+      await sendEmailVerification(user);
+
+      // Step 4: Navigate to verification gate
+      navigation.replace('VerifyEmail');
     } catch (error) {
       if (__DEV__) console.error('Signup error:', error);
-      alert(error.message);
+      if (error.message === 'USERNAME_TAKEN') {
+        alert('That username is already taken. Please choose another.');
+      } else if (error.code === 'auth/email-already-in-use') {
+        alert('An account with this email already exists.');
+      } else if (error.code === 'auth/weak-password') {
+        alert('Password should be at least 6 characters.');
+      } else {
+        alert(error.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -136,6 +198,13 @@ export default function SignupScreen({ navigation }) {
 
             <View style={styles.formCard}>
               <Input label="Full Name" placeholder="Your name" value={name} onChangeText={setName} />
+              <Input
+                label="Username"
+                placeholder="e.g. hoopKing23"
+                autoCapitalize="none"
+                value={username}
+                onChangeText={setUsername}
+              />
               <Input label="Age" placeholder="Your age" keyboardType="numeric" value={age} onChangeText={setAge} />
 
               {/* Skill Level Picker — pill buttons styled by the selected skill's theme color */}

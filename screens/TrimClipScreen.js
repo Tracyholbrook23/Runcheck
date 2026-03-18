@@ -36,13 +36,13 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   PanResponder,
   ScrollView,
 } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { getStorage, ref, uploadBytesResumable } from 'firebase/storage';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -98,13 +98,19 @@ export default function TrimClipScreen({ route, navigation }) {
   const { sourceVideoUri, gymId, gymName, presenceId } = route.params ?? {};
 
   // ── Video playback ────────────────────────────────────────────────────────
-  const videoRef              = useRef(null);
   const [isPlaying,  setIsPlaying]  = useState(true);
   const [videoReady, setVideoReady] = useState(false);
 
-  // ── Video duration (populated once the AV player loads) ──────────────────
+  // ── Video duration (populated once the player loads) ──────────────────
   const [videoDuration, setVideoDuration] = useState(0);
   const videoDurationRef                  = useRef(0);
+
+  // expo-video player — autoplay on mount, periodic time updates for trim looping
+  const player = useVideoPlayer(sourceVideoUri, (p) => {
+    p.loop = false;
+    p.timeUpdateEventInterval = 0.1; // 100ms updates for smooth trim-range looping
+    p.play();
+  });
 
   // ── Trim state ────────────────────────────────────────────────────────────
   // trimStart / trimEnd are in seconds and drive the trim bar rendering.
@@ -175,12 +181,12 @@ export default function TrimClipScreen({ route, navigation }) {
     return () => { cancelled = true; };
   }, [currentUid]);
 
-  const toggleTagPlayer = useCallback((player) => {
+  const toggleTagPlayer = useCallback((tagTarget) => {
     setTaggedPlayers((prev) => {
-      const isAlreadyTagged = prev.some((p) => p.uid === player.uid);
-      if (isAlreadyTagged) return prev.filter((p) => p.uid !== player.uid);
+      const isAlreadyTagged = prev.some((p) => p.uid === tagTarget.uid);
+      if (isAlreadyTagged) return prev.filter((p) => p.uid !== tagTarget.uid);
       if (prev.length >= MAX_TAGGED_PLAYERS) return prev;
-      return [...prev, player];
+      return [...prev, tagTarget];
     });
   }, []);
 
@@ -195,75 +201,78 @@ export default function TrimClipScreen({ route, navigation }) {
   // user can retry. Never cleared on success — navigation takes the user away.
   const postingRef = useRef(false);
 
-  // ── Video status callback ─────────────────────────────────────────────────
-  // Called periodically by expo-av; handles first-load setup and trim-range
-  // looping when the source video is longer than MAX_CLIP_DURATION_SEC.
-  const handlePlaybackStatus = useCallback((status) => {
-    if (!status.isLoaded) return;
+  // ── Player event listeners ───────────────────────────────────────────────
+  // sourceLoad fires when the player has loaded video metadata (duration, etc.)
+  useEffect(() => {
+    const loadSub = player.addListener('sourceLoad', ({ duration }) => {
+      if (duration > 0 && !videoReady) {
+        videoDurationRef.current = duration;
+        setVideoDuration(duration);
 
-    // First successful load: capture duration and initialise trim range
-    if (!videoReady && status.durationMillis) {
-      const dur = status.durationMillis / 1000;
-      videoDurationRef.current = dur;
-      setVideoDuration(dur);
+        const initEnd = Math.min(MAX_CLIP_DURATION_SEC, duration);
+        trimStartRef.current = 0;
+        trimEndRef.current   = initEnd;
+        setTrimStart(0);
+        setTrimEnd(initEnd);
 
-      // Default selection: first MAX_CLIP_DURATION_SEC (or full video if shorter)
-      const initEnd = Math.min(MAX_CLIP_DURATION_SEC, dur);
-      trimStartRef.current = 0;
-      trimEndRef.current   = initEnd;
-      setTrimStart(0);
-      setTrimEnd(initEnd);
+        setVideoReady(true);
+      }
+    });
 
-      setVideoReady(true);
-    }
+    const playingSub = player.addListener('playingChange', ({ isPlaying: playing }) => {
+      setIsPlaying(playing);
+    });
 
-    setIsPlaying(status.isPlaying);
+    // Periodic time updates — progress bar + trim-range looping
+    const timeSub = player.addListener('timeUpdate', ({ currentTime }) => {
+      const dur = videoDurationRef.current;
 
-    // Update playback progress bar
-    if (status.positionMillis != null) {
-      if (videoDurationRef.current > MAX_CLIP_DURATION_SEC) {
-        // Trim mode: express position as a fraction of the selected range so the
-        // bar fills from 0 → 1 and snaps back to 0 when the loop resets.
+      // Update playback progress bar
+      if (dur > MAX_CLIP_DURATION_SEC) {
         const rangeDur = trimEndRef.current - trimStartRef.current;
         const progress = rangeDur > 0
-          ? Math.max(0, Math.min(1, (status.positionMillis / 1000 - trimStartRef.current) / rangeDur))
+          ? Math.max(0, Math.min(1, (currentTime - trimStartRef.current) / rangeDur))
           : 0;
         setPlaybackProgress(progress);
-      } else if (status.durationMillis > 0) {
-        // Short clip: express position as a fraction of the full video duration.
-        setPlaybackProgress(Math.max(0, Math.min(1, status.positionMillis / status.durationMillis)));
+      } else if (dur > 0) {
+        setPlaybackProgress(Math.max(0, Math.min(1, currentTime / dur)));
       }
-    }
 
-    // Loop within the selected trim range while previewing
-    if (
-      videoDurationRef.current > MAX_CLIP_DURATION_SEC &&
-      status.isPlaying &&
-      status.positionMillis != null &&
-      status.positionMillis / 1000 >= trimEndRef.current - 0.05  // 50 ms lookahead
-    ) {
-      videoRef.current?.setPositionAsync(trimStartRef.current * 1000).catch(() => {});
-    }
-  }, [videoReady]);
+      // Loop within the selected trim range while previewing
+      if (
+        dur > MAX_CLIP_DURATION_SEC &&
+        player.playing &&
+        currentTime >= trimEndRef.current - 0.05
+      ) {
+        player.currentTime = trimStartRef.current;
+      }
+    });
+
+    return () => {
+      loadSub.remove();
+      playingSub.remove();
+      timeSub.remove();
+    };
+  }, [player, videoReady]);
 
   // ── Toggle play / pause ───────────────────────────────────────────────────
-  const togglePlayPause = useCallback(async () => {
-    if (!videoRef.current || !videoReady) return;
+  const togglePlayPause = useCallback(() => {
+    if (!videoReady) return;
     try {
-      const status = await videoRef.current.getStatusAsync();
-      if (!status.isLoaded) return;
-      if (status.isPlaying) {
-        await videoRef.current.pauseAsync();
+      if (player.playing) {
+        player.pause();
       } else {
-        if (status.didJustFinish || status.positionMillis >= (status.durationMillis - 100)) {
-          await videoRef.current.setPositionAsync(trimStartRef.current * 1000);
+        // If near the end, restart from trim start
+        const dur = videoDurationRef.current;
+        if (dur > 0 && player.currentTime >= dur - 0.1) {
+          player.currentTime = trimStartRef.current;
         }
-        await videoRef.current.playAsync();
+        player.play();
       }
     } catch {
-      // Non-fatal — ignore AV teardown races on unmount
+      // Non-fatal — ignore teardown races on unmount
     }
-  }, [videoReady]);
+  }, [player, videoReady]);
 
   // ── PanResponder — left (start) handle ───────────────────────────────────
   // Reads trimStartRef / trimEndRef / barWidthRef / videoDurationRef to avoid
@@ -294,7 +303,7 @@ export default function TrimClipScreen({ route, navigation }) {
 
       onPanResponderRelease: () => {
         // Seek video to new trim start for immediate feedback
-        videoRef.current?.setPositionAsync(trimStartRef.current * 1000).catch(() => {});
+        try { player.currentTime = trimStartRef.current; } catch { /* ignore */ }
       },
     })
   ).current;
@@ -325,7 +334,7 @@ export default function TrimClipScreen({ route, navigation }) {
       },
 
       onPanResponderRelease: () => {
-        videoRef.current?.setPositionAsync(trimStartRef.current * 1000).catch(() => {});
+        try { player.currentTime = trimStartRef.current; } catch { /* ignore */ }
       },
     })
   ).current;
@@ -364,7 +373,7 @@ export default function TrimClipScreen({ route, navigation }) {
       },
 
       onPanResponderRelease: () => {
-        videoRef.current?.setPositionAsync(trimStartRef.current * 1000).catch(() => {});
+        try { player.currentTime = trimStartRef.current; } catch { /* ignore */ }
       },
     })
   ).current;
@@ -594,14 +603,11 @@ export default function TrimClipScreen({ route, navigation }) {
     <View style={styles.container}>
 
       {/* ── Full-screen video preview ── */}
-      <Video
-        ref={videoRef}
+      <VideoView
+        player={player}
         style={StyleSheet.absoluteFill}
-        source={{ uri: sourceVideoUri }}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay
-        isLooping={false}
-        onPlaybackStatusUpdate={handlePlaybackStatus}
+        contentFit="cover"
+        nativeControls={false}
       />
 
       {/* ── Tap overlay to toggle play/pause ── */}

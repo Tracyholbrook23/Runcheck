@@ -21,11 +21,11 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { db } from '../config/firebase';

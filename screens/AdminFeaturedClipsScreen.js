@@ -18,7 +18,6 @@ import {
   View,
   Text,
   Image,
-  SafeAreaView,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
@@ -26,6 +25,7 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { useIsAdmin } from '../hooks';

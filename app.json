@@ -20,7 +20,9 @@
       "runtimeVersion": "1.0.0",
       "icon": "./assets/icon.png",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["comgooglemaps"]
+        "LSApplicationQueriesSchemes": [
+          "comgooglemaps"
+        ]
       }
     },
     "android": {
@@ -50,7 +52,8 @@
           "locationAlwaysAndWhenInUsePermission": "Allow RunCheck to use your location to check in at nearby gyms."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-video"
     ],
     "extra": {
       "eas": {

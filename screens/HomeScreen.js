@@ -36,7 +36,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   Alert,
   ScrollView,
@@ -45,6 +44,7 @@ import {
   Animated,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
@@ -528,6 +528,12 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.headerTitle}>RunCheck</Text>
           </View>
           <View style={styles.headerIcons}>
+            <TouchableOpacity
+              style={styles.headerIcon}
+              onPress={() => navigation.navigate('SearchUsers')}
+            >
+              <Ionicons name="search-outline" size={22} color="#FFFFFF" />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerIcon}
               onPress={() => Linking.openURL(INSTAGRAM_URL)}

@@ -2,7 +2,12 @@
  * SplashScreen.jsx — Animated App Launch Screen
  *
  * The first screen users see when opening RunCheck. Plays a branded
- * animation sequence and then navigates to LoginScreen after 4.5 seconds.
+ * animation sequence and then navigates based on auth state:
+ *
+ *   - No user         → Login
+ *   - User, not email-verified → VerifyEmail
+ *   - User, verified, no username → ClaimUsername
+ *   - User, verified, has username → Main
  *
  * Animation sequence:
  *   1. Logo fades in (opacity 0 → 1, 1000ms) and springs to full size
@@ -10,30 +15,34 @@
  *   2. After both animations complete, the tagline fades in (800ms).
  *   3. Simultaneously, the logo begins a subtle idle pulse loop
  *      (scale 1 ↔ 1.05, 800ms per direction) to show the app is alive.
- *   4. A 4500ms timeout fires `navigation.replace('Login')`, removing
- *      SplashScreen from the navigation stack so the back button doesn't
- *      return here.
+ *   4. After auth state resolves (min 2s for branding), navigates to the
+ *      appropriate screen via `navigation.replace`.
  *
  * All animations use `useNativeDriver: true` to run on the UI thread and
  * avoid blocking the JS thread during the Firebase Auth init that happens
  * in parallel.
  */
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, Animated, StyleSheet } from 'react-native';
+import { useAuth } from '../hooks';
 
 const logo = require('../assets/logo/runcheck-logo-transparent.png');
 
 /**
- * SplashScreen — Branded intro animation with auto-navigation.
+ * SplashScreen — Branded intro animation with auth-aware navigation.
  *
  * @param {object} props
  * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
- *   React Navigation prop used to replace this screen with Login after the
- *   animation completes.
+ *   React Navigation prop used to replace this screen with the appropriate
+ *   next screen after auth state resolves.
  * @returns {JSX.Element}
  */
 export default function SplashScreen({ navigation }) {
+  const { user, loading, emailVerified, hasUsername, profileLoading } = useAuth();
+  const [minTimePassed, setMinTimePassed] = useState(false);
+  const hasNavigated = useRef(false);
+
   // Animated values — initialized outside JSX so they're stable across renders
   const fadeAnim = useRef(new Animated.Value(0)).current;       // Logo opacity
   const scaleAnim = useRef(new Animated.Value(0.85)).current;   // Logo entrance scale
@@ -78,15 +87,26 @@ export default function SplashScreen({ navigation }) {
       ).start();
     });
 
-    // Phase 4: Replace this screen with Login after the branding moment ends.
-    // `replace` is used instead of `navigate` so the user can't back-navigate here.
-    const timer = setTimeout(() => {
-      navigation.replace('Login');
-    }, 4500);
-
-    // Cleanup: cancel the timer if the component unmounts early (e.g., in tests)
+    // Minimum branding display time before navigating
+    const timer = setTimeout(() => setMinTimePassed(true), 2500);
     return () => clearTimeout(timer);
   }, []);
+
+  // Navigate once auth state is resolved AND minimum time has passed
+  useEffect(() => {
+    if (loading || profileLoading || !minTimePassed || hasNavigated.current) return;
+    hasNavigated.current = true;
+
+    if (!user) {
+      navigation.replace('Login');
+    } else if (!emailVerified) {
+      navigation.replace('VerifyEmail');
+    } else if (!hasUsername) {
+      navigation.replace('ClaimUsername');
+    } else {
+      navigation.replace('Main');
+    }
+  }, [loading, profileLoading, minTimePassed, user, emailVerified, hasUsername]);
 
   return (
     <View style={styles.container}>

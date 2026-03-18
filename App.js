@@ -23,6 +23,8 @@
  */
 
 import React from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -43,6 +45,10 @@ import { ThemeProvider, useTheme } from './contexts';
 import SplashScreen from './screens/SplashScreen';
 import GymReviewsScreen from './screens/GymReviewsScreen';
 import CityGateScreen from './screens/CityGateScreen';
+import VerifyEmailScreen from './screens/VerifyEmailScreen';
+import ClaimUsernameScreen from './screens/ClaimUsernameScreen';
+import SettingsScreen from './screens/SettingsScreen';
+import SearchUsersScreen from './screens/SearchUsersScreen';
 import LeaderboardScreen from './screens/LeaderboardScreen';
 import UserProfileScreen from './screens/UserProfileScreen';
 import ClipPlayerScreen from './screens/ClipPlayerScreen';
@@ -78,6 +84,7 @@ function HomeStack() {
       <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="SearchUsers" component={SearchUsersScreen} options={{ title: 'Find Players', headerBackTitle: 'Home', ...themeStyles.NAV_HEADER }} />
     </Stack.Navigator>
   );
 }
@@ -165,6 +172,8 @@ function ProfileStack() {
       <Stack.Screen name="Premium" component={PremiumScreen} options={{ headerShown: false }} />
       {/* Required so leaderboard row taps can navigate to UserProfile from the Profile tab */}
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="SearchUsers" component={SearchUsersScreen} options={{ title: 'Find Players', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="MyGymRequests" component={MyGymRequestsScreen} options={{ title: 'My Gym Requests', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="MyReports" component={MyReportsScreen} options={{ title: 'My Reports', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminTools" component={AdminToolsScreen} options={{ title: 'Admin Tools', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
@@ -262,6 +271,8 @@ function AppContent() {
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
+        <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+        <Stack.Screen name="ClaimUsername" component={ClaimUsernameScreen} />
         <Stack.Screen name="CityGate" component={CityGateScreen} />
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
@@ -280,8 +291,12 @@ function AppContent() {
  */
 export default function App() {
   return (
-    <ThemeProvider>
-      <AppContent />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

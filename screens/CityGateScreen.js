@@ -32,10 +32,10 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ImageBackground,
   ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
@@ -178,7 +178,7 @@ export default function CityGateScreen({ navigation }) {
                 : 'RunCheck is currently live in the Austin metro area'}
             </Text>
             {!outOfRange && (
-              <Text style={styles.expanding}>Expanding across Texas in 2025</Text>
+              <Text style={styles.expanding}>Currently expanding across Central Texas</Text>
             )}
           </View>
 

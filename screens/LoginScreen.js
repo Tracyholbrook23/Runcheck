@@ -31,8 +31,9 @@ import {
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo, Button, Input } from '../components';
-import { auth } from '../config/firebase';
+import { auth, db } from '../config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 
 /**
  * LoginScreen — Sign-in screen component.
@@ -71,8 +72,22 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigation.navigate('Main');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Route based on verification + username state
+      if (!user.emailVerified) {
+        navigation.replace('VerifyEmail');
+      } else {
+        // Check if user has a username
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const data = userDoc.data();
+        if (!data?.username) {
+          navigation.replace('ClaimUsername');
+        } else {
+          navigation.replace('Main');
+        }
+      }
     } catch (error) {
       if (__DEV__) console.error('Login error:', error);
       let errorMessage = 'Login failed. Please try again.';

@@ -23,7 +23,6 @@ import {
   View,
   Text,
   Image,
-  SafeAreaView,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
@@ -33,6 +32,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { useIsAdmin, useGyms } from '../hooks';

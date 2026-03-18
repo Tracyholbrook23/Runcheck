@@ -16,9 +16,9 @@
  *   • Pauses and unloads the video before navigating back to free resources.
  */
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
 import { ReportModal } from '../components';
 import { useIsAdmin, useAuth } from '../hooks';
@@ -43,7 +43,6 @@ const CATEGORY_CONFIG = {
  */
 export default function ClipPlayerScreen({ route, navigation }) {
   const { videoUrl, clipId } = route.params;
-  const videoRef = useRef(null);
   const [showReport, setShowReport] = useState(false);
   const { isAdmin } = useIsAdmin();
   const [featuring, setFeaturing] = useState(false);
@@ -56,8 +55,13 @@ export default function ClipPlayerScreen({ route, navigation }) {
 
   // Playback state — loading, buffering, and error feedback
   const [videoLoaded, setVideoLoaded] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(false);
   const [playbackError, setPlaybackError] = useState(false);
+
+  // expo-video player instance — autoplay on mount, no looping
+  const player = useVideoPlayer(videoUrl, (p) => {
+    p.loop = false;
+    p.play();
+  });
 
   // Derived: is the current user tagged in this clip?
   const myTagEntry = currentUid
@@ -87,6 +91,19 @@ export default function ClipPlayerScreen({ route, navigation }) {
 
     return () => { cancelled = true; };
   }, [clipId]);
+
+  // Track player status for loading/error states
+  useEffect(() => {
+    const statusSub = player.addListener('statusChange', ({ status, error }) => {
+      if (status === 'readyToPlay') {
+        setVideoLoaded(true);
+      } else if (status === 'error') {
+        if (__DEV__) console.error('playback error:', error);
+        setPlaybackError(true);
+      }
+    });
+    return () => statusSub.remove();
+  }, [player]);
 
   const handleFeature = async () => {
     if (!clipId || featuring) return;
@@ -156,44 +173,21 @@ export default function ClipPlayerScreen({ route, navigation }) {
   };
 
   /**
-   * handleClose — Pauses + unloads the video before going back so the
-   * underlying audio session is released immediately.
+   * handleClose — Pauses the video before going back. The player is
+   * automatically released by the useVideoPlayer hook on unmount.
    */
-  const handleClose = async () => {
-    try {
-      if (videoRef.current) {
-        await videoRef.current.pauseAsync();
-        await videoRef.current.unloadAsync();
-      }
-    } catch {
-      // Ignore teardown errors — we're closing regardless.
-    }
+  const handleClose = () => {
+    try { player.pause(); } catch { /* ignore teardown */ }
     navigation.goBack();
   };
 
   return (
     <View style={styles.container}>
-      <Video
-        ref={videoRef}
+      <VideoView
+        player={player}
         style={StyleSheet.absoluteFill}
-        source={{ uri: videoUrl }}
-        resizeMode={ResizeMode.COVER}
-        shouldPlay
-        isLooping={false}
-        useNativeControls
-        onPlaybackStatusUpdate={(status) => {
-          if (status.isLoaded) {
-            if (!videoLoaded) setVideoLoaded(true);
-            setIsBuffering(status.isBuffering === true);
-            if (status.didJustFinish) {
-              if (__DEV__) console.log('playback finished');
-            }
-          }
-        }}
-        onError={(err) => {
-          if (__DEV__) console.error('playback error:', err);
-          setPlaybackError(true);
-        }}
+        contentFit="cover"
+        nativeControls
       />
 
       {/* Playback error state — full-screen overlay with recovery action */}
@@ -295,13 +289,8 @@ export default function ClipPlayerScreen({ route, navigation }) {
                 <TouchableOpacity
                   key={p.uid}
                   activeOpacity={0.7}
-                  onPress={async () => {
-                    try {
-                      if (videoRef.current) {
-                        await videoRef.current.pauseAsync();
-                        await videoRef.current.unloadAsync();
-                      }
-                    } catch { /* ignore teardown */ }
+                  onPress={() => {
+                    try { player.pause(); } catch { /* ignore teardown */ }
                     navigation.navigate('Home', { screen: 'UserProfile', params: { userId: p.uid } });
                   }}
                   hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}

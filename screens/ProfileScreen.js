@@ -37,9 +37,7 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
-  Switch,
   TouchableOpacity,
   ActivityIndicator,
   Alert,
@@ -47,6 +45,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
@@ -54,7 +53,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips, useTaggedClips } from '../hooks';
 import { auth, db, storage } from '../config/firebase';
-import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   doc,
@@ -170,7 +168,7 @@ function GymThumbnail({ gym, fallbackIcon, iconColor, style }) {
  * @returns {JSX.Element}
  */
 export default function ProfileScreen({ navigation }) {
-  const { isDark, colors, toggleTheme, skillColors } = useTheme();
+  const { isDark, colors, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
   const { user } = useAuth();
@@ -518,35 +516,6 @@ export default function ProfileScreen({ navigation }) {
     }
   };
 
-  /**
-   * handleSignOut — Signs the user out of Firebase Auth and resets navigation.
-   *
-   * Uses `navigation.getParent()?.getParent()?.reset()` to navigate two levels
-   * up (Profile → MainTabs → RootStack) and replace the entire stack with Login,
-   * preventing the user from pressing Back to return to the authenticated screens.
-   */
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await signOut(auth);
-            // Reset two stack levels up to land on the Login route
-            navigation.getParent()?.getParent()?.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-          } catch (err) {
-            Alert.alert('Error', err.message || 'Failed to sign out.');
-          }
-        },
-      },
-    ]);
-  };
-
   // Guard against stale skill values from the old 4-tier system (Pro, Beginner,
   // Intermediate, Advanced). Only the three current values are valid.
   const VALID_SKILL_LEVELS = ['Casual', 'Competitive', 'Either'];
@@ -631,6 +600,9 @@ export default function ProfileScreen({ navigation }) {
             )}
           </TouchableOpacity>
           <Text style={styles.name}>{profile?.name || user?.displayName || 'Player'}</Text>
+          {(profile?.username || liveProfile?.username) ? (
+            <Text style={styles.usernameText}>@{profile?.username || liveProfile?.username}</Text>
+          ) : null}
           {profileSkillColors && (
             <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
               <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
@@ -913,8 +885,17 @@ export default function ProfileScreen({ navigation }) {
         {/* ── My Crew ───────────────────────────────────────────────────── */}
         <View style={styles.card}>
           <View style={styles.crewHeaderRow}>
-            <Text style={styles.cardTitle}>My Crew</Text>
-            <Text style={styles.crewCount}>{friendCountLabel}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+              <Text style={styles.cardTitle}>My Crew</Text>
+              <Text style={styles.crewCount}>{friendCountLabel}</Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('SearchUsers')}
+              style={styles.crewSearchButton}
+            >
+              <Ionicons name="person-add-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
           </View>
           {friendsProfiles.length > 0 ? (
             <ScrollView
@@ -1313,40 +1294,24 @@ export default function ProfileScreen({ navigation }) {
         )}
 
         {/* ── Settings ──────────────────────────────────────────────────── */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Settings</Text>
-          <View style={styles.settingRow}>
-            <View style={styles.settingLabel}>
-              {/* Icon switches between moon (dark) and sun (light) based on current mode */}
-              <Ionicons
-                name={isDark ? 'moon' : 'sunny-outline'}
-                size={22}
-                color={colors.textPrimary}
-              />
-              <Text style={styles.settingText}>Dark Mode</Text>
-            </View>
-            {/* Switch disabled — dark mode is forced for this development phase */}
-            <Switch
-              value={isDark}
-              onValueChange={toggleTheme}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor="#FFFFFF"
-              disabled
-              testID="dark-mode-toggle"
-            />
+        <TouchableOpacity
+          style={styles.gymRequestsRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <View style={styles.gymRequestsLeft}>
+            <Ionicons name="settings-outline" size={20} color={colors.primary} />
+            <Text style={styles.gymRequestsLabel}>Settings</Text>
           </View>
-        </View>
+          <View style={styles.gymRequestsRight}>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
 
         {/* ── Branding Footer ───────────────────────────────────────────── */}
         <View style={styles.brandingFooter}>
           <Logo size="small" />
         </View>
-
-        {/* ── Sign Out ──────────────────────────────────────────────────── */}
-        <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-          <Ionicons name="log-out-outline" size={20} color={colors.danger} />
-          <Text style={styles.signOutText}>Sign Out</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* ── Reliability Info Modal ─────────────────────────────────────── */}
@@ -1445,6 +1410,12 @@ const getStyles = (colors, isDark) =>
       fontWeight: FONT_WEIGHTS.extraBold,
       color: colors.textPrimary,
       letterSpacing: -0.5,
+    },
+    usernameText: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textMuted,
+      marginTop: 2,
+      marginBottom: SPACING.xs,
     },
     email: {
       fontSize: FONT_SIZES.small,
@@ -1741,22 +1712,6 @@ const getStyles = (colors, isDark) =>
         ? { borderWidth: 0 }
         : { borderWidth: 1, borderColor: colors.border }),
     },
-    // Settings
-    settingRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    settingLabel: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    settingText: {
-      fontSize: FONT_SIZES.body,
-      color: colors.textPrimary,
-      marginLeft: SPACING.sm,
-      fontWeight: FONT_WEIGHTS.medium,
-    },
     brandingFooter: {
       alignItems: 'center',
       paddingVertical: SPACING.md,
@@ -1879,6 +1834,9 @@ const getStyles = (colors, isDark) =>
       color: colors.textMuted,
       fontWeight: FONT_WEIGHTS.medium,
     },
+    crewSearchButton: {
+      padding: SPACING.xs,
+    },
     crewScroll: {
       gap: SPACING.md,
       paddingBottom: SPACING.xs,
@@ -1946,20 +1904,6 @@ const getStyles = (colors, isDark) =>
       justifyContent: 'center',
       alignItems: 'center',
       marginBottom: 5,
-    },
-    // Sign out
-    signOutButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: SPACING.xs,
-      paddingVertical: SPACING.md,
-      marginTop: SPACING.xs,
-    },
-    signOutText: {
-      fontSize: FONT_SIZES.body,
-      color: colors.danger,
-      fontWeight: FONT_WEIGHTS.semibold,
     },
     avatarImage: {
   width: 88,

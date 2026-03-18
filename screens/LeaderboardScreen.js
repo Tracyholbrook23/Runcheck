@@ -31,7 +31,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -41,6 +40,7 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';

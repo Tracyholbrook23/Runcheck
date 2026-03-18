@@ -27,7 +27,6 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -36,6 +35,7 @@ import {
   Pressable,
   FlatList,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useFocusEffect } from '@react-navigation/native';
@@ -306,6 +306,9 @@ export default function UserProfileScreen({ route, navigation }) {
 
         {/* ── Name ── */}
         <Text style={styles.name}>{profile.name || 'Player'}</Text>
+        {profile.username ? (
+          <Text style={styles.usernameText}>@{profile.username}</Text>
+        ) : null}
 
         {/* ── Rank badge + skill badge ── */}
         <View style={styles.badgeRow}>
@@ -694,8 +697,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     color: colors.textPrimary,
     letterSpacing: 0.3,
-    marginBottom: SPACING.sm,
+    marginBottom: 2,
     textAlign: 'center',
+  },
+  usernameText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
 
   // ── Rank + skill badges ───────────────────────────────────────────────────

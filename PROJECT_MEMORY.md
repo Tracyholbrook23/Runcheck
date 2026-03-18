@@ -595,3 +595,98 @@ Key elements:
 
 Both entry points open the RunCheck Instagram page using:
 Linking.openURL(INSTAGRAM_URL)
+
+## Identity Upgrade V1 — Username + Email Verification (2026-03-17)
+
+### What was added
+- **Required username at signup**: New `username` field on SignupScreen with client-side regex validation (`^[a-zA-Z][a-zA-Z0-9._]{2,19}$`). Casing preserved for display, lowercase used for uniqueness.
+- **Atomic username reservation**: Firestore transaction writes both `usernames/{usernameLower}` reservation doc and `users/{uid}` profile doc atomically. If the username is taken, the transaction aborts.
+- **Email verification gate**: After signup, `sendEmailVerification` is called. New `VerifyEmailScreen` blocks access until `emailVerified === true`. Resend button with 60-second cooldown.
+- **Existing user migration**: New `ClaimUsernameScreen` for logged-in, verified users whose profile is missing `username`. Same transaction-based claim flow.
+- **Auth-aware SplashScreen routing**: SplashScreen now checks auth state, email verification, and username presence to route to the correct screen.
+- **Login routing**: LoginScreen now routes to VerifyEmail or ClaimUsername as needed instead of always going to Main.
+
+### New Firestore fields on `users/{uid}`
+- `username: string` — display-cased
+- `usernameLower: string` — lowercase for lookups
+- `phoneNumber: string | null` — reserved for future use
+
+### New Firestore collection
+- `usernames/{usernameLower}` — `{ uid, createdAt }` — uniqueness reservation
+
+### Files modified
+- `hooks/useAuth.js` — added `emailVerified`, `hasUsername`, `profileLoading`
+- `screens/SignupScreen.js` — username field, transaction, email verification
+- `screens/LoginScreen.js` — auth-aware routing after login
+- `screens/SplashScreen.jsx` — auth-aware routing instead of blind timer
+- `screens/VerifyEmailScreen.js` — new file
+- `screens/ClaimUsernameScreen.js` — new file
+- `App.js` — registered VerifyEmail and ClaimUsername routes
+- `firestore.rules` — added `usernames` collection rules
+- `BACKEND_MEMORY.md` — documented new collection + user fields
+
+### Navigation gate order
+1. Not logged in → Login
+2. Logged in, email not verified → VerifyEmail
+3. Logged in, verified, no username → ClaimUsername
+4. Logged in, verified, has username → Main
+
+## Account Deletion (2026-03-17)
+
+### What was added
+- **Delete Account button** on ProfileScreen below Sign Out — muted style, confirmation alert
+- **`deleteAccount` Cloud Function** — server-side cleanup of all user data across 12 Firestore collections + Firebase Auth deletion via Admin SDK
+- Username reservation (`usernames/{usernameLower}`) is freed on deletion
+- Friends/requests arrays are cleaned bidirectionally
+- Clips are soft-deleted (Storage files preserved for future cleanup)
+- Run participations deleted + participantCount decremented
+
+### Files changed
+- `screens/ProfileScreen.js` — added `handleDeleteAccount` handler + Delete Account button + styles
+- `runcheck-backend/functions/src/deleteAccount.ts` — new Cloud Function
+- `runcheck-backend/functions/src/index.ts` — added `deleteAccount` export
+- `BACKEND_MEMORY.md` — documented cleanup steps and limitations
+
+### V1 limitations
+- Historical `weeklyWinners` entries retain deleted user's name/photo
+- `likedBy` keys on other users' clips become stale (no UI impact)
+- `taggedPlayers` on other users' clips show stale name (no crash)
+- Firebase Storage files not purged (soft-delete flags prevent display)
+
+### Deploy required
+```bash
+cd ~/Desktop/runcheck-backend && firebase deploy --only functions:deleteAccount
+```
+
+## Settings Screen (2026-03-17)
+
+### What was added
+- **SettingsScreen** — new screen with Preferences (Dark Mode toggle) and Account (Sign Out, Delete Account) sections
+- **Settings row on ProfileScreen** — replaces the old bottom-of-page Sign Out + Delete Account buttons with a single "Settings" menu row using the same `gymRequestsRow` pattern
+- Sign Out and Delete Account logic moved to SettingsScreen (unchanged behavior)
+- Unused imports removed from ProfileScreen (`Switch`, `signOut`, `toggleTheme`)
+
+### Files changed
+- `screens/SettingsScreen.js` — new file
+- `screens/ProfileScreen.js` — removed Sign Out/Delete Account buttons + handlers, added Settings nav row, cleaned unused imports/styles
+- `App.js` — imported SettingsScreen, registered in ProfileStack with themed header
+
+## Identity & Verification Polish (2026-03-17)
+
+### What was changed
+- **VerifyEmailScreen** — Improved messaging: initial text clarifies email was already sent, mentions spam folder. Rate-limit errors now show friendly "already sent" message instead of raw error. Cooldown button text changed to "Email Sent — Check Inbox". Switched `console.error` to `console.warn` for non-fatal auth errors.
+- **@username on profiles** — ProfileScreen shows `@username` below display name (uses `profile?.username || liveProfile?.username`, null-safe). UserProfileScreen shows `@username` below name (null-safe, hidden when missing).
+- **User search** — New `SearchUsersScreen` with prefix search on `usernameLower`. Entry point: person-add icon in My Crew header on ProfileScreen. Results show avatar, name, @username. Tap navigates to UserProfile. Current user excluded from results.
+
+### Files changed
+- `screens/VerifyEmailScreen.js` — polished messaging, friendlier error handling, cleaner logs
+- `screens/ProfileScreen.js` — added @username text, search button in My Crew header, `usernameText`/`crewSearchButton` styles
+- `screens/UserProfileScreen.js` — added @username text, `usernameText` style, adjusted name marginBottom
+- `screens/SearchUsersScreen.js` — new file
+- `App.js` — imported SearchUsersScreen, registered in ProfileStack
+
+### Search behavior
+- Prefix match on `usernameLower` using Firestore >= / < range query
+- Minimum 2 characters to trigger search
+- Max 20 results per query
+- Requires Firestore index on `usernameLower ASC` (auto-created by first query or add to `firestore.indexes.json`)

@@ -20,7 +20,6 @@ import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  SafeAreaView,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -29,6 +28,7 @@ import {
   Image,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';

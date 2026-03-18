@@ -28,12 +28,12 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
   TouchableOpacity,
   RefreshControl,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { signInAnonymously } from 'firebase/auth';
 import { collection, getDocs, orderBy, query, limit } from 'firebase/firestore';

@@ -13,7 +13,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  SafeAreaView,
   StyleSheet,
   ScrollView,
   TextInput,
@@ -23,6 +22,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { callFunction } from '../config/firebase';

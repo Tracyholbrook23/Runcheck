@@ -16,11 +16,11 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   ScrollView,
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, FONT_WEIGHTS, SPACING, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
