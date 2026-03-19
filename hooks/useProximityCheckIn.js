@@ -123,17 +123,12 @@ export const useProximityCheckIn = ({ gyms = [], isCheckedIn = false }) => {
           { latitude: gym.location.latitude, longitude: gym.location.longitude },
         );
 
-        if (__DEV__) console.log(`[PROXIMITY] ${gym.name}: ${dist.toFixed(0)}m (radius ${radius}m)`);
-
         // Only consider gyms the user is inside
         if (dist > radius) continue;
 
         // Respect per-gym dismiss cooldown
         const lastDismissed = dismissedAt.current[gym.id] || 0;
-        if (now - lastDismissed < DISMISS_COOLDOWN_MS) {
-          if (__DEV__) console.log(`[PROXIMITY] ${gym.name}: in cooldown — skipping`);
-          continue;
-        }
+        if (now - lastDismissed < DISMISS_COOLDOWN_MS) continue;
 
         // Track the closest eligible gym (handles edge case of two overlapping gyms)
         if (dist < closestDist) {
@@ -142,12 +137,10 @@ export const useProximityCheckIn = ({ gyms = [], isCheckedIn = false }) => {
         }
       }
 
-      if (__DEV__ && closestGym) console.log('[PROXIMITY] Nearby gym found:', closestGym.name);
       setNearbyGym(closestGym);
 
     } catch (err) {
-      // Location errors are silent — user shouldn't see GPS noise
-      if (__DEV__) console.log('[PROXIMITY] GPS check skipped:', err?.message);
+      // Location errors are silent — GPS noise suppressed intentionally
     } finally {
       checkingRef.current = false;
       setChecking(false);
@@ -173,7 +166,6 @@ export const useProximityCheckIn = ({ gyms = [], isCheckedIn = false }) => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       const wasBackground = appStateRef.current.match(/inactive|background/);
       if (wasBackground && nextState === 'active') {
-        if (__DEV__) console.log('[PROXIMITY] App foregrounded — checking proximity');
         checkProximity();
       }
       appStateRef.current = nextState;

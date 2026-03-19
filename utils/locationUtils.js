@@ -103,7 +103,5 @@ export const calculateDistanceMeters = (coord1, coord2) => {
 
   const distanceMeters = distanceKm * 1000; // Convert to meters
 
-  if (__DEV__) console.log('[DISTANCE]', distanceMeters.toFixed(2), 'm');
-
   return distanceMeters;
 };

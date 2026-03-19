@@ -219,6 +219,39 @@ const formatRunTime = (timestamp) => {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ` ${time}`;
 };
 
+// ─── Gym hours helpers ────────────────────────────────────────────────────────
+
+/** Ordered days of the week, index-aligned with new Date().getDay() */
+const DAYS_OF_WEEK = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+/**
+ * formatHourStr — Converts a 24-hour "HH:MM" string to a friendly "h AM/PM".
+ * e.g. "06:00" → "6 AM", "22:30" → "10:30 PM"
+ * @param {string} str — "HH:MM" time string
+ * @returns {string}
+ */
+const formatHourStr = (str) => {
+  if (!str) return '';
+  const [h, m] = str.split(':').map(Number);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h % 12 || 12;
+  return m === 0 ? `${hour12} ${ampm}` : `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+};
+
+/**
+ * formatHoursRange — Returns a display string for a day's hours object.
+ * Supports both { open: "HH:MM", close: "HH:MM" } objects and plain strings.
+ * @param {object|string|null|undefined} dayHours
+ * @returns {string}
+ */
+const formatHoursRange = (dayHours) => {
+  if (!dayHours) return 'Closed';
+  if (typeof dayHours === 'string') return dayHours;
+  const { open, close } = dayHours;
+  if (!open && !close) return 'Closed';
+  return `${formatHourStr(open)} – ${formatHourStr(close)}`;
+};
+
 /**
  * RunDetailsScreen — Full gym detail screen.
  *
@@ -232,6 +265,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const [refreshing, setRefreshing] = useState(false);
+  const [hoursExpanded, setHoursExpanded] = useState(false);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -339,6 +373,8 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   // Start-a-Run modal state
   const [runModalVisible, setRunModalVisible] = useState(false);
+  // Run type picker sheet — lets users choose Open / Private / Paid before proceeding
+  const [runTypeSheetVisible, setRunTypeSheetVisible] = useState(false);
   const [selectedRunDay, setSelectedRunDay] = useState(null);   // day chip object
   const [selectedRunSlot, setSelectedRunSlot] = useState(null); // time slot object
   const [startingRun, setStartingRun] = useState(false);
@@ -1201,23 +1237,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     });
   }, [runs, runHereCountMap]);
 
-  // Debug — remove once counts are confirmed stable
-  if (__DEV__) {
-    console.log(
-      '[RunDetails] raw presences:', presences.length,
-      'ids:', presences.map((p) => p.odId)
-    );
-    console.log(
-      '[RunDetails] unique presences:', uniqueActivePresences.length,
-      'ids:', uniqueActivePresences.map((p) => p.odId)
-    );
-    const missingProfiles = uniqueActivePresences
-      .filter((p) => !p.userName && !p.userAvatar)
-      .map((p) => p.odId);
-    if (missingProfiles.length > 0) {
-      console.log('[RunDetails] missing profiles (will show placeholder):', missingProfiles);
-    }
-  }
+  // (presence debug logs removed — counts confirmed stable)
 
   // Tick counter forces a re-render every 60 seconds so "X minutes ago"
   // timestamps on presence cards stay current without a full data refetch.
@@ -1585,6 +1605,70 @@ export default function RunDetailsScreen({ route, navigation }) {
             {gym?.notes ? (
               <Text style={styles.gymNotes}>{gym.notes}</Text>
             ) : null}
+
+            {/* ── Hours of operation ─────────────────────────────────────────
+                Stored in Firestore as gym.hours = { monday: { open: "HH:MM", close: "HH:MM" }, ... }
+                Today's hours shown inline; tap the row to expand the full week.
+            ──────────────────────────────────────────────────────────────── */}
+            {gym?.hours && (() => {
+              const todayKey = DAYS_OF_WEEK[new Date().getDay()];
+              const todayHours = gym.hours[todayKey];
+              return (
+                <View style={styles.hoursBlock}>
+                  <TouchableOpacity
+                    style={styles.hoursHeader}
+                    onPress={() => setHoursExpanded((prev) => !prev)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.hoursHeaderLeft}>
+                      <Ionicons name="time-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />
+                      <Text style={styles.hoursToday}>
+                        Today: <Text style={styles.hoursTodayValue}>{formatHoursRange(todayHours)}</Text>
+                      </Text>
+                    </View>
+                    <Ionicons
+                      name={hoursExpanded ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={colors.textMuted}
+                    />
+                  </TouchableOpacity>
+
+                  {hoursExpanded && (
+                    <View style={styles.hoursWeek}>
+                      {DAYS_OF_WEEK.map((day) => {
+                        const isCurrentDay = day === todayKey;
+                        return (
+                          <View key={day} style={styles.hoursRow}>
+                            <Text style={[styles.hoursDay, isCurrentDay && styles.hoursDayToday]}>
+                              {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                            </Text>
+                            <Text style={[styles.hoursTime, isCurrentDay && styles.hoursTimeToday]}>
+                              {formatHoursRange(gym.hours[day])}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+
+            {/* ── Gym website — shown only for membership/day-pass gyms ──────
+                Lets players visit the gym's site for membership pricing info.
+                Stored in Firestore as gym.websiteUrl (string URL).
+            ──────────────────────────────────────────────────────────────── */}
+            {gym?.websiteUrl && gym?.accessType !== 'free' && (
+              <TouchableOpacity
+                style={styles.websiteButton}
+                onPress={() => Linking.openURL(gym.websiteUrl).catch(() => {})}
+                activeOpacity={0.75}
+              >
+                <Ionicons name="globe-outline" size={15} color={colors.infoText} style={{ marginRight: 6 }} />
+                <Text style={styles.websiteButtonText}>Visit Gym Website</Text>
+                <Ionicons name="open-outline" size={12} color={colors.infoText} style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1649,7 +1733,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             </View>
             <TouchableOpacity
               style={styles.startRunButton}
-              onPress={() => setRunModalVisible(true)}
+              onPress={() => setRunTypeSheetVisible(true)}
             >
               <Ionicons name="add" size={14} color={colors.primary} style={{ marginRight: 3 }} />
               <Text style={styles.startRunButtonText}>Start a Run</Text>
@@ -2056,6 +2140,103 @@ export default function RunDetailsScreen({ route, navigation }) {
             </TouchableWithoutFeedback>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* ── Run Type Picker Sheet ────────────────────────────────────────── */}
+      {/* Lets the user choose Open / Private / Paid before committing.       */}
+      {/* Private and Paid options navigate to the CreatePrivateRunScreen.    */}
+      <Modal
+        visible={runTypeSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRunTypeSheetVisible(false)}
+      >
+        <TouchableOpacity
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' }}
+          activeOpacity={1}
+          onPress={() => setRunTypeSheetVisible(false)}
+        />
+        <View style={styles.typeSheetContainer}>
+          {/* Handle */}
+          <View style={styles.typeSheetHandle} />
+
+          <Text style={styles.typeSheetTitle}>What kind of run?</Text>
+          <Text style={styles.typeSheetSub}>Choose how you want to set up your run.</Text>
+
+          {/* Open Run */}
+          <TouchableOpacity
+            style={styles.typeSheetOption}
+            onPress={() => {
+              setRunTypeSheetVisible(false);
+              setRunModalVisible(true);
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.typeSheetIconWrap, { backgroundColor: `${colors.primary}20` }]}>
+              <Ionicons name="basketball-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeSheetOptionTitle}>Open Run</Text>
+              <Text style={styles.typeSheetOptionDesc}>Anyone can see and join. Great for getting a full court going.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={styles.typeSheetDivider} />
+
+          {/* Private Run */}
+          <TouchableOpacity
+            style={styles.typeSheetOption}
+            onPress={() => {
+              setRunTypeSheetVisible(false);
+              navigation.navigate('CreatePrivateRun', { runType: 'private' });
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(255,107,53,0.15)' }]}>
+              <Ionicons name="lock-closed-outline" size={22} color="#FF6B35" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <Text style={styles.typeSheetOptionTitle}>Private Run</Text>
+                <View style={styles.typeSheetPremiumChip}>
+                  <Ionicons name="flash" size={9} color="#FF6B35" style={{ marginRight: 2 }} />
+                  <Text style={styles.typeSheetPremiumChipText}>Premium</Text>
+                </View>
+              </View>
+              <Text style={styles.typeSheetOptionDesc}>Invite-only. You control who gets in and the skill level.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+          <View style={styles.typeSheetDivider} />
+
+          {/* Paid Run */}
+          <TouchableOpacity
+            style={styles.typeSheetOption}
+            onPress={() => {
+              setRunTypeSheetVisible(false);
+              navigation.navigate('CreatePrivateRun', { runType: 'paid' });
+            }}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+              <Ionicons name="cash-outline" size={22} color="#22C55E" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                <Text style={styles.typeSheetOptionTitle}>Paid Run</Text>
+                <View style={styles.typeSheetPremiumChip}>
+                  <Ionicons name="flash" size={9} color="#FF6B35" style={{ marginRight: 2 }} />
+                  <Text style={styles.typeSheetPremiumChipText}>Premium</Text>
+                </View>
+              </View>
+              <Text style={styles.typeSheetOptionDesc}>Charge players an entry fee. You set the price and collect the payout.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+
+        </View>
       </Modal>
 
       {/* ── Start a Run Modal ────────────────────────────────────────────── */}
@@ -3030,6 +3211,75 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontStyle: 'italic',
     marginTop: SPACING.xs,
   },
+
+  // ── Hours of operation ──────────────────────────────────────────────────────
+  hoursBlock: {
+    marginTop: SPACING.sm,
+  },
+  hoursHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  hoursHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  hoursToday: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+  },
+  hoursTodayValue: {
+    color: colors.textPrimary || colors.text,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  hoursWeek: {
+    marginTop: SPACING.xs,
+    paddingLeft: 20,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+  },
+  hoursDay: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    width: 30,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  hoursDayToday: {
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  hoursTime: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textSecondary,
+    flex: 1,
+    textAlign: 'right',
+  },
+  hoursTimeToday: {
+    color: colors.textPrimary || colors.text,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── Gym website button ──────────────────────────────────────────────────────
+  websiteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    backgroundColor: colors.infoBg ?? 'rgba(10,132,255,0.1)',
+    borderRadius: RADIUS.md,
+    alignSelf: 'flex-start',
+  },
+  websiteButtonText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.infoText,
+  },
+
   statsCard: {
     flexDirection: 'row',
     backgroundColor: colors.surface,
@@ -3620,6 +3870,80 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ── Run type picker bottom sheet ──────────────────────────────────────────
+  typeSheetContainer: {
+    backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xxxl ?? 48,
+    paddingTop: SPACING.sm,
+  },
+  typeSheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: isDark ? '#48484A' : '#D1D5DB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+  },
+  typeSheetTitle: {
+    fontSize: FONT_SIZES.h2,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: isDark ? '#FFFFFF' : '#111111',
+    marginBottom: SPACING.xxs,
+  },
+  typeSheetSub: {
+    fontSize: FONT_SIZES.small,
+    color: isDark ? '#8E8E93' : '#6B7280',
+    marginBottom: SPACING.md,
+  },
+  typeSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    gap: SPACING.md,
+  },
+  typeSheetIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: RADIUS.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  typeSheetOptionTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: isDark ? '#FFFFFF' : '#111111',
+    marginRight: SPACING.xs,
+  },
+  typeSheetOptionDesc: {
+    fontSize: FONT_SIZES.small,
+    color: isDark ? '#8E8E93' : '#6B7280',
+    lineHeight: 18,
+  },
+  typeSheetPremiumChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FF6B3518',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: '#FF6B3535',
+  },
+  typeSheetPremiumChipText: {
+    fontSize: 10,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FF6B35',
+  },
+  typeSheetDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: isDark ? '#38383A' : '#E5E7EB',
+    marginLeft: 62,
   },
   runsEmptyState: {
     alignItems: 'center',

@@ -66,6 +66,7 @@ import AdminHiddenClipsScreen from './screens/AdminHiddenClipsScreen';
 import AdminFeaturedClipsScreen from './screens/AdminFeaturedClipsScreen';
 import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
+import CreatePrivateRunScreen from './screens/CreatePrivateRunScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -114,6 +115,8 @@ function RunsStack() {
       />
       <Stack.Screen name="GymMap" component={GymMapScreen} options={{ title: 'Gym Map' }} />
       <Stack.Screen name="RunDetails" component={RunDetailsScreen} options={{ title: 'Run Details' }} />
+      <Stack.Screen name="CreatePrivateRun" component={CreatePrivateRunScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Premium" component={PremiumScreen} options={{ headerShown: false }} />
       <Stack.Screen name="RecordClipScreen" component={RecordClipScreen} options={{ headerShown: false }} />
       <Stack.Screen name="TrimClipScreen" component={TrimClipScreen} options={{ headerShown: false }} />
       <Stack.Screen name="GymReviews" component={GymReviewsScreen} options={{ headerShown: false }} />
@@ -177,7 +180,7 @@ function ProfileStack() {
       <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="SearchUsers" component={SearchUsersScreen} options={{ title: 'Find Players', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="MyGymRequests" component={MyGymRequestsScreen} options={{ title: 'My Gym Requests', ...themeStyles.NAV_HEADER }} />
-      <Stack.Screen name="MyReports" component={MyReportsScreen} options={{ title: 'My Reports', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="MyReports" component={MyReportsScreen} options={{ title: 'My Reports', headerBackTitle: 'Settings', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminTools" component={AdminToolsScreen} options={{ title: 'Admin Tools', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequests" component={AdminGymRequestsScreen} options={{ title: 'Gym Requests', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequestDetail" component={AdminGymRequestDetailScreen} options={{ title: 'Request Detail', headerBackTitle: 'Requests', ...themeStyles.NAV_HEADER }} />

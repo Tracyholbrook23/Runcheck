@@ -44,6 +44,8 @@ import {
   Image,
   Animated,
   Linking,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -52,6 +54,7 @@ import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants
 import { useTheme } from '../contexts';
 import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip, useProfile } from '../hooks';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
+import { useSchedules } from '../hooks/useSchedules';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
@@ -113,6 +116,7 @@ const BlinkingDot = ({ active, style }) => {
 const HomeScreen = ({ navigation }) => {
   const { colors, isDark, themeStyles } = useTheme();
   const [refreshing, setRefreshing] = useState(false);
+  const [runTypeSheetVisible, setRunTypeSheetVisible] = useState(false);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -160,6 +164,28 @@ const HomeScreen = ({ navigation }) => {
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
   const [fetchError, setFetchError] = useState(false);
+
+  // User's upcoming scheduled visits — reused from PlanVisitScreen's hook.
+  // Derive todaysPlan: the soonest scheduled visit today (past or future both show,
+  // so the card stays visible once you're close to your scheduled time).
+  const { schedules } = useSchedules();
+  const todaysPlan = useMemo(() => {
+    if (!schedules.length) return null;
+    const todayStr = new Date().toDateString();
+    const todaySchedules = schedules.filter((s) => {
+      const d = s.scheduledTime?.toDate?.();
+      return d && d.toDateString() === todayStr;
+    });
+    if (!todaySchedules.length) return null;
+    // Pick the soonest one
+    todaySchedules.sort((a, b) => {
+      const aMs = a.scheduledTime?.toMillis?.() ?? 0;
+      const bMs = b.scheduledTime?.toMillis?.() ?? 0;
+      return aMs - bMs;
+    });
+    const s = todaySchedules[0];
+    return { gymId: s.gymId, gymName: s.gymName, scheduledTime: s.scheduledTime };
+  }, [schedules]);
 
   // Canonical app-wide presence map — single source of truth for all live counts.
   // Replaces the previous inline onSnapshot subscription on this screen.
@@ -349,6 +375,13 @@ const HomeScreen = ({ navigation }) => {
 
   const goToTab = (tabName) => {
     navigation.getParent()?.navigate(tabName);
+  };
+
+  /** Formats a schedule's Firestore Timestamp to "7:00 AM" for the check-in card. */
+  const formatPlanTime = (ts) => {
+    if (!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   };
 
   // ── Weekly Winners celebration card visibility ─────────────────────────
@@ -661,20 +694,61 @@ const HomeScreen = ({ navigation }) => {
           ) : null}
 
           {/* Quick Actions — Check In card hidden when already checked in to avoid
-              redundancy with the presence card above. Find Runs + Plan always visible. */}
+              redundancy with the presence card above. Start a Run + Find Runs + Plan always visible. */}
           <View style={styles.actionsSection}>
             {!isCheckedIn && (
               <TouchableOpacity
-                onPress={() => goToTab('CheckIn')}
+                onPress={() => {
+                  if (todaysPlan?.gymId) {
+                    navigation.getParent()?.navigate('Runs', {
+                      screen: 'RunDetails',
+                      params: { gymId: todaysPlan.gymId, gymName: todaysPlan.gymName },
+                    });
+                  } else {
+                    goToTab('CheckIn');
+                  }
+                }}
                 activeOpacity={0.8}
               >
                 <BlurView intensity={60} tint="dark" style={styles.actionCard}>
-                  <Ionicons name="location" size={26} color="#FFFFFF" />
-                  <Text style={styles.actionCardTitle}>Check Into a Run</Text>
-                  <Text style={styles.actionCardSub}>Find courts near you</Text>
+                  <View style={styles.checkInCardRow}>
+                    <Ionicons name="location" size={26} color="#FFFFFF" />
+                    {todaysPlan && (
+                      <View style={styles.checkInPlanBadge}>
+                        <Text style={styles.checkInPlanBadgeText}>TODAY</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.actionCardTitle}>
+                    {todaysPlan ? `Check In to ${todaysPlan.gymName}` : 'Check Into a Run'}
+                  </Text>
+                  <Text style={styles.actionCardSub}>
+                    {todaysPlan
+                      ? `Scheduled ${formatPlanTime(todaysPlan.scheduledTime)} — tap to go there`
+                      : 'GPS confirms you\'re at the gym when you arrive'}
+                  </Text>
                 </BlurView>
               </TouchableOpacity>
             )}
+
+            {/* START A RUN — primary CTA, always visible */}
+            <TouchableOpacity
+              onPress={() => setRunTypeSheetVisible(true)}
+              activeOpacity={0.8}
+            >
+              <BlurView intensity={60} tint="dark" style={styles.startRunCard}>
+                <View style={styles.startRunLeft}>
+                  <View style={styles.startRunIconWrap}>
+                    <Ionicons name="basketball" size={22} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.startRunTitle}>Start a Group Run</Text>
+                    <Text style={styles.startRunSub}>Post it — let other players find & join you</Text>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.4)" />
+              </BlurView>
+            </TouchableOpacity>
 
             <View style={styles.actionRow}>
               <TouchableOpacity
@@ -1176,6 +1250,99 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </ScrollView>
       </SafeAreaView>
+
+      {/* ── Run Type Picker Sheet ─────────────────────────────────────────
+          Slide-up modal that lets users pick Open / Private / Paid run.
+          Open run → navigate to Runs tab (pick a gym first).
+          Private / Paid → navigate to CreatePrivateRunScreen (own gym input).
+       ────────────────────────────────────────────────────────────────── */}
+      <Modal
+        visible={runTypeSheetVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setRunTypeSheetVisible(false)}
+      >
+        <Pressable
+          style={styles.typeSheetBackdrop}
+          onPress={() => setRunTypeSheetVisible(false)}
+        />
+        <View style={styles.typeSheetContainer}>
+          <View style={styles.typeSheetHandle} />
+          <Text style={styles.typeSheetTitle}>Start a Group Run</Text>
+          <Text style={styles.typeSheetSub}>Post your run so other players can see it and join you</Text>
+
+          {/* Open Run */}
+          <TouchableOpacity
+            style={styles.typeSheetOption}
+            activeOpacity={0.75}
+            onPress={() => {
+              setRunTypeSheetVisible(false);
+              goToTab('Runs');
+            }}
+          >
+            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(255,107,53,0.18)' }]}>
+              <Ionicons name="basketball-outline" size={22} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeSheetOptionTitle}>Open Run</Text>
+              <Text style={styles.typeSheetOptionDesc}>Post it publicly — anyone nearby can join</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.25)" />
+          </TouchableOpacity>
+
+          <View style={styles.typeSheetDivider} />
+
+          {/* Private Run */}
+          <TouchableOpacity
+            style={styles.typeSheetOption}
+            activeOpacity={0.75}
+            onPress={() => {
+              setRunTypeSheetVisible(false);
+              navigation.getParent()?.navigate('Runs', {
+                screen: 'CreatePrivateRun',
+                params: { runType: 'private' },
+              });
+            }}
+          >
+            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(88,86,214,0.22)' }]}>
+              <Ionicons name="lock-closed-outline" size={22} color="#7C7AEA" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeSheetOptionTitle}>Private Run</Text>
+              <Text style={styles.typeSheetOptionDesc}>Invite only · Set skill requirements</Text>
+            </View>
+            <View style={styles.typeSheetPremiumChip}>
+              <Text style={styles.typeSheetPremiumChipText}>⚡ Premium</Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={styles.typeSheetDivider} />
+
+          {/* Paid Run */}
+          <TouchableOpacity
+            style={styles.typeSheetOption}
+            activeOpacity={0.75}
+            onPress={() => {
+              setRunTypeSheetVisible(false);
+              navigation.getParent()?.navigate('Runs', {
+                screen: 'CreatePrivateRun',
+                params: { runType: 'paid' },
+              });
+            }}
+          >
+            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(52,199,89,0.18)' }]}>
+              <Ionicons name="cash-outline" size={22} color="#34C759" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.typeSheetOptionTitle}>Paid Run</Text>
+              <Text style={styles.typeSheetOptionDesc}>Charge entry · Collect earnings</Text>
+            </View>
+            <View style={styles.typeSheetPremiumChip}>
+              <Text style={styles.typeSheetPremiumChipText}>⚡ Premium</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </ImageBackground>
   );
 };
@@ -1346,6 +1513,23 @@ actionCard: {
     borderColor: 'rgba(255,255,255,0.15)',
     borderLeftWidth: 3,
     borderLeftColor: '#F97316',
+  },
+  checkInCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  checkInPlanBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  checkInPlanBadgeText: {
+    fontSize: 10,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: '#FFFFFF',
+    letterSpacing: 0.8,
   },
   actionCardTitle: {
     fontSize: FONT_SIZES.h3,
@@ -2081,6 +2265,116 @@ actionCard: {
     fontSize: FONT_SIZES.small,
     color: '#fff',
     fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── Start a Run card ───────────────────────────────────────────────────
+  startRunCard: {
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md + 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  startRunLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  startRunIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,107,53,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startRunTitle: {
+    fontSize: FONT_SIZES.h3,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  startRunSub: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+  },
+
+  // ── Run Type Picker Sheet ──────────────────────────────────────────────
+  typeSheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  typeSheetContainer: {
+    backgroundColor: '#1C1C1E',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+    paddingHorizontal: SPACING.lg,
+  },
+  typeSheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 10,
+    marginBottom: SPACING.md,
+  },
+  typeSheetTitle: {
+    fontSize: FONT_SIZES.h2,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  typeSheetSub: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.45)',
+    marginBottom: SPACING.md,
+  },
+  typeSheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  typeSheetIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typeSheetOptionTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+  },
+  typeSheetOptionDesc: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 2,
+  },
+  typeSheetPremiumChip: {
+    backgroundColor: 'rgba(255,107,53,0.18)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  typeSheetPremiumChipText: {
+    fontSize: 11,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.primary,
+  },
+  typeSheetDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
 });
 
