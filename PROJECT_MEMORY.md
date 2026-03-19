@@ -1,8 +1,29 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-17_
+_Last updated: 2026-03-18_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
+## Current Milestone
+
+Primary Goal:
+Launch a reliable core run experience for first users in Austin.
+
+In Scope:
+- stable signup / login / verification / onboarding flow
+- gym discovery and home court selection
+- start run / join run / leave run flow
+- check-in and check-out reliability
+- empty-run cleanup and stale activity cleanup
+- basic reporting and admin moderation
+- launch-readiness cleanup (permissions, logs, blockers, polish tied to launch)
+
+Out of Scope (for now):
+- major clip feature expansion
+- advanced social systems
+- heavy visual redesign
+- deep analytics
+- experimental monetization work
+- non-launch backend refactors
 
 ## Tech Stack
 - React Native 0.81.5 + Expo SDK 54 + React 19.1.0
@@ -463,7 +484,7 @@ For reference, these items were previously listed here and have been moved:
 
 ## How to Give Claude Context at Start of Each Session
 
-Read `SESSION_START.md` first — it defines the startup reading order, current project phase, and session rules. That file replaces the manual onboarding prompt.
+Read `docs/session_start.md` first — it defines the startup reading order, current project phase, and session rules. That file replaces the manual onboarding prompt.
 
 ## Weekly Leaderboard System
 RunCheck includes a weekly competition system alongside the permanent leaderboard.
