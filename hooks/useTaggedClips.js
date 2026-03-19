@@ -1,14 +1,10 @@
 /**
  * useTaggedClips.js — Fetch clips a user is tagged in
  *
- * V1 implementation: queries the most recent gymClips (limit 100, newest first)
- * and filters client-side for clips where `taggedPlayers` contains an entry
- * with the given uid.
- *
- * Firestore cannot do array-contains on a sub-field of an object array, so
- * client-side filtering is the pragmatic V1 approach. A future optimisation
- * could maintain a dedicated `taggedUserIds: string[]` field on each clip doc
- * to enable a native array-contains query.
+ * Uses a native Firestore array-contains query on `taggedUserIds` — a flat
+ * string array written by the `finalizeClipUpload` Cloud Function that mirrors
+ * `taggedPlayers[].uid`. This avoids the V1 approach of fetching 100 recent
+ * clips and filtering client-side.
  *
  * Returns two separate lists:
  *   - allTagged: every clip the user is tagged in (for "Tagged In" on own profile)
@@ -27,7 +23,7 @@ import {
   collection,
   query,
   orderBy,
-  limit,
+  where,
   getDocs,
 } from 'firebase/firestore';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
@@ -73,11 +69,12 @@ export const useTaggedClips = (uid) => {
 
     (async () => {
       try {
-        // V1: broad query on recent clips, client-side filter for taggedPlayers
+        // Native array-contains query on taggedUserIds — written by finalizeClipUpload
+        // Cloud Function as a flat mirror of taggedPlayers[].uid.
         const clipsQuery = query(
           collection(db, 'gymClips'),
+          where('taggedUserIds', 'array-contains', uid),
           orderBy('createdAt', 'desc'),
-          limit(100),
         );
         const snap = await getDocs(clipsQuery);
 
@@ -87,13 +84,14 @@ export const useTaggedClips = (uid) => {
         snap.docs.forEach((d) => {
           const data = { id: d.id, ...d.data() };
           if (!isVisibleClip(data)) return;
-          if (!Array.isArray(data.taggedPlayers)) return;
-
-          const tagEntry = data.taggedPlayers.find((p) => p.uid === uid);
-          if (!tagEntry) return;
 
           all.push(data);
-          if (tagEntry.addedToProfile === true) {
+
+          // featuredIn: tagged entry where this user approved it for their profile
+          const tagEntry = Array.isArray(data.taggedPlayers)
+            ? data.taggedPlayers.find((p) => p.uid === uid)
+            : null;
+          if (tagEntry?.addedToProfile === true) {
             featured.push(data);
           }
         });

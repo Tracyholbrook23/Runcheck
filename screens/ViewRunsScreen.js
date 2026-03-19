@@ -55,7 +55,7 @@ import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
  * @returns {JSX.Element}
  */
 export default function ViewRunsScreen({ navigation }) {
-  const { gyms, loading } = useGyms();
+  const { gyms, loading, error: fetchError } = useGyms();
   const { followedGyms, homeCourtId } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -252,6 +252,14 @@ export default function ViewRunsScreen({ navigation }) {
             )}
           </View>
         </LinearGradient>
+
+        {/* Dismissible error banner — shown when gyms subscription fails */}
+        {fetchError && (
+          <TouchableOpacity style={styles.errorBanner} onPress={() => {}} activeOpacity={0.8}>
+            <Ionicons name="alert-circle-outline" size={16} color="#fff" />
+            <Text style={styles.errorBannerText}>Something went wrong — pull to refresh</Text>
+          </TouchableOpacity>
+        )}
 
         <ScrollView
           contentContainerStyle={styles.scroll}
@@ -626,5 +634,19 @@ loadingText: {
     fontSize: FONT_SIZES.xs,
     color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#B45309',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: FONT_SIZES.small,
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.medium,
   },
 });

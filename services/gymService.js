@@ -116,7 +116,7 @@ export const getGym = async (gymId) => {
  * @param {Function} callback - Called with array of active gyms
  * @returns {Function} Unsubscribe function
  */
-export const subscribeToGyms = (callback) => {
+export const subscribeToGyms = (callback, onError) => {
   const gymsRef = collection(db, 'gyms');
   const q = query(gymsRef, orderBy('name', 'asc'));
 
@@ -134,6 +134,7 @@ export const subscribeToGyms = (callback) => {
     (error) => {
       if (__DEV__) console.error('Error subscribing to gyms:', error);
       callback([]);
+      onError?.(error);
     }
   );
 };

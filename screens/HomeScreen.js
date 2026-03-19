@@ -159,6 +159,7 @@ const HomeScreen = ({ navigation }) => {
 
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
+  const [fetchError, setFetchError] = useState(false);
 
   // Canonical app-wide presence map — single source of truth for all live counts.
   // Replaces the previous inline onSnapshot subscription on this screen.
@@ -246,7 +247,7 @@ const HomeScreen = ({ navigation }) => {
       },
       (error) => {
         if (__DEV__) console.error('Error subscribing to activity feed:', error);
-        if (!cancelled) setActivityFeed([]);
+        if (!cancelled) { setActivityFeed([]); setFetchError(true); }
       }
     );
 
@@ -569,6 +570,15 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Dismissible error banner — shown when activity feed subscription fails */}
+        {fetchError && (
+          <TouchableOpacity style={styles.errorBanner} onPress={() => setFetchError(false)} activeOpacity={0.8}>
+            <Ionicons name="alert-circle-outline" size={16} color="#fff" />
+            <Text style={styles.errorBannerText}>Something went wrong — pull to refresh</Text>
+            <Ionicons name="close" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
 
         <ScrollView
           contentContainerStyle={styles.scrollContent}
@@ -2057,6 +2067,20 @@ actionCard: {
     fontSize: FONT_SIZES.xs,
     color: 'rgba(255,255,255,0.55)',
     fontStyle: 'italic',
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#B45309',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: FONT_SIZES.small,
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.medium,
   },
 });
 

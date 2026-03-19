@@ -218,7 +218,6 @@ export default function ProfileScreen({ navigation }) {
   // ID of the request row currently being accepted/declined — disables that
   // row's buttons while the Firestore writes are in-flight.
   const [processingRequestId, setProcessingRequestId] = useState(null);
-  const [reliability, setReliability] = useState(null);
   const [showReliabilityInfo, setShowReliabilityInfo] = useState(false);
 
   // ── Admin workload badge (all 4 categories visible in Admin Tools) ───────
@@ -457,7 +456,6 @@ export default function ProfileScreen({ navigation }) {
     const unsubscribe = onSnapshot(
       doc(db, 'users', user.uid),
       async (snap) => {
-        setReliability(snap.exists() ? (snap.data()?.reliability ?? null) : null);
         if (!snap.exists()) {
           setPendingRequests([]);
           return;

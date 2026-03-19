@@ -34,10 +34,16 @@ export const useGyms = () => {
 
   useEffect(() => {
     // Open a real-time Firestore listener; unsubscribe on unmount
-    const unsubscribe = subscribeToGyms((gymData) => {
-      setGyms(gymData);
-      setLoading(false);
-    });
+    const unsubscribe = subscribeToGyms(
+      (gymData) => {
+        setGyms(gymData);
+        setLoading(false);
+      },
+      () => {
+        setError(true);
+        setLoading(false);
+      },
+    );
 
     return unsubscribe;
   }, []);

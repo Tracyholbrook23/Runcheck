@@ -514,6 +514,9 @@ export default function RunDetailsScreen({ route, navigation }) {
     }
   };
 
+  // Error banner — shown when reviews or clips snapshot fails
+  const [fetchError, setFetchError] = useState(false);
+
   // Reviews state
   const [reviews, setReviews] = useState([]);
   const [reviewModalVisible, setReviewModalVisible] = useState(false);
@@ -640,6 +643,7 @@ export default function RunDetailsScreen({ route, navigation }) {
       setReviews(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     }, (err) => {
       if (__DEV__) console.error('[reviews] error:', err.code, err.message);
+      setFetchError(true);
     });
     return unsub;
   }, [gymId]);
@@ -796,6 +800,7 @@ export default function RunDetailsScreen({ route, navigation }) {
     }, (err) => {
       if (__DEV__) console.error('[gymClips feed] error:', err.code, err.message);
       setClipsLoading(false);
+      setFetchError(true);
     });
 
     return () => {
@@ -1404,6 +1409,15 @@ export default function RunDetailsScreen({ route, navigation }) {
             <Ionicons name="chevron-back" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
+
+        {/* Dismissible error banner — shown when reviews or clips snapshot fails */}
+        {fetchError && (
+          <TouchableOpacity style={styles.errorBanner} onPress={() => setFetchError(false)} activeOpacity={0.8}>
+            <Ionicons name="alert-circle-outline" size={16} color="#fff" />
+            <Text style={styles.errorBannerText}>Something went wrong — pull to refresh</Text>
+            <Ionicons name="close" size={16} color="#fff" />
+          </TouchableOpacity>
+        )}
 
         {/* Gym name, address, directions button, and type badge */}
         <View style={styles.header}>
@@ -3850,6 +3864,22 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   runModalButtonDisabled: {
     opacity: 0.45,
+  },
+
+  // ── Error banner ──────────────────────────────────────────────────────────
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#B45309',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: FONT_SIZES.small,
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.medium,
   },
 
   // ── Smart proximity prompt card ───────────────────────────────────────────
