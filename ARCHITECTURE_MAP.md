@@ -117,6 +117,8 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `utils/rankHelpers.js` | Rank computation helpers (`getUserRank`, `getProgressToNextRank`, `getNextRank`, `getRankById`) |
 | `utils/perkHelpers.js` | Perk resolution helpers (`getUserPerks`, `hasPerk`, `getFeatureQuota`, `getRankPerksForDisplay`) |
 | `utils/badges.js` | **DEPRECATED** re-export shim — forwards to `config/ranks`, `config/points`, `utils/rankHelpers` |
+| `utils/locationUtils.js` | GPS utility module: `isLocationGranted`, `requestLocationPermission`, `getCurrentLocation`, `calculateDistanceMeters`. Dev mode returns Cowboys Fit coords. Used by `useProximityCheckIn`. |
+| `utils/haptics.js` | Haptic feedback helpers with no-op fallbacks: `hapticSuccess`, `hapticLight`, `hapticMedium`, `hapticHeavy`. Used in CheckInScreen, RunDetailsScreen, RecordClipScreen, TrimClipScreen. |
 
 ### Key Firestore Collections
 - `users/{uid}` — profile, reliability sub-object, activePresence (denormalized)
@@ -156,6 +158,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `screens/SettingsScreen.js` | Account settings: sign out, delete account, preferences |
 | `screens/SearchUsersScreen.js` | User search by username prefix (live suggestions) |
 | `screens/PremiumScreen.js` | Premium features screen |
+| `screens/CreatePrivateRunScreen.js` | **UI-only Premium teaser** for Private Run and Paid Run features. Interactive form with payout calculator. CTA shows "Coming Soon" modal → navigates to PremiumScreen. No Firestore writes. |
 | `screens/LeaderboardScreen.js` | Community leaderboard |
 | `screens/CheckInScreen.js` | GPS check-in flow |
 | `screens/PlanVisitScreen.js` | Schedule a future gym visit |
@@ -197,6 +200,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `hooks/useGymSchedules.js` | Scheduled visits at a specific gym |
 | `hooks/useLivePresenceMap.js` | Aggregated live presence data across all gyms (used by HomeScreen LIVE indicator) |
 | `hooks/useLocation.js` | Expo Location GPS hook |
+| `hooks/useProximityCheckIn.js` | Smart proximity hook. Polls GPS every 30s while foregrounded; surfaces `nearbyGym` when user is inside a gym's `checkInRadiusMeters`. 30-min per-gym dismiss cooldown. Accuracy gate (>100m GPS fixes ignored). Used in CheckInScreen and RunDetailsScreen. |
 | `hooks/index.js` | Barrel export for all hooks |
 
 ### Test Layer
@@ -278,6 +282,9 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `screens/AdminReportsScreen.js` | Reports moderation: type/status badges, resolve/review actions |
 | `screens/AdminSuspendedUsersScreen.js` | Suspended users: avatar, resolved names, unsuspend action |
 | `screens/AdminHiddenClipsScreen.js` | Hidden clips: thumbnail preview, video playback, unhide action |
+| `screens/AdminAllClipsScreen.js` | Full clip browser: filter by All / By Gym / Hidden / Featured; Feature, Unfeature, Hide, Unhide actions; real-time snapshot (limit 25) |
+| `screens/AdminFeaturedClipsScreen.js` | Featured clips admin view: lists clips with `isDailyHighlight === true`; Unfeature action via `callFunction`. |
+| `screens/MyReportsScreen.js` | **User-facing read-only** view of the signed-in user's own submitted reports (`reports` where `reportedBy == uid`, sorted newest-first). Status badges only — no edit/delete actions. Not an admin screen. |
 
 ### Component Layer
 | File | Role |
@@ -353,6 +360,11 @@ Zone assignments are based on file content, service dependencies, and the data m
 | File | Role |
 |------|------|
 | `modules/video-trimmer/` | On-device trim: iOS (AVFoundation), Android (Media3 Transformer). |
+
+### Hook Layer
+| File | Role |
+|------|------|
+| `hooks/useFeaturedClip.js` | Real-time subscription to `gymClips` where `isDailyHighlight == true` (limit 5). Client-side filters: not hidden, status ready/ready_raw, featuredAt within 24 hours. Resolves video URL, thumbnail, uploader info, gym name. Used by HomeScreen spotlight card. |
 
 ### Key Firestore Collections
 - `gymClips/{clipId}` — deterministic ID (`{scheduleId}_{uid}` or `presence_{gymId}_{uid}`)
@@ -445,8 +457,11 @@ The following files serve multiple zones and should be treated carefully when ma
 | `modules/video-trimmer/` | Native Expo module for video trimming; classified under Zone 8 (Clips). |
 | `__mocks__/` | Test mocks for Expo vector icons and React Native vector icons. Infrastructure, not a feature zone. |
 | `jest.setup.js` | Test infrastructure. |
+| `utils/notifications.js` | Push notification utility: `registerPushToken` — requests permission, retrieves Expo push token, persists to Firestore. One-shot; intended to be called from a top-level component after auth. Not yet wired into the app. |
+| `utils/openMapsDirections.js` | Opens native maps app with directions to a gym location. iOS: Apple Maps or Google Maps via ActionSheet. Android: `geo:` URI. |
+| `screens/UsersScreen.js` | **Dev/debug only.** Fetches all `users` docs from the Firestore emulator and lists them. Not registered in production navigation. Used for emulator data verification only. |
 
 ---
 
-_Last updated: 2026-03-18_
+_Last updated: 2026-03-19 (nightly-memory — added AdminFeaturedClipsScreen, MyReportsScreen, useFeaturedClip, notifications, openMapsDirections, UsersScreen debug screen)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-18_
+_Last updated: 2026-03-19 (nightly-memory)_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -158,6 +158,39 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 - **Phase 1 (approved, post-TestFlight):** Add two new fields to `runs/{runId}` — `joinedCount` (total unique users who ever joined, never decremented) and `peakParticipantCount` (high-water mark of `participantCount`). Both written inside the existing `joinRun` transaction in `runService.js`, guarded by the same `!alreadyJoined` check that protects `participantCount`. ~5 lines, one file, no backend deploy, no UI changes. Silently accumulates data for future use.
 - **Phase 2 (deferred — post-launch, stable user base):** Formal run completion: `status: 'completed'`, `completedAt`, `actualAttendees[]`, `attendedCount`, `durationMinutes`. Triggered in `leaveRun` when `participantCount → 0`. Also needs a `completeStaleRuns` Cloud Function for abandoned runs. Medium risk — changes run lifecycle state irreversibly.
 - **Phase 3 (deferred — growth phase):** Analytics and aggregation. Per-user "Runs Attended" history, turnout estimates, `runHistory` collection, gym trust signals.
+
+---
+
+## Files Modified Recently (2026-03-19 session — Feature Drop: Start a Run Prominence, Gym Hours/Website, Filter Sheet, Premium UI)
+
+| File | What changed |
+|------|-------------|
+| `screens/HomeScreen.js` | Added prominent "Start a Group Run" card (frosted-glass, orange accent). Made "Check Into a Run" card contextual: shows scheduled gym name + time when user has a visit planned today; taps navigate directly to that gym's RunDetails. Subtitle updated from "Find courts near you" to accurate GPS copy. |
+| `screens/RunDetailsScreen.js` | Added collapsible gym hours block (today's hours + full week on expand). Added "Visit Gym Website" button (gated on `gym.websiteUrl`). "Start a Run" button opens run type picker sheet (Open / Private / Paid). Removed verbose [RunDetails] debug log block. |
+| `screens/ViewRunsScreen.js` | Replaced horizontal pill filter strip with single "Filter" button + bottom sheet. Sheet has Court Type, Access (All/Free/Membership), Sort by Nearest filters. Active filters shown as dismissible chips below button. Light/dark theme aware. |
+| `screens/PremiumScreen.js` | Redesigned: Free/Premium tab toggle. Free tab shows feature list with checkmarks and limit chips. Premium tab shows side-by-side comparison table, pricing, and feature cards. |
+| `screens/CreatePrivateRunScreen.js` | Completed as full interactive form for Private (skill filter) and Paid (entry fee + payout preview) run types. Live payout math: `entryFee × maxPlayers × 0.9`. Submit CTA triggers "Coming Soon / Premium Only" gate modal → routes to PremiumScreen. No Firestore writes. |
+| `App.js` | Added `Premium` route to RunsStack for correct nested navigation from CreatePrivateRunScreen. |
+| `hooks/useProximityCheckIn.js` | Removed verbose [PROXIMITY] debug logs (GPS, cooldown, foreground events). Behavior unchanged. |
+| `utils/locationUtils.js` | Removed [DISTANCE] debug log from `calculateDistanceMeters`. Behavior unchanged. |
+
+---
+
+## Files Modified Recently (2026-03-19 session — Proximity Check-In, AdminAllClips, Premium Teaser, Haptics, Location Utils)
+
+| File | What changed |
+|------|-------------|
+| `screens/CreatePrivateRunScreen.js` | **New file** — UI-only Premium teaser for Private Run and Paid Run features. Interactive form with payout calculator. CTA opens "Coming Soon" modal → routes to PremiumScreen. No Firestore writes. |
+| `screens/AdminAllClipsScreen.js` | **New file** — Admin clip browser. Filter modes: All / By Gym / Hidden / Featured. Real-time snapshot (limit 25). Feature/Unfeature/Hide/Unhide actions via `callFunction`. Gated by `useIsAdmin`. |
+| `hooks/useProximityCheckIn.js` | **New file** — Smart proximity hook. Polls GPS every 30s, re-checks on foreground. Surfaces `nearbyGym` when user is inside a gym's `checkInRadiusMeters`. 30-min dismiss cooldown per gym. Accuracy gate (>100m ignored). Dev bypass respected. |
+| `utils/locationUtils.js` | **New file** — GPS utility module: `isLocationGranted`, `requestLocationPermission`, `getCurrentLocation`, `calculateDistanceMeters`. Uses geofire-common. Dev mode returns Cowboys Fit coords. |
+| `utils/haptics.js` | **New file** — Haptic feedback helpers with no-op fallbacks: `hapticSuccess`, `hapticLight`, `hapticMedium`, `hapticHeavy`. |
+| `App.js` | Added `CreatePrivateRun` to RunsStack; added `AdminAllClips` to ProfileStack. |
+| `hooks/index.js` | Added `useProximityCheckIn` to barrel export. |
+| `screens/CheckInScreen.js` | Integrated `useProximityCheckIn` + haptic feedback. |
+| `screens/RunDetailsScreen.js` | Integrated `useProximityCheckIn` + haptic feedback. |
+| `screens/RecordClipScreen.js` | Added `hapticMedium` on record start. |
+| `screens/TrimClipScreen.js` | Added `hapticSuccess` on successful clip post. |
 
 ---
 
