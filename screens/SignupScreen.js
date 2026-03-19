@@ -70,6 +70,7 @@ export default function SignupScreen({ navigation }) {
   const [skillLevel, setSkillLevel] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [formError, setFormError] = useState('');
   const { colors, isDark } = useTheme();
 
   // Recompute styles only when the theme changes
@@ -95,14 +96,16 @@ export default function SignupScreen({ navigation }) {
    * will be routed to ClaimUsername to complete setup.
    */
   const handleSignup = async () => {
+    setFormError('');
+
     if (!name || !username || !email || !password || !age || !skillLevel) {
-      alert('Please fill out all fields');
+      setFormError('Please fill out all fields.');
       return;
     }
 
     // Validate username format
     if (!USERNAME_REGEX.test(username)) {
-      alert(
+      setFormError(
         'Username must be 3–20 characters, start with a letter, and contain only letters, numbers, dots, or underscores.',
       );
       return;
@@ -150,15 +153,21 @@ export default function SignupScreen({ navigation }) {
       // Step 4: Navigate to verification gate
       navigation.replace('VerifyEmail');
     } catch (error) {
-      if (__DEV__) console.error('Signup error:', error);
+      // Known, expected errors — show inline message, no console noise
       if (error.message === 'USERNAME_TAKEN') {
-        alert('That username is already taken. Please choose another.');
+        setFormError('That username is already taken. Please choose another.');
       } else if (error.code === 'auth/email-already-in-use') {
-        alert('An account with this email already exists.');
+        setFormError('An account with this email already exists.');
       } else if (error.code === 'auth/weak-password') {
-        alert('Password should be at least 6 characters.');
+        setFormError('Password should be at least 6 characters.');
+      } else if (error.code === 'auth/invalid-email') {
+        setFormError('Please enter a valid email address.');
+      } else if (error.code === 'auth/network-request-failed') {
+        setFormError('Network error. Check your connection and try again.');
       } else {
-        alert(error.message);
+        // Truly unexpected — log for debugging
+        if (__DEV__) console.error('[Signup] Unexpected error:', error);
+        setFormError('Something went wrong. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -253,6 +262,10 @@ export default function SignupScreen({ navigation }) {
                 onChangeText={setPassword}
               />
 
+              {formError ? (
+                <Text style={styles.errorText}>{formError}</Text>
+              ) : null}
+
               <Button
                 title="Create Account"
                 variant="primary"
@@ -345,5 +358,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
     color: 'rgba(255,255,255,0.75)',
+  },
+  errorText: {
+    fontSize: FONT_SIZES.small,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginBottom: SPACING.sm,
   },
 });

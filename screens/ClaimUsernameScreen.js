@@ -101,12 +101,16 @@ export default function ClaimUsernameScreen({ navigation }) {
           createdAt: new Date(),
         });
 
-        // Update existing user doc — merge new fields without overwriting anything
-        transaction.update(userRef, {
+        // Use set+merge instead of update so this works whether the user doc
+        // exists already (normal migration path) or was never created (edge
+        // case where the original signup transaction failed mid-way).
+        transaction.set(userRef, {
           username,
           usernameLower,
           phoneNumber: null,
-        });
+          // Seed email from Auth in case the profile doc was never written
+          email: user.email ?? null,
+        }, { merge: true });
       });
 
       // Check if onboarding is already complete (existing users who just needed a username)

@@ -35,6 +35,7 @@ import {
   Pressable,
   FlatList,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -293,15 +294,24 @@ export default function UserProfileScreen({ route, navigation }) {
 
         {/* ── Avatar ── */}
         <View style={styles.avatarSection}>
-          {profile.photoURL ? (
-            <Image source={{ uri: profile.photoURL }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarInitial}>
-                {(profile.name || '?')[0].toUpperCase()}
-              </Text>
+          <LinearGradient
+            colors={['#FF4500', '#CC1100', '#1A0000', '#FF6B00']}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.avatarRing}
+          >
+            <View style={styles.avatarInner}>
+              {profile.photoURL ? (
+                <Image source={{ uri: profile.photoURL }} style={styles.avatarImage} />
+              ) : (
+                <View style={[styles.avatarImage, styles.avatarFallback]}>
+                  <Text style={styles.avatarInitial}>
+                    {(profile.name || '?')[0].toUpperCase()}
+                  </Text>
+                </View>
+              )}
             </View>
-          )}
+          </LinearGradient>
         </View>
 
         {/* ── Name ── */}
@@ -675,10 +685,20 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginTop: SPACING.xl,
     marginBottom: SPACING.md,
   },
-  avatar: {
-    width: 100,
-    height: 100,
+  avatarRing: {
+    width: 106,
+    height: 106,
+    borderRadius: 53,
+    padding: 3,
+  },
+  avatarInner: {
+    flex: 1,
     borderRadius: 50,
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
   },
   avatarFallback: {
     backgroundColor: colors.primary + '28',

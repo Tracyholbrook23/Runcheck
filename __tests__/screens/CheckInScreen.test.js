@@ -91,7 +91,7 @@ describe('CheckInScreen', () => {
       <CheckInScreen navigation={mockNavigation} />
     );
 
-    expect(getByText(/automatically expire after 3 hours/)).toBeTruthy();
+    expect(getByText(/automatically expire after 2 hours/)).toBeTruthy();
   });
 
   it('shows loading state when gyms are loading', () => {

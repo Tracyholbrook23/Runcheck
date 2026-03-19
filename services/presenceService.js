@@ -13,7 +13,7 @@
  * BUSINESS RULES:
  * - User can only be checked in at one gym at a time
  * - Check-in requires GPS within configured radius (default 50m)
- * - Presences auto-expire after configured time (default 3 hours)
+ * - Presences auto-expire after configured time (default 2 hours)
  * - Check-in fulfills matching scheduled session if within grace period
  *
  * EXAMPLE USAGE:
@@ -490,8 +490,6 @@ const markPresenceExpired = async (presenceId, gymId) => {
     if (__DEV__) console.error('Error marking presence expired:', error);
   }
 };
-
-// TODO: Auto-checkout via Cloud Function when presence expires after autoExpireMinutes (default 3hrs) — should NOT deduct points as user successfully attended
 
 /**
  * Expire all stale presences

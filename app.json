@@ -22,7 +22,8 @@
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "comgooglemaps"
-        ]
+        ],
+        "NSUserNotificationUsageDescription": "RunCheck sends notifications for runs at your gyms and activity from players you follow."
       }
     },
     "android": {
@@ -54,7 +55,13 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "color": "#E94E1B"
+        }
+      ]
     ],
     "extra": {
       "eas": {

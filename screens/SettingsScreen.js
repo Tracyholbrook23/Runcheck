@@ -1,16 +1,20 @@
 /**
  * SettingsScreen.js — Account Settings
  *
- * Simple settings screen containing account-level actions:
- *   - Dark Mode toggle (currently disabled — dark mode is forced)
- *   - Sign Out
- *   - Delete Account (destructive, with confirmation)
+ * Sections:
+ *   PREFERENCES  — Dark Mode toggle (currently forced-dark; toggle disabled)
+ *                  Push Notifications (placeholder, wires to registerPushToken)
+ *   MY ACCOUNT   — My Reports (moved from ProfileScreen)
+ *                  Sign Out
+ *                  Delete Account (destructive, with confirmation)
+ *   SUPPORT      — Contact Support (mailto:runcheckapp@gmail.com)
+ *                  Rate RunCheck (App Store / Play Store deep-link)
+ *                  Share RunCheck (native share sheet)
+ *   ABOUT        — App Version
+ *                  Privacy Policy (web link)
+ *                  Terms of Service (web link)
  *
- * Structured so additional settings can be added later without
- * restructuring the layout. Uses the same card/row patterns as
- * ProfileScreen for visual consistency.
- *
- * Navigation: ProfileStack → SettingsScreen
+ * Navigation: ProfileStack → SettingsScreen → MyReports
  */
 
 import React, { useMemo } from 'react';
@@ -22,6 +26,9 @@ import {
   ScrollView,
   Alert,
   Switch,
+  Linking,
+  Share,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
@@ -29,6 +36,14 @@ import { useTheme } from '../contexts';
 import { auth } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+
+// ── App constants ──────────────────────────────────────────────────────────
+const APP_VERSION = '1.0.0';
+const SUPPORT_EMAIL = 'runcheckapp@gmail.com';
+const APP_STORE_URL = 'https://apps.apple.com/app/runcheck/id000000000'; // update with real ID
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.runcheck'; // update if needed
+const PRIVACY_URL = 'https://gray-marlin-55c.notion.site/RunCheck-Privacy-Policy-3280818539eb80168b7cc7dd061f3d09';
+const TERMS_URL = 'https://runcheckapp.com/terms';     // update with real URL
 
 /**
  * SettingsScreen — Account settings and actions.
@@ -41,9 +56,7 @@ export default function SettingsScreen({ navigation }) {
   const { colors, isDark, toggleTheme } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  /**
-   * handleSignOut — Signs the user out of Firebase Auth and resets navigation.
-   */
+  // ── Sign Out ────────────────────────────────────────────────────────────
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -65,10 +78,7 @@ export default function SettingsScreen({ navigation }) {
     ]);
   };
 
-  /**
-   * handleDeleteAccount — Permanently deletes the user's account via backend
-   * Cloud Function, then signs out and resets to Login.
-   */
+  // ── Delete Account ──────────────────────────────────────────────────────
   const handleDeleteAccount = () => {
     Alert.alert(
       'Delete Account',
@@ -83,8 +93,6 @@ export default function SettingsScreen({ navigation }) {
               const deleteAccountFn = httpsCallable(getFunctions(), 'deleteAccount');
               await deleteAccountFn();
 
-              // Backend deleted the Auth account server-side.
-              // Sign out locally to clear cached auth state.
               try {
                 await signOut(auth);
               } catch (_) {
@@ -113,22 +121,74 @@ export default function SettingsScreen({ navigation }) {
     );
   };
 
+  // ── Contact Support ────────────────────────────────────────────────────
+  const handleContactSupport = async () => {
+    const url = `mailto:${SUPPORT_EMAIL}?subject=RunCheck Support Request`;
+    const supported = await Linking.canOpenURL(url);
+    if (supported) {
+      Linking.openURL(url);
+    } else {
+      Alert.alert(
+        'Contact Support',
+        `Reach us at ${SUPPORT_EMAIL}`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  // ── Rate the App ───────────────────────────────────────────────────────
+  const handleRateApp = () => {
+    const storeUrl = Platform.OS === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
+    Linking.openURL(storeUrl).catch(() => {
+      Alert.alert('Unable to open store', 'Please search for RunCheck in the App Store.');
+    });
+  };
+
+  // ── Share App ──────────────────────────────────────────────────────────
+  const handleShareApp = async () => {
+    try {
+      await Share.share({
+        message:
+          Platform.OS === 'ios'
+            ? 'Check out RunCheck — the app for basketball gym check-ins, runs, and highlights! Download it here: ' + APP_STORE_URL
+            : 'Check out RunCheck — the app for basketball gym check-ins, runs, and highlights!',
+        url: Platform.OS === 'ios' ? APP_STORE_URL : undefined,
+        title: 'RunCheck',
+      });
+    } catch (err) {
+      if (__DEV__) console.error('Share error:', err);
+    }
+  };
+
+  // ── Open URL ───────────────────────────────────────────────────────────
+  const handleOpenURL = (url) => {
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Unable to open link', 'Please try again later.');
+    });
+  };
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
     >
-      {/* ── Preferences ──────────────────────────────────────────────── */}
+      {/* ── PREFERENCES ────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>Preferences</Text>
       <View style={styles.card}>
+        {/* Dark Mode */}
         <View style={styles.settingRow}>
           <View style={styles.settingLeft}>
-            <Ionicons
-              name={isDark ? 'moon' : 'sunny-outline'}
-              size={20}
-              color={colors.textPrimary}
-            />
-            <Text style={styles.settingLabel}>Dark Mode</Text>
+            <View style={[styles.iconWrap, { backgroundColor: colors.primary + '22' }]}>
+              <Ionicons
+                name={isDark ? 'moon' : 'sunny-outline'}
+                size={18}
+                color={colors.primary}
+              />
+            </View>
+            <View>
+              <Text style={styles.settingLabel}>Dark Mode</Text>
+              <Text style={styles.settingHint}>Coming soon</Text>
+            </View>
           </View>
           <Switch
             value={isDark}
@@ -138,18 +198,61 @@ export default function SettingsScreen({ navigation }) {
             disabled
           />
         </View>
+
+        <View style={styles.menuDivider} />
+
+        {/* Push Notifications */}
+        <View style={styles.settingRow}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#FF9F0A22' }]}>
+              <Ionicons name="notifications-outline" size={18} color="#FF9F0A" />
+            </View>
+            <View>
+              <Text style={styles.settingLabel}>Push Notifications</Text>
+              <Text style={styles.settingHint}>Runs, check-ins & friend activity</Text>
+            </View>
+          </View>
+          <Switch
+            value={true}
+            onValueChange={() => {}}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor="#FFFFFF"
+            disabled
+          />
+        </View>
       </View>
 
-      {/* ── Account ──────────────────────────────────────────────────── */}
-      <Text style={styles.sectionTitle}>Account</Text>
+      {/* ── MY ACCOUNT ─────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>My Account</Text>
       <View style={styles.card}>
+
+        {/* My Reports */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('MyReports')}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#FF453A22' }]}>
+              <Ionicons name="flag-outline" size={18} color="#FF453A" />
+            </View>
+            <Text style={styles.menuLabel}>My Reports</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* Sign Out */}
         <TouchableOpacity
           style={styles.menuRow}
           activeOpacity={0.7}
           onPress={handleSignOut}
         >
           <View style={styles.menuLeft}>
-            <Ionicons name="log-out-outline" size={20} color={colors.textPrimary} />
+            <View style={[styles.iconWrap, { backgroundColor: colors.textMuted + '22' }]}>
+              <Ionicons name="log-out-outline" size={18} color={colors.textPrimary} />
+            </View>
             <Text style={styles.menuLabel}>Sign Out</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
@@ -157,17 +260,133 @@ export default function SettingsScreen({ navigation }) {
 
         <View style={styles.menuDivider} />
 
+        {/* Delete Account */}
         <TouchableOpacity
           style={styles.menuRow}
           activeOpacity={0.7}
           onPress={handleDeleteAccount}
         >
           <View style={styles.menuLeft}>
-            <Ionicons name="trash-outline" size={20} color={colors.danger} />
+            <View style={[styles.iconWrap, { backgroundColor: colors.danger + '22' }]}>
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
+            </View>
             <Text style={[styles.menuLabel, { color: colors.danger }]}>Delete Account</Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
         </TouchableOpacity>
+      </View>
+
+      {/* ── SUPPORT ────────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>Support</Text>
+      <View style={styles.card}>
+
+        {/* Contact Support */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={handleContactSupport}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#30D15822' }]}>
+              <Ionicons name="mail-outline" size={18} color="#30D158" />
+            </View>
+            <View>
+              <Text style={styles.menuLabel}>Contact Support</Text>
+              <Text style={styles.settingHint}>{SUPPORT_EMAIL}</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* Rate RunCheck */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={handleRateApp}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#FFD60A22' }]}>
+              <Ionicons name="star-outline" size={18} color="#FFD60A" />
+            </View>
+            <Text style={styles.menuLabel}>Rate RunCheck</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* Share RunCheck */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={handleShareApp}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#0A84FF22' }]}>
+              <Ionicons name="share-outline" size={18} color="#0A84FF" />
+            </View>
+            <Text style={styles.menuLabel}>Share RunCheck</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+
+      {/* ── ABOUT ──────────────────────────────────────────────────────── */}
+      <Text style={styles.sectionTitle}>About</Text>
+      <View style={styles.card}>
+
+        {/* Privacy Policy */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={() => handleOpenURL(PRIVACY_URL)}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: colors.primary + '22' }]}>
+              <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.menuLabel}>Privacy Policy</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* Terms of Service */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={() => handleOpenURL(TERMS_URL)}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: colors.primary + '22' }]}>
+              <Ionicons name="document-text-outline" size={18} color={colors.primary} />
+            </View>
+            <Text style={styles.menuLabel}>Terms of Service</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
+        {/* Version */}
+        <View style={styles.menuRow}>
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: colors.textMuted + '22' }]}>
+              <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+            </View>
+            <Text style={styles.menuLabel}>Version</Text>
+          </View>
+          <Text style={styles.versionText}>{APP_VERSION}</Text>
+        </View>
+      </View>
+
+      {/* ── Logo footer ─────────────────────────────────────────────────── */}
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>RunCheck</Text>
+        <Text style={styles.footerSub}>Made for ballers, by ballers.</Text>
       </View>
     </ScrollView>
   );
@@ -180,22 +399,23 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   content: {
     padding: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+    paddingBottom: SPACING.xxl * 2,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
     color: colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     marginBottom: SPACING.sm,
-    marginTop: SPACING.md,
+    marginTop: SPACING.lg,
   },
   card: {
     backgroundColor: colors.surface,
     borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    marginBottom: SPACING.sm,
     ...(isDark
       ? { borderWidth: 0 }
       : { borderWidth: 1, borderColor: colors.border }),
@@ -204,27 +424,42 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: SPACING.sm,
   },
   settingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    flex: 1,
   },
   settingLabel: {
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.medium,
     color: colors.textPrimary,
   },
+  settingHint: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    marginTop: 1,
+  },
+  iconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   menuRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
   },
   menuLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    flex: 1,
   },
   menuLabel: {
     fontSize: FONT_SIZES.body,
@@ -234,6 +469,27 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   menuDivider: {
     height: 1,
     backgroundColor: colors.border,
-    marginVertical: SPACING.sm,
+    marginLeft: 34 + SPACING.sm, // align with text, not icon
+  },
+  versionText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textMuted,
+  },
+  footer: {
+    alignItems: 'center',
+    marginTop: SPACING.xl,
+    gap: SPACING.xs,
+  },
+  footerText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 1.5,
+  },
+  footerSub: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    opacity: 0.6,
   },
 });

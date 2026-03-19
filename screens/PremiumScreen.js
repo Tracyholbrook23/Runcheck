@@ -217,6 +217,7 @@ export default function PremiumScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const [activeTab, setActiveTab] = useState('free'); // 'free' | 'premium'
+  const [selectedPlan, setSelectedPlan] = useState('annual'); // 'monthly' | 'annual'
 
   const handleCtaPress = () => {
     Alert.alert(
@@ -404,27 +405,35 @@ export default function PremiumScreen({ navigation }) {
             {/* Pricing */}
             <Text style={styles.sectionLabel}>Pricing</Text>
             <View style={styles.pricingRow}>
-              {PRICING.map((tier) => (
-                <View
-                  key={tier.id}
-                  style={[styles.pricingCard, tier.highlight && styles.pricingCardHL]}
-                >
-                  {tier.badge && (
-                    <View style={styles.saveBadge}>
-                      <Text style={styles.saveBadgeText}>{tier.badge}</Text>
-                    </View>
-                  )}
-                  <Text style={[styles.pricingLabel, tier.highlight && styles.pricingLabelHL]}>
-                    {tier.label}
-                  </Text>
-                  <Text style={[styles.pricingPrice, tier.highlight && styles.pricingPriceHL]}>
-                    {tier.price}
-                  </Text>
-                  <Text style={[styles.pricingPeriod, tier.highlight && styles.pricingPeriodHL]}>
-                    {tier.period}
-                  </Text>
-                </View>
-              ))}
+              {PRICING.map((tier) => {
+                const isSelected = selectedPlan === tier.id;
+                return (
+                  <TouchableOpacity
+                    key={tier.id}
+                    activeOpacity={0.75}
+                    onPress={() => setSelectedPlan(tier.id)}
+                    style={[
+                      styles.pricingCard,
+                      isSelected && styles.pricingCardHL,
+                    ]}
+                  >
+                    {tier.badge && (
+                      <View style={styles.saveBadge}>
+                        <Text style={styles.saveBadgeText}>{tier.badge}</Text>
+                      </View>
+                    )}
+                    <Text style={[styles.pricingLabel, isSelected && styles.pricingLabelHL]}>
+                      {tier.label}
+                    </Text>
+                    <Text style={[styles.pricingPrice, isSelected && styles.pricingPriceHL]}>
+                      {tier.price}
+                    </Text>
+                    <Text style={[styles.pricingPeriod, isSelected && styles.pricingPeriodHL]}>
+                      {tier.period}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
             {/* Feature cards */}
@@ -517,7 +526,9 @@ export default function PremiumScreen({ navigation }) {
               onPress={handleCtaPress}
             >
               <Ionicons name="flash" size={18} color="#FFFFFF" style={{ marginRight: SPACING.xs }} />
-              <Text style={styles.ctaButtonText}>Get Premium — Coming Soon</Text>
+              <Text style={styles.ctaButtonText}>
+                Get Premium {selectedPlan === 'annual' ? '· $29.99/yr' : '· $4.99/mo'} — Coming Soon
+              </Text>
             </TouchableOpacity>
 
             <Text style={styles.ctaDisclaimer}>

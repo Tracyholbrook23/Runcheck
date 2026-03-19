@@ -22,6 +22,26 @@
  *   - Orange → indoor gym
  *
  * Gyms without a `location` field are silently skipped (no marker rendered).
+ *
+ * ── Future enhancements (TODO) ────────────────────────────────────────────
+ *
+ *   1. BASKETBALL MARKERS — Replace default `pinColor` markers with custom
+ *      basketball emoji / image markers using react-native-maps' custom
+ *      marker support:
+ *        <Marker ...>
+ *          <Image source={require('../assets/images/basketball-pin.png')} style={{ width: 36, height: 36 }} />
+ *        </Marker>
+ *      Use a green basketball for outdoor courts, orange for indoor.
+ *
+ *   2. FULL-SCREEN MAP — Remove SafeAreaView wrapper and use `StyleSheet.absoluteFillObject`
+ *      on MapView so the map bleeds edge-to-edge. Overlay a floating back button
+ *      (position: absolute, top + left safe insets) and player-count legend.
+ *
+ *   3. MAP AS PRIMARY TAB — Move GymMapScreen into the bottom tab navigator
+ *      as its own "Map" tab (replacing or adding alongside Runs). Update App.js:
+ *        <Tab.Screen name="Map" component={MapStack} />
+ *      The map tab should not show the standard navigation header bar — use
+ *      `headerShown: false` and handle the back / title with a floating overlay.
  */
 
 import React, { useMemo, useEffect } from 'react';

@@ -611,15 +611,25 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.header}>
           {/* Tappable avatar: shows picked photo, live profile photo, or initials fallback */}
           <TouchableOpacity onPress={handlePickImage} disabled={uploading}>
-            {(photoUri || liveProfile?.photoURL) ? (
-              <Image source={{ uri: photoUri || liveProfile?.photoURL }} style={styles.avatarImage} />
-            ) : (
-              <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
-                <Text style={styles.avatarInitial}>
-                  {(profile?.name || liveProfile?.name || user?.displayName || '?')[0].toUpperCase()}
-                </Text>
+            {/* Gradient ring — orange → deep red → near-black → orange */}
+            <LinearGradient
+              colors={['#FF4500', '#CC1100', '#1A0000', '#FF6B00']}
+              start={{ x: 0, y: 1 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.avatarRing}
+            >
+              <View style={styles.avatarInner}>
+                {(photoUri || liveProfile?.photoURL) ? (
+                  <Image source={{ uri: photoUri || liveProfile?.photoURL }} style={styles.avatarImage} />
+                ) : (
+                  <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
+                    <Text style={styles.avatarInitial}>
+                      {(profile?.name || liveProfile?.name || user?.displayName || '?')[0].toUpperCase()}
+                    </Text>
+                  </View>
+                )}
               </View>
-            )}
+            </LinearGradient>
             {/* Upload spinner — overlays the avatar while the photo is uploading */}
             {uploading && (
               <View style={styles.uploadingOverlay}>
@@ -637,36 +647,39 @@ export default function ProfileScreen({ navigation }) {
           {(profile?.username || liveProfile?.username) ? (
             <Text style={styles.usernameText}>@{profile?.username || liveProfile?.username}</Text>
           ) : null}
-          {profileSkillColors && (
-            <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
-              <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
-                {displayPlayStyle}
-              </Text>
-            </View>
-          )}
-
-          {/* ── Rank Badge ──────────────────────────────────────────────── */}
+          {/* ── Rank + Skill unified card ────────────────────────────────── */}
           <Animated.View
             style={[
-              styles.rankBadge,
+              styles.rankCard,
               {
-                backgroundColor: userRank.color + '22',
-                borderColor: userRank.color + '66',
+                backgroundColor: userRank.color + '14',
+                borderColor: userRank.color + '44',
                 shadowColor: userRank.glowColor,
-                // High tiers (Platinum+) get an extra-strong glow shadow
                 shadowRadius: hasHighGlow ? 18 : 8,
-                shadowOpacity: hasHighGlow ? 0.9 : 0.5,
+                shadowOpacity: hasHighGlow ? 0.8 : 0.3,
               },
               { transform: [{ scale: platinumPulse }] },
             ]}
           >
-            <Text style={styles.rankIcon}>{userRank.icon}</Text>
-            <Text style={[styles.rankName, { color: userRank.color }]}>{userRank.name}</Text>
-            <Text style={[styles.rankPoints, { color: userRank.color + 'CC' }]}>{totalPoints} pts</Text>
-          </Animated.View>
+            {/* Top row: rank on left, skill badge on right */}
+            <View style={styles.rankCardHeader}>
+              <View style={styles.rankCardLeft}>
+                <Text style={styles.rankIcon}>{userRank.icon}</Text>
+                <Text style={[styles.rankName, { color: userRank.color }]}>{userRank.name}</Text>
+              </View>
+              {profileSkillColors && (
+                <View style={[styles.skillBadge, { backgroundColor: profileSkillColors.bg }]}>
+                  <Text style={[styles.skillText, { color: profileSkillColors.text }]}>
+                    {displayPlayStyle}
+                  </Text>
+                </View>
+              )}
+            </View>
 
-          {/* Progress bar toward next rank */}
-          <View style={styles.rankProgressWrap}>
+            {/* Points */}
+            <Text style={[styles.rankPoints, { color: userRank.color + 'CC' }]}>{totalPoints} pts</Text>
+
+            {/* Progress bar */}
             <View style={styles.rankProgressTrack}>
               <View
                 style={[
@@ -675,6 +688,8 @@ export default function ProfileScreen({ navigation }) {
                 ]}
               />
             </View>
+
+            {/* Label */}
             {userRank.nextRankAt ? (
               <Text style={styles.rankProgressLabel}>
                 {pointsToNext} pts to {RANKS[RANKS.indexOf(userRank) + 1]?.name ?? ''}
@@ -682,15 +697,15 @@ export default function ProfileScreen({ navigation }) {
             ) : (
               <Text style={styles.rankProgressLabel}>Max rank achieved 👑</Text>
             )}
-          </View>
+          </Animated.View>
 
-          {/* Leaderboard shortcut */}
+          {/* Leaderboard button */}
           <TouchableOpacity
-            style={styles.leaderboardLink}
+            style={[styles.leaderboardBtn, { borderColor: colors.primary + '55', backgroundColor: colors.primary + '18' }]}
             onPress={() => navigation.navigate('Leaderboard')}
           >
-            <Ionicons name="trophy-outline" size={13} color={colors.primary} />
-            <Text style={styles.leaderboardLinkText}>View Leaderboard</Text>
+            <Ionicons name="trophy" size={14} color={colors.primary} />
+            <Text style={[styles.leaderboardBtnText, { color: colors.primary }]}>View Leaderboard</Text>
           </TouchableOpacity>
         </View>
         </LinearGradient>
@@ -1286,21 +1301,6 @@ export default function ProfileScreen({ navigation }) {
                 <Text style={styles.gymRequestsBadgeText}>{gymRequestCount}</Text>
               </View>
             )}
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </View>
-        </TouchableOpacity>
-
-        {/* ── My Reports ────────────────────────────────────────────── */}
-        <TouchableOpacity
-          style={styles.gymRequestsRow}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('MyReports')}
-        >
-          <View style={styles.gymRequestsLeft}>
-            <Ionicons name="flag-outline" size={20} color={colors.primary} />
-            <Text style={styles.gymRequestsLabel}>My Reports</Text>
-          </View>
-          <View style={styles.gymRequestsRight}>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </View>
         </TouchableOpacity>
@@ -1979,63 +1979,79 @@ const getStyles = (colors, isDark) =>
       alignItems: 'center',
       marginBottom: 5,
     },
+    avatarRing: {
+      width: 96,
+      height: 96,
+      borderRadius: 48,
+      padding: 3,
+      marginBottom: SPACING.sm,
+    },
+    avatarInner: {
+      flex: 1,
+      borderRadius: 45,
+      overflow: 'hidden',
+    },
     avatarImage: {
-  width: 88,
-  height: 88,
-  borderRadius: 44,
-  marginBottom: SPACING.sm,
-  borderWidth: 3,
-  borderColor: colors.primary,
-},
+      width: '100%',
+      height: '100%',
+    },
     avatarPlaceholder: {
-  backgroundColor: colors.surface,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     avatarInitial: {
-  fontSize: 32,
-  fontWeight: '700',
-  color: colors.primary,
-},
-editBadge: {
-  position: 'absolute',
-  bottom: SPACING.sm,
-  right: 0,
-  backgroundColor: colors.primary,
-  borderRadius: 12,
-  width: 24,
-  height: 24,
-  justifyContent: 'center',
-  alignItems: 'center',
-},
+      fontSize: 32,
+      fontWeight: '700',
+      color: colors.primary,
+    },
+    editBadge: {
+      position: 'absolute',
+      bottom: SPACING.sm,
+      right: 0,
+      backgroundColor: colors.primary,
+      borderRadius: 12,
+      width: 24,
+      height: 24,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
     uploadingOverlay: {
       position: 'absolute',
       top: 0,
       left: 0,
-      width: 88,
-      height: 88,
-      borderRadius: 44,
+      width: 96,
+      height: 96,
+      borderRadius: 48,
       backgroundColor: 'rgba(0,0,0,0.45)',
       justifyContent: 'center',
       alignItems: 'center',
     },
-    // ── Rank badge ──────────────────────────────────────────────────────────
-    rankBadge: {
+    // ── Rank card (unified rank + skill + progress) ──────────────────────────
+    rankCard: {
+      width: '90%',
+      alignSelf: 'center',
+      borderRadius: RADIUS.md,
+      borderWidth: 1.5,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.sm + 2,
+      marginTop: SPACING.sm,
+      gap: 6,
+      shadowOffset: { width: 0, height: 0 },
+      elevation: 6,
+    },
+    rankCardHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: SPACING.md,
-      paddingVertical: SPACING.xs + 2,
-      borderRadius: RADIUS.full,
-      borderWidth: 1.5,
-      marginTop: SPACING.xs,
-      marginBottom: 2,
+      justifyContent: 'space-between',
+    },
+    rankCardLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
       gap: SPACING.xs,
-      // iOS shadow
-      shadowOffset: { width: 0, height: 0 },
-      elevation: 6, // Android glow approximation
     },
     rankIcon: {
-      fontSize: 16,
+      fontSize: 18,
     },
     rankName: {
       fontSize: FONT_SIZES.body,
@@ -2046,15 +2062,9 @@ editBadge: {
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.medium,
     },
-    rankProgressWrap: {
-      width: '80%',
-      alignSelf: 'center',
-      alignItems: 'center',
-      marginTop: 4,
-    },
     rankProgressTrack: {
       width: '100%',
-      height: 5,
+      height: 8,
       backgroundColor: colors.border,
       borderRadius: RADIUS.full,
       overflow: 'hidden',
@@ -2066,18 +2076,21 @@ editBadge: {
     rankProgressLabel: {
       fontSize: FONT_SIZES.xs,
       color: colors.textMuted,
-      marginTop: 2,
     },
-    leaderboardLink: {
+    leaderboardBtn: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 4,
+      gap: 6,
       marginTop: SPACING.sm,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.xs + 2,
+      borderRadius: RADIUS.full,
+      borderWidth: 1.5,
     },
-    leaderboardLinkText: {
+    leaderboardBtnText: {
       fontSize: FONT_SIZES.small,
-      color: colors.primary,
-      fontWeight: FONT_WEIGHTS.semibold,
+      fontWeight: FONT_WEIGHTS.bold,
+      letterSpacing: 0.3,
     },
     // Reliability info link
     reliabilityInfoLink: {

@@ -22,12 +22,12 @@
  * access the current color palette and toggle dark/light mode.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import HomeScreen from './screens/HomeScreen';
@@ -67,9 +67,10 @@ import AdminFeaturedClipsScreen from './screens/AdminFeaturedClipsScreen';
 import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
 import CreatePrivateRunScreen from './screens/CreatePrivateRunScreen';
+import { registerPushToken } from './utils/notifications';
 
 const Stack = createNativeStackNavigator();
-const Tab = createBottomTabNavigator();
+const Tab = createMaterialTopTabNavigator();
 
 /**
  * HomeStack — Stack navigator for the Home tab.
@@ -201,12 +202,21 @@ function ProfileStack() {
  */
 function MainTabs() {
   const { colors } = useTheme();
+
+  useEffect(() => {
+    registerPushToken();
+  }, []);
+
   return (
     <Tab.Navigator
+      tabBarPosition="bottom"
       screenOptions={({ route }) => ({
         headerShown: false,
+        swipeEnabled: true,
         tabBarActiveTintColor: colors.tabActive,
         tabBarInactiveTintColor: colors.tabInactive,
+        tabBarShowIcon: true,
+        tabBarShowLabel: true,
         tabBarLabelStyle: {
           fontSize: 11,
           fontWeight: '600',
@@ -221,14 +231,17 @@ function MainTabs() {
           elevation: 0,
           shadowOpacity: 0,
         },
-        tabBarIcon: ({ color, size }) => {
+        tabBarIndicatorStyle: {
+          height: 0,
+        },
+        tabBarIcon: ({ color }) => {
           let iconName;
           if (route.name === 'Home') iconName = 'home-outline';
           else if (route.name === 'Runs') iconName = 'basketball-outline';
           else if (route.name === 'CheckIn') iconName = 'log-in-outline';
           else if (route.name === 'Plan') iconName = 'calendar-outline';
           else if (route.name === 'Profile') iconName = 'person-outline';
-          return <Ionicons name={iconName} size={size} color={color} />;
+          return <Ionicons name={iconName} size={22} color={color} />;
         },
       })}
     >

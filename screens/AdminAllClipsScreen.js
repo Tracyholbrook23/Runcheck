@@ -31,6 +31,7 @@ import {
   Alert,
   Modal,
   FlatList,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -100,10 +101,16 @@ function formatRelativeTime(ts) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-/** Get initials from a display name string. */
+/** Get initials from a display name string. Returns null if name is unavailable. */
 function getInitials(name) {
-  if (!name) return '?';
+  if (!name) return null;
   return name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+/** Shorten a clip ID to a readable length for display. */
+function shortClipId(id) {
+  if (!id) return '—';
+  return id.length > 14 ? id.slice(0, 14) + '…' : id;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +127,10 @@ export default function AdminAllClipsScreen({ navigation }) {
   const [filterMode, setFilterMode] = useState('all');
   const [selectedGymId, setSelectedGymId] = useState(null);
   const [gymPickerVisible, setGymPickerVisible] = useState(false);
+
+  // Search + category filter (client-side, applied on top of the Firestore results)
+  const [searchText, setSearchText] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState(null); // null = all categories
 
   // Data state
   const [clips, setClips] = useState([]);
@@ -144,6 +155,36 @@ export default function AdminAllClipsScreen({ navigation }) {
     }
     return map;
   }, [gyms]);
+
+  // ── Client-side filtered clips (search text + category) ───────────────────
+  const filteredClips = useMemo(() => {
+    let result = clips;
+
+    // Category filter
+    if (categoryFilter) {
+      result = result.filter((c) => c.category === categoryFilter);
+    }
+
+    // Search text: match caption, uploader name, gym name, or clip ID prefix
+    const q = searchText.trim().toLowerCase();
+    if (q) {
+      result = result.filter((c) => {
+        const uploaderUid = c.uploaderUid || c.uid;
+        const resolvedName = userProfiles[uploaderUid]?.name?.toLowerCase() || '';
+        const caption = (c.caption || '').toLowerCase();
+        const gymName = (gymNameMap[c.gymId] || c.gymId || '').toLowerCase();
+        const clipId = (c.id || '').toLowerCase();
+        return (
+          caption.includes(q) ||
+          resolvedName.includes(q) ||
+          gymName.includes(q) ||
+          clipId.startsWith(q)
+        );
+      });
+    }
+
+    return result;
+  }, [clips, categoryFilter, searchText, userProfiles, gymNameMap]);
 
   // Selected gym label for the filter bar
   const selectedGymName = selectedGymId ? (gymNameMap[selectedGymId] || selectedGymId) : null;
@@ -189,17 +230,23 @@ export default function AdminAllClipsScreen({ navigation }) {
     } else if (filterMode === 'hidden') {
       q = query(
         collection(db, 'gymClips'),
-        where('isHidden', '==', true)
+        where('isHidden', '==', true),
+        orderBy('hiddenAt', 'desc'),
+        limit(PAGE_LIMIT)
       );
     } else if (filterMode === 'featured') {
       q = query(
         collection(db, 'gymClips'),
-        where('isDailyHighlight', '==', true)
+        where('isDailyHighlight', '==', true),
+        orderBy('featuredAt', 'desc'),
+        limit(PAGE_LIMIT)
       );
     } else if (filterMode === 'deleted') {
       q = query(
         collection(db, 'gymClips'),
-        where('isDeletedByUser', '==', true)
+        where('isDeletedByUser', '==', true),
+        orderBy('deletedAt', 'desc'),
+        limit(PAGE_LIMIT)
       );
     }
 
@@ -381,8 +428,10 @@ export default function AdminAllClipsScreen({ navigation }) {
   const handleFilterChange = useCallback((mode) => {
     if (mode === filterMode) return;
     setFilterMode(mode);
-    // Reset clips so loading state shows cleanly
+    // Reset clips and search so loading state shows cleanly
     setClips([]);
+    setSearchText('');
+    setCategoryFilter(null);
     if (mode === 'byGym') {
       // Open gym picker if no gym selected yet
       if (!selectedGymId) {
@@ -591,22 +640,40 @@ export default function AdminAllClipsScreen({ navigation }) {
   }
 
   // ── Summary text ──────────────────────────────────────────────────────────
+  const isFiltered = searchText.trim() !== '' || categoryFilter !== null;
+  const displayCount = filteredClips.length;
+  const totalCount = clips.length;
+
   let summaryLabel = '';
   if (filterMode === 'all') {
-    summaryLabel = `${clips.length} clip${clips.length === 1 ? '' : 's'} (newest)`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} clip${totalCount === 1 ? '' : 's'}`
+      : `${totalCount} clip${totalCount === 1 ? '' : 's'} (newest)`;
   } else if (filterMode === 'candidates') {
-    summaryLabel = `${clips.length} candidate${clips.length === 1 ? '' : 's'} to feature`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} candidate${totalCount === 1 ? '' : 's'}`
+      : `${totalCount} candidate${totalCount === 1 ? '' : 's'} to feature`;
   } else if (filterMode === 'mostLiked') {
-    summaryLabel = `${clips.length} clip${clips.length === 1 ? '' : 's'} (most liked)`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} clip${totalCount === 1 ? '' : 's'}`
+      : `${totalCount} clip${totalCount === 1 ? '' : 's'} (most liked)`;
   } else if (filterMode === 'byGym') {
     const gn = selectedGymName || 'none selected';
-    summaryLabel = `${clips.length} clip${clips.length === 1 ? '' : 's'} at ${gn}`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} clip${totalCount === 1 ? '' : 's'} at ${gn}`
+      : `${totalCount} clip${totalCount === 1 ? '' : 's'} at ${gn}`;
   } else if (filterMode === 'hidden') {
-    summaryLabel = `${clips.length} hidden clip${clips.length === 1 ? '' : 's'}`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} hidden clip${totalCount === 1 ? '' : 's'}`
+      : `${totalCount} hidden clip${totalCount === 1 ? '' : 's'}`;
   } else if (filterMode === 'featured') {
-    summaryLabel = `${clips.length} featured clip${clips.length === 1 ? '' : 's'}`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} featured clip${totalCount === 1 ? '' : 's'}`
+      : `${totalCount} featured clip${totalCount === 1 ? '' : 's'}`;
   } else if (filterMode === 'deleted') {
-    summaryLabel = `${clips.length} deleted clip${clips.length === 1 ? '' : 's'}`;
+    summaryLabel = isFiltered
+      ? `${displayCount} of ${totalCount} deleted clip${totalCount === 1 ? '' : 's'}`
+      : `${totalCount} deleted clip${totalCount === 1 ? '' : 's'}`;
   }
 
   return (
@@ -653,9 +720,66 @@ export default function AdminAllClipsScreen({ navigation }) {
         </TouchableOpacity>
       )}
 
+      {/* ── Search + category filter ────────────────────────────────── */}
+      <View style={styles.searchRow}>
+        <View style={styles.searchInputWrapper}>
+          <Ionicons name="search-outline" size={15} color={colors.textMuted} style={{ marginRight: 6 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search caption, player, gym, ID…"
+            placeholderTextColor={colors.textMuted}
+            value={searchText}
+            onChangeText={setSearchText}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="search"
+          />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close-circle" size={15} color={colors.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Category filter pills */}
+      <View style={styles.categoryFilterRow}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryFilterContent}>
+          <TouchableOpacity
+            style={[styles.catPill, !categoryFilter && styles.catPillActive]}
+            onPress={() => setCategoryFilter(null)}
+          >
+            <Text style={[styles.catPillText, !categoryFilter && styles.catPillTextActive]}>All</Text>
+          </TouchableOpacity>
+          {Object.entries(CATEGORY_CONFIG).map(([key, cfg]) => (
+            <TouchableOpacity
+              key={key}
+              style={[
+                styles.catPill,
+                categoryFilter === key && { backgroundColor: cfg.color + '22', borderColor: cfg.color },
+              ]}
+              onPress={() => setCategoryFilter(categoryFilter === key ? null : key)}
+            >
+              <View style={[styles.catDot, { backgroundColor: cfg.color }]} />
+              <Text style={[styles.catPillText, categoryFilter === key && { color: cfg.color, fontWeight: FONT_WEIGHTS.bold }]}>
+                {cfg.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {/* ── Summary bar ────────────────────────────────────────────────── */}
       <View style={styles.summaryBar}>
         <Text style={styles.summaryText}>{summaryLabel}</Text>
+        {isFiltered && (
+          <TouchableOpacity
+            onPress={() => { setSearchText(''); setCategoryFilter(null); }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={styles.clearFiltersText}>Clear</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── Content ────────────────────────────────────────────────────── */}
@@ -663,19 +787,31 @@ export default function AdminAllClipsScreen({ navigation }) {
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
-      ) : clips.length === 0 ? (
+      ) : filteredClips.length === 0 ? (
         <View style={styles.centered}>
           <Ionicons name="videocam-outline" size={56} color={colors.textMuted} />
-          <Text style={styles.emptyTitle}>No Clips Found</Text>
-          <Text style={styles.emptyText}>
-            {filterMode === 'byGym' && !selectedGymId
-              ? 'Select a gym to browse its clips.'
-              : filterMode === 'candidates'
-                ? 'No liked, visible, un-featured clips found.'
-                : filterMode === 'deleted'
-                  ? 'No deleted clips found.'
-                  : 'No clips match the current filter.'}
+          <Text style={styles.emptyTitle}>
+            {isFiltered ? 'No Matches' : 'No Clips Found'}
           </Text>
+          <Text style={styles.emptyText}>
+            {isFiltered
+              ? 'No clips match your search. Try different keywords or clear the filter.'
+              : filterMode === 'byGym' && !selectedGymId
+                ? 'Select a gym to browse its clips.'
+                : filterMode === 'candidates'
+                  ? 'No liked, visible, un-featured clips found.'
+                  : filterMode === 'deleted'
+                    ? 'No deleted clips found.'
+                    : 'No clips match the current filter.'}
+          </Text>
+          {isFiltered && (
+            <TouchableOpacity
+              style={styles.clearFilterBtn}
+              onPress={() => { setSearchText(''); setCategoryFilter(null); }}
+            >
+              <Text style={styles.clearFilterBtnText}>Clear Search</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <ScrollView
@@ -688,12 +824,21 @@ export default function AdminAllClipsScreen({ navigation }) {
             />
           }
         >
-          {clips.map((clip) => {
+          {clips.length >= PAGE_LIMIT && !isFiltered && (
+            <View style={styles.pageLimitBanner}>
+              <Ionicons name="information-circle-outline" size={14} color={colors.textMuted} />
+              <Text style={styles.pageLimitText}>
+                Showing first {PAGE_LIMIT} results. Use filters or search to narrow results.
+              </Text>
+            </View>
+          )}
+          {filteredClips.map((clip) => {
             const uploaderUid = clip.uploaderUid || clip.uid;
             const uploaderProfile = userProfiles[uploaderUid];
-            const uploaderName = uploaderProfile?.name || uploaderUid || 'Unknown';
-            const uploaderPhoto = uploaderProfile?.photoURL;
-            const uploaderInitials = getInitials(uploaderName !== uploaderUid ? uploaderName : null);
+            const isDeletedAccount = uploaderUid && !uploaderProfile;
+            const uploaderName = uploaderProfile?.name || null;
+            const uploaderPhoto = uploaderProfile?.photoURL || null;
+            const uploaderInitials = getInitials(uploaderName);
             const thumbUrl = thumbnails[clip.id];
             const clipVideoUrl = videoUrls[clip.id];
             const gymName = gymNameMap[clip.gymId] || clip.gymId || null;
@@ -766,19 +911,37 @@ export default function AdminAllClipsScreen({ navigation }) {
                   </View>
                 </TouchableOpacity>
 
-                {/* Uploader row: avatar + name + gym */}
+                {/* Uploader row: avatar + name + gym + time */}
                 <View style={styles.uploaderRow}>
+                  {/* Avatar — photo, initials, or deleted-account icon */}
                   {uploaderPhoto ? (
                     <Image source={{ uri: uploaderPhoto }} style={styles.uploaderAvatar} />
                   ) : (
-                    <View style={[styles.uploaderAvatar, styles.uploaderAvatarFallback]}>
-                      <Text style={styles.uploaderInitial}>{uploaderInitials}</Text>
+                    <View style={[
+                      styles.uploaderAvatar,
+                      styles.uploaderAvatarFallback,
+                      isDeletedAccount && styles.uploaderAvatarDeleted,
+                    ]}>
+                      {isDeletedAccount ? (
+                        <Ionicons name="person-remove-outline" size={14} color="rgba(255,255,255,0.5)" />
+                      ) : uploaderInitials ? (
+                        <Text style={styles.uploaderInitial}>{uploaderInitials}</Text>
+                      ) : (
+                        <Ionicons name="person-outline" size={14} color="rgba(255,255,255,0.5)" />
+                      )}
                     </View>
                   )}
+
                   <View style={styles.uploaderMeta}>
-                    <Text style={styles.uploaderName} numberOfLines={1}>
-                      {uploaderName}
-                    </Text>
+                    {isDeletedAccount ? (
+                      <Text style={styles.uploaderNameDeleted} numberOfLines={1}>
+                        Deleted Account
+                      </Text>
+                    ) : (
+                      <Text style={styles.uploaderName} numberOfLines={1}>
+                        {uploaderName || 'Unknown'}
+                      </Text>
+                    )}
                     {gymName && (
                       <Text style={styles.gymLabel} numberOfLines={1}>
                         {gymName}
@@ -811,16 +974,21 @@ export default function AdminAllClipsScreen({ navigation }) {
                 {/* Clip ID + like count */}
                 <View style={styles.metaRow}>
                   <Text style={styles.clipIdText} numberOfLines={1}>
-                    {clip.id}
+                    ID: {shortClipId(clip.id)}
                   </Text>
-                  {(clip.likesCount > 0 || filterMode === 'mostLiked') && (
-                    <View style={styles.likeCountPill}>
-                      <Ionicons name="heart" size={10} color={isDark ? '#F87171' : '#DC2626'} />
-                      <Text style={styles.likeCountText}>
-                        {clip.likesCount || 0}
-                      </Text>
-                    </View>
-                  )}
+                  <View style={styles.metaRowRight}>
+                    {clip.likesCount > 0 && (
+                      <View style={styles.likeCountPill}>
+                        <Ionicons name="heart" size={10} color={isDark ? '#F87171' : '#DC2626'} />
+                        <Text style={styles.likeCountText}>{clip.likesCount}</Text>
+                      </View>
+                    )}
+                    {clip.status && clip.status !== 'ready' && (
+                      <View style={styles.statusPill}>
+                        <Text style={styles.statusPillText}>{clip.status}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
 
                 {/* ── Contextual action buttons ──────────────────────────── */}
@@ -1010,6 +1178,69 @@ const getStyles = (colors, isDark) =>
       fontWeight: FONT_WEIGHTS.bold,
     },
 
+    // ── Search bar ───────────────────────────────────────────────────
+    searchRow: {
+      paddingHorizontal: SPACING.md,
+      paddingTop: SPACING.xs,
+      paddingBottom: 4,
+    },
+    searchInputWrapper: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : '#F3F4F6',
+      borderRadius: RADIUS.sm,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 8,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
+    },
+    searchInput: {
+      flex: 1,
+      fontSize: FONT_SIZES.small,
+      color: colors.textPrimary,
+      padding: 0,
+    },
+
+    // ── Category filter pills ─────────────────────────────────────────
+    categoryFilterRow: {
+      paddingVertical: 4,
+    },
+    categoryFilterContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: SPACING.md,
+      gap: 6,
+    },
+    catPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: RADIUS.full,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.10)' : colors.border,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
+    },
+    catPillActive: {
+      backgroundColor: isDark ? 'rgba(255,107,53,0.15)' : '#FFF3ED',
+      borderColor: colors.primary,
+    },
+    catDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    catPillText: {
+      fontSize: 12,
+      fontWeight: FONT_WEIGHTS.medium,
+      color: colors.textSecondary,
+    },
+    catPillTextActive: {
+      color: colors.primary,
+      fontWeight: FONT_WEIGHTS.bold,
+    },
+
     // ── Summary bar ──────────────────────────────────────────────────
     summaryBar: {
       flexDirection: 'row',
@@ -1024,6 +1255,11 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.medium,
       color: colors.textSecondary,
+    },
+    clearFiltersText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.primary,
     },
 
     // ── Empty state ──────────────────────────────────────────────────
@@ -1040,6 +1276,42 @@ const getStyles = (colors, isDark) =>
       textAlign: 'center',
       lineHeight: 22,
       maxWidth: 280,
+    },
+
+    // ── Clear filter button (empty state) ────────────────────────────
+    clearFilterBtn: {
+      marginTop: SPACING.md,
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.sm,
+      borderRadius: RADIUS.sm,
+      backgroundColor: isDark ? 'rgba(255,107,53,0.15)' : '#FFF3ED',
+      borderWidth: 1,
+      borderColor: colors.primary,
+    },
+    clearFilterBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.primary,
+    },
+
+    // ── Pagination hint ──────────────────────────────────────────────
+    pageLimitBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : '#F9FAFB',
+      borderRadius: RADIUS.sm,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: SPACING.xs,
+      marginBottom: SPACING.sm,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,255,255,0.06)' : colors.border,
+    },
+    pageLimitText: {
+      fontSize: 11,
+      color: colors.textMuted,
+      flex: 1,
+      lineHeight: 16,
     },
 
     // ── Card ─────────────────────────────────────────────────────────
@@ -1161,6 +1433,9 @@ const getStyles = (colors, isDark) =>
       alignItems: 'center',
       backgroundColor: isDark ? 'rgba(255,107,53,0.15)' : '#FFF3ED',
     },
+    uploaderAvatarDeleted: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6',
+    },
     uploaderInitial: {
       fontSize: 12,
       fontWeight: FONT_WEIGHTS.bold,
@@ -1173,6 +1448,11 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.bold,
       color: colors.textPrimary,
+    },
+    uploaderNameDeleted: {
+      fontSize: FONT_SIZES.small,
+      fontStyle: 'italic',
+      color: colors.textMuted,
     },
     gymLabel: {
       fontSize: 11,
@@ -1197,6 +1477,22 @@ const getStyles = (colors, isDark) =>
       color: colors.textMuted,
       fontFamily: 'monospace',
       flex: 1,
+    },
+    metaRowRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    statusPill: {
+      backgroundColor: isDark ? 'rgba(107,114,128,0.2)' : '#F3F4F6',
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+    },
+    statusPillText: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.medium,
+      color: colors.textMuted,
     },
     likeCountPill: {
       flexDirection: 'row',
