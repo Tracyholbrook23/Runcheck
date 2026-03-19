@@ -61,7 +61,7 @@ import { hapticSuccess } from '../utils/haptics';
 import { useTheme } from '../contexts';
 
 const courtImage = require('../assets/images/court-bg.jpg');
-import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence } from '../hooks';
+import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence, useProximityCheckIn } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
 import { startOrJoinRun, joinExistingRun, leaveRun, subscribeToRunParticipants } from '../services/runService';
 import { auth, db } from '../config/firebase';
@@ -266,6 +266,35 @@ export default function RunDetailsScreen({ route, navigation }) {
   // True when the current user has an active check-in specifically at this gym.
   // Compared by gymId so a user checked into a different gym still sees "Check In Here".
   const isCheckedInHere = !!presence && presence.gymId === gymId;
+
+  // ── Smart proximity check-in ──────────────────────────────────────────────
+  // Only monitors THIS gym (not the full list) — we're already on its page.
+  const { nearbyGym, dismiss: dismissProximity } = useProximityCheckIn({
+    gyms: gym ? [gym] : [],
+    isCheckedIn: isCheckedInHere,
+  });
+  const [proximityCheckingIn, setProximityCheckingIn] = useState(false);
+
+  const handleProximityCheckIn = async () => {
+    if (!nearbyGym || proximityCheckingIn) return;
+    setProximityCheckingIn(true);
+    try {
+      await checkIn(nearbyGym.id);
+      hapticSuccess();
+      Alert.alert(
+        'Checked In! +10 pts',
+        `You're now checked in at ${nearbyGym.name}. Keep showing up to earn more points.`,
+        [{ text: 'OK' }],
+      );
+    } catch (err) {
+      Alert.alert(
+        'Check-In Failed',
+        err?.message || 'Could not check you in. Please try again.',
+      );
+    } finally {
+      setProximityCheckingIn(false);
+    }
+  };
 
   // ── Location permission state ─────────────────────────────────────────────
   const [locationEnabled, setLocationEnabled] = useState(true);
@@ -1445,6 +1474,42 @@ export default function RunDetailsScreen({ route, navigation }) {
               <Text style={styles.accessBadgeText}>
                 {gym.accessType === 'free' ? 'Free' : 'Membership / Day Pass'}
               </Text>
+            </View>
+          )}
+
+          {/* Smart proximity prompt — shown when user is physically at this gym */}
+          {nearbyGym && locationEnabled && !isCheckedInHere && (
+            <View style={styles.proximityCard}>
+              <View style={styles.proximityIconWrap}>
+                <Ionicons name="location" size={22} color="#FF7A45" />
+              </View>
+              <View style={styles.proximityContent}>
+                <Text style={styles.proximityTitle}>You're at {nearbyGym.name}</Text>
+                <Text style={styles.proximitySubtitle}>
+                  Looks like you arrived. Check in to let players know you're here.
+                </Text>
+                <View style={styles.proximityButtons}>
+                  <TouchableOpacity
+                    style={styles.proximityCheckInBtn}
+                    onPress={handleProximityCheckIn}
+                    disabled={proximityCheckingIn}
+                    activeOpacity={0.82}
+                  >
+                    {proximityCheckingIn ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.proximityCheckInText}>Check In</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.proximityDismissBtn}
+                    onPress={() => dismissProximity(nearbyGym.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.proximityDismissText}>Not now</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
           )}
 
@@ -3785,5 +3850,69 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   runModalButtonDisabled: {
     opacity: 0.45,
+  },
+
+  // ── Smart proximity prompt card ───────────────────────────────────────────
+  proximityCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: isDark ? '#1C1108' : '#FFF7ED',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,122,69,0.30)' : 'rgba(255,122,69,0.35)',
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  proximityIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: isDark ? 'rgba(255,122,69,0.15)' : 'rgba(255,122,69,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  proximityContent: {
+    flex: 1,
+  },
+  proximityTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    marginBottom: 3,
+  },
+  proximitySubtitle: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: SPACING.sm,
+  },
+  proximityButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  proximityCheckInBtn: {
+    backgroundColor: '#FF7A45',
+    borderRadius: RADIUS.sm,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.md,
+    minWidth: 90,
+    alignItems: 'center',
+  },
+  proximityCheckInText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  proximityDismissBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.sm,
+  },
+  proximityDismissText: {
+    color: colors.textMuted,
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
   },
 });
