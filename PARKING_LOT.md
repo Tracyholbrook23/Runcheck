@@ -32,7 +32,7 @@ Nothing in this file should be worked on during a session unless the user explic
 
 ## Check-in & Presence
 
-- **Smart proximity check-in prompt** — When the app is open and the user is within a gym's `checkInRadiusMeters`, show a user-confirmed prompt: "Looks like you're at [Gym Name]. Check in now?" Reduces friction without auto-check-in risks (privacy, permissions, App Store, wrong-gym false positives). Revisit after launch once core check-in reliability is proven.
+- ~~**Smart proximity check-in prompt**~~ — **Done 2026-03-18.** `useProximityCheckIn` hook polls GPS every 30 s (Balanced accuracy, ≤ 100m accuracy gate, 30-min dismiss cooldown per gym). CheckInScreen shows an orange prompt card when user is inside a gym's radius. One-tap Check In runs the full existing check-in flow; "Not now" suppresses for 30 min. Foreground-only, user-confirmed, no background location.
 
 ---
 

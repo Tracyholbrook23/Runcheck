@@ -9,7 +9,8 @@ import * as Location from 'expo-location';
 import { distanceBetween } from 'geofire-common';
 
 // Cowboys Fit - Pflugerville coordinates for dev testing
-// Must match seedProductionGyms.js → cowboys-fit-pflugerville.location
+// Must match the Firestore gym document for cowboys-fit-pflugerville
+// Confirmed from live Firestore log: { latitude: 30.4673, longitude: -97.6021 }
 const DEV_LOCATION = {
   latitude: 30.4673,
   longitude: -97.6021,

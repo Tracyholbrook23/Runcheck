@@ -96,3 +96,6 @@ export { useTaggedClips } from './useTaggedClips';
 
 // Location
 export { useLocation } from './useLocation';
+
+// Smart Proximity Check-In
+export { useProximityCheckIn } from './useProximityCheckIn';

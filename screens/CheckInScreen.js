@@ -29,7 +29,7 @@ import * as Location from 'expo-location';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo } from '../components';
-import { usePresence, useGyms, useProfile, useLivePresenceMap } from '../hooks';
+import { usePresence, useGyms, useProfile, useLivePresenceMap, useProximityCheckIn } from '../hooks';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { isLocationGranted } from '../utils/locationUtils';
 import { hapticLight } from '../utils/haptics';
@@ -81,10 +81,40 @@ export default function CheckInScreen({ navigation }) {
     presence,
     loading: presenceLoading,
     isCheckedIn,
+    checkIn,
     checkOut,
+    checkingIn,
     checkingOut,
     getTimeRemaining,
   } = usePresence();
+
+  // ── Smart proximity check-in ──────────────────────────────────────────────
+  // Polls GPS every 30 s while the app is active. When the user is inside a
+  // gym's check-in radius and hasn't dismissed the prompt in the last 30 min,
+  // nearbyGym is set and we show a one-tap check-in card.
+  const { nearbyGym, dismiss: dismissProximity } = useProximityCheckIn({
+    gyms,
+    isCheckedIn,
+  });
+
+  // ── Proximity check-in handler ────────────────────────────────────────────
+  const [proximityCheckingIn, setProximityCheckingIn] = useState(false);
+
+  const handleProximityCheckIn = async () => {
+    if (!nearbyGym || proximityCheckingIn) return;
+    setProximityCheckingIn(true);
+    try {
+      await checkIn(nearbyGym.id);
+      // nearbyGym clears automatically via the isCheckedIn effect in the hook
+    } catch (err) {
+      Alert.alert(
+        'Check-In Failed',
+        err?.message || 'Could not check you in. Please try again.',
+      );
+    } finally {
+      setProximityCheckingIn(false);
+    }
+  };
 
   // ── Location permission state ─────────────────────────────────────────────
   const [locationEnabled, setLocationEnabled] = useState(true); // optimistic default
@@ -304,6 +334,42 @@ export default function CheckInScreen({ navigation }) {
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </TouchableOpacity>
+          )}
+
+          {/* ── Smart proximity prompt ── */}
+          {nearbyGym && locationEnabled && (
+            <View style={styles.proximityCard}>
+              <View style={styles.proximityIconWrap}>
+                <Ionicons name="location" size={22} color="#FF7A45" />
+              </View>
+              <View style={styles.proximityContent}>
+                <Text style={styles.proximityTitle}>You're at {nearbyGym.name}</Text>
+                <Text style={styles.proximitySubtitle}>
+                  Looks like you arrived. Check in to let players know you're here.
+                </Text>
+                <View style={styles.proximityButtons}>
+                  <TouchableOpacity
+                    style={styles.proximityCheckInBtn}
+                    onPress={handleProximityCheckIn}
+                    disabled={proximityCheckingIn}
+                    activeOpacity={0.82}
+                  >
+                    {proximityCheckingIn ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.proximityCheckInText}>Check In</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.proximityDismissBtn}
+                    onPress={() => dismissProximity(nearbyGym.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.proximityDismissText}>Not now</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
           )}
 
           {/* Primary CTA */}
@@ -608,5 +674,70 @@ const getStyles = (colors, isDark) =>
     },
     courtChevron: {
       paddingLeft: SPACING.xs,
+    },
+
+    // ── Smart proximity prompt card ───────────────────────────────────────
+    proximityCard: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      width: '100%',
+      backgroundColor: isDark ? '#1C1108' : '#FFF7ED',
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(255,122,69,0.30)' : 'rgba(255,122,69,0.35)',
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+      gap: SPACING.sm,
+    },
+    proximityIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: isDark ? 'rgba(255,122,69,0.15)' : 'rgba(255,122,69,0.12)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexShrink: 0,
+    },
+    proximityContent: {
+      flex: 1,
+    },
+    proximityTitle: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textPrimary,
+      marginBottom: 3,
+    },
+    proximitySubtitle: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      marginBottom: SPACING.sm,
+    },
+    proximityButtons: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+    },
+    proximityCheckInBtn: {
+      backgroundColor: '#FF7A45',
+      borderRadius: RADIUS.sm,
+      paddingVertical: 8,
+      paddingHorizontal: SPACING.md,
+      minWidth: 90,
+      alignItems: 'center',
+    },
+    proximityCheckInText: {
+      color: '#fff',
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.bold,
+    },
+    proximityDismissBtn: {
+      paddingVertical: 8,
+      paddingHorizontal: SPACING.sm,
+    },
+    proximityDismissText: {
+      color: colors.textMuted,
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.medium,
     },
   });
