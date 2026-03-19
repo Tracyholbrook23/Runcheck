@@ -40,6 +40,9 @@ import {
   Alert,
   PanResponder,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -142,10 +145,11 @@ export default function TrimClipScreen({ route, navigation }) {
 
   // ── Player tagging ─────────────────────────────────────────────────────────
   const { userId: currentUid } = useAuth();
-  const [taggedPlayers, setTaggedPlayers] = useState([]); // Array<{ uid, displayName }>
-  const [friendsList, setFriendsList]     = useState([]); // Array<{ uid, displayName }>
+  const [taggedPlayers, setTaggedPlayers] = useState([]); // Array<{ uid, displayName, photoURL }>
+  const [friendsList, setFriendsList]     = useState([]); // Array<{ uid, displayName, photoURL }>
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [showTagPicker, setShowTagPicker] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
 
   // Fetch current user's friends list with display names
   useEffect(() => {
@@ -169,6 +173,7 @@ export default function TrimClipScreen({ route, navigation }) {
           .map((s) => ({
             uid: s.id,
             displayName: s.data()?.displayName || s.data()?.name || 'Unknown',
+            photoURL: s.data()?.photoURL || null,
           }))
           .sort((a, b) => a.displayName.localeCompare(b.displayName));
         setFriendsList(profiles);
@@ -600,6 +605,13 @@ export default function TrimClipScreen({ route, navigation }) {
   // Width of the unselected region to the right of the selection window.
   const dimRightWidth = Math.max(0, barWidth - endPx);
 
+  // ── Filtered friends list (driven by tag search query) ────────────────────
+  const filteredFriends = tagSearchQuery.trim()
+    ? friendsList.filter((f) =>
+        f.displayName.toLowerCase().includes(tagSearchQuery.toLowerCase())
+      )
+    : friendsList;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <View style={styles.container}>
@@ -628,7 +640,15 @@ export default function TrimClipScreen({ route, navigation }) {
         </View>
       )}
 
-      {/* ── Header + bottom panel ── */}
+      {/* ── Header + bottom panel ──
+           KeyboardAvoidingView sits between the absoluteFill video layer and the
+           overlay so that when the caption keyboard opens the bottom panel is
+           pushed up rather than hidden behind it. */}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+      >
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
 
         {/* Header: [back] [gym name / Preview] [retake] */}
@@ -814,7 +834,11 @@ export default function TrimClipScreen({ route, navigation }) {
               <TouchableOpacity
                 style={styles.tagToggle}
                 activeOpacity={0.7}
-                onPress={() => setShowTagPicker((v) => !v)}
+                onPress={() => {
+                  const opening = !showTagPicker;
+                  setShowTagPicker(opening);
+                  if (!opening) setTagSearchQuery(''); // clear search on close
+                }}
               >
                 <Ionicons name="people-outline" size={16} color="rgba(255,255,255,0.6)" />
                 <Text style={styles.tagToggleText}>
@@ -835,41 +859,60 @@ export default function TrimClipScreen({ route, navigation }) {
 
               {showTagPicker && (
                 <View style={styles.tagPickerContainer}>
+                  {/* Search input */}
+                  <TextInput
+                    style={styles.tagSearchInput}
+                    placeholder="Search players…"
+                    placeholderTextColor="rgba(255,255,255,0.30)"
+                    value={tagSearchQuery}
+                    onChangeText={setTagSearchQuery}
+                    returnKeyType="search"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                  />
+
                   {friendsLoading ? (
                     <ActivityIndicator size="small" color="rgba(255,255,255,0.5)" style={{ paddingVertical: 8 }} />
-                  ) : friendsList.length === 0 ? (
-                    <Text style={styles.tagEmptyText}>No friends to tag yet</Text>
+                  ) : filteredFriends.length === 0 ? (
+                    <Text style={styles.tagEmptyText}>
+                      {tagSearchQuery ? 'No players found' : 'No friends to tag yet'}
+                    </Text>
                   ) : (
                     <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.tagChipsScroll}
+                      style={styles.tagPickerList}
+                      showsVerticalScrollIndicator={false}
                       keyboardShouldPersistTaps="handled"
                     >
-                      {friendsList.map((friend) => {
+                      {filteredFriends.map((friend) => {
                         const isSelected = taggedPlayers.some((p) => p.uid === friend.uid);
                         const atMax = taggedPlayers.length >= MAX_TAGGED_PLAYERS && !isSelected;
+                        const initial = friend.displayName?.[0]?.toUpperCase() || '?';
                         return (
                           <TouchableOpacity
                             key={friend.uid}
-                            style={[
-                              styles.tagChip,
-                              isSelected && styles.tagChipSelected,
-                              atMax && styles.tagChipDisabled,
-                            ]}
+                            style={[styles.tagPlayerRow, atMax && styles.tagRowDisabled]}
                             activeOpacity={atMax ? 1 : 0.7}
                             onPress={() => !atMax && toggleTagPlayer(friend)}
                           >
+                            {/* Avatar */}
+                            {friend.photoURL ? (
+                              <Image source={{ uri: friend.photoURL }} style={styles.tagAvatar} />
+                            ) : (
+                              <View style={[styles.tagAvatar, styles.tagAvatarFallback]}>
+                                <Text style={styles.tagAvatarInitial}>{initial}</Text>
+                              </View>
+                            )}
                             <Text style={[
-                              styles.tagChipText,
-                              isSelected && styles.tagChipTextSelected,
-                              atMax && styles.tagChipTextDisabled,
-                            ]}>
+                              styles.tagPlayerName,
+                              isSelected && styles.tagPlayerNameSelected,
+                              atMax && styles.tagPlayerNameDisabled,
+                            ]} numberOfLines={1}>
                               {friend.displayName}
                             </Text>
-                            {isSelected && (
-                              <Ionicons name="close-circle" size={14} color="#FF7A45" style={{ marginLeft: 4 }} />
-                            )}
+                            {isSelected
+                              ? <Ionicons name="checkmark-circle" size={18} color="#FF7A45" />
+                              : !atMax && <Ionicons name="add-circle-outline" size={18} color="rgba(255,255,255,0.3)" />
+                            }
                           </TouchableOpacity>
                         );
                       })}
@@ -895,6 +938,7 @@ export default function TrimClipScreen({ route, navigation }) {
 
         </View>
       </SafeAreaView>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -1178,44 +1222,68 @@ const styles = StyleSheet.create({
   },
   tagPickerContainer: {
     marginTop: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    overflow: 'hidden',
+  },
+  tagSearchInput: {
+    color: '#fff',
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  tagPickerList: {
+    maxHeight: 180,
   },
   tagEmptyText: {
     color: 'rgba(255,255,255,0.35)',
     fontSize: 12,
     textAlign: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
-  tagChipsScroll: {
-    gap: 8,
-    paddingVertical: 4,
-  },
-  tagChip: {
+  tagPlayerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
+    gap: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  tagRowDisabled: {
+    opacity: 0.38,
+  },
+  tagAvatar: {
+    width: 32,
+    height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#333',
   },
-  tagChipSelected: {
-    backgroundColor: 'rgba(255,122,69,0.15)',
-    borderColor: '#FF7A45',
+  tagAvatarFallback: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,122,69,0.2)',
   },
-  tagChipDisabled: {
-    opacity: 0.35,
+  tagAvatarInitial: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FF7A45',
   },
-  tagChipText: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 12,
+  tagPlayerName: {
+    flex: 1,
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 13,
     fontWeight: '500',
   },
-  tagChipTextSelected: {
+  tagPlayerNameSelected: {
     color: '#FF7A45',
     fontWeight: '600',
   },
-  tagChipTextDisabled: {
+  tagPlayerNameDisabled: {
     color: 'rgba(255,255,255,0.3)',
   },
 

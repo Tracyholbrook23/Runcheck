@@ -78,6 +78,7 @@ export default function AdminHiddenClipsScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [unhiding, setUnhiding] = useState(null); // clipId being unhidden
+  const [deleting, setDeleting] = useState(null); // clipId being deleted
 
   // Resolved user data: uid → { name, photoURL }
   const [userProfiles, setUserProfiles] = useState({});
@@ -146,9 +147,18 @@ export default function AdminHiddenClipsScreen({ navigation }) {
             newProfiles[uid] = {
               name: d.displayName || d.name || uid,
               photoURL: d.photoURL || null,
+              deleted: false,
+            };
+          } else {
+            // User has deleted their account — store a sentinel so the card
+            // can display a clear "Deleted Account" label instead of a raw UID.
+            newProfiles[uid] = {
+              name: 'Deleted Account',
+              photoURL: null,
+              deleted: true,
             };
           }
-        } catch (_) { /* fallback to uid */ }
+        } catch (_) { /* network error — will fall back to uid display */ }
       }
 
       if (cancelled) return;
@@ -266,6 +276,38 @@ export default function AdminHiddenClipsScreen({ navigation }) {
     );
   }, [userProfiles]);
 
+  const handleDelete = useCallback((clip) => {
+    const uploaderUid = clip.uploaderUid || clip.uid;
+    const uploaderName = userProfiles[uploaderUid]?.name || uploaderUid || 'Unknown';
+
+    Alert.alert(
+      'Delete Clip',
+      `Permanently delete this clip by ${uploaderName}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(clip.id);
+            try {
+              await callFunction('deleteClip', { clipId: clip.id });
+              // Clip will disappear from the list once Firestore snapshot updates
+            } catch (err) {
+              if (__DEV__) console.error('deleteClip error:', err);
+              Alert.alert(
+                'Delete Failed',
+                err?.message || 'Could not delete clip. Please try again.'
+              );
+            } finally {
+              setDeleting(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [userProfiles]);
+
   /** Resolve hiddenBy to a human-readable string. */
   const getHiddenByLabel = (clip) => {
     if (clip.hiddenBy === 'auto-moderation') return 'Auto-moderation';
@@ -351,9 +393,10 @@ export default function AdminHiddenClipsScreen({ navigation }) {
         {clips.map((clip) => {
           const uploaderUid = clip.uploaderUid || clip.uid;
           const uploaderProfile = userProfiles[uploaderUid];
+          const isDeletedAccount = uploaderProfile?.deleted === true;
           const uploaderName = uploaderProfile?.name || uploaderUid || 'Unknown';
-          const uploaderPhoto = uploaderProfile?.photoURL;
-          const uploaderInitials = getInitials(uploaderName !== uploaderUid ? uploaderName : null);
+          const uploaderPhoto = isDeletedAccount ? null : uploaderProfile?.photoURL;
+          const uploaderInitials = isDeletedAccount ? '?' : getInitials(uploaderName !== uploaderUid ? uploaderName : null);
           const isAutoMod = clip.autoModerated === true;
           const thumbUrl = thumbnails[clip.id];
 
@@ -411,9 +454,16 @@ export default function AdminHiddenClipsScreen({ navigation }) {
                   </View>
                 )}
                 <View style={styles.uploaderMeta}>
-                  <Text style={styles.uploaderName} numberOfLines={1}>
-                    {uploaderName}
-                  </Text>
+                  <View style={styles.uploaderNameRow}>
+                    <Text style={[styles.uploaderName, isDeletedAccount && styles.deletedAccountName]} numberOfLines={1}>
+                      {uploaderName}
+                    </Text>
+                    {isDeletedAccount && (
+                      <View style={styles.deletedBadge}>
+                        <Text style={styles.deletedBadgeText}>Deleted</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.clipIdText} numberOfLines={1}>
                     {clip.id}
                   </Text>
@@ -449,19 +499,40 @@ export default function AdminHiddenClipsScreen({ navigation }) {
                 </Text>
               </View>
 
-              {/* Unhide button */}
+              {/* Unhide button — hidden when account is deleted (no point unhiding) */}
+              {!isDeletedAccount && (
+                <TouchableOpacity
+                  style={styles.unhideBtn}
+                  onPress={() => handleUnhide(clip)}
+                  disabled={unhiding === clip.id}
+                  activeOpacity={0.7}
+                >
+                  {unhiding === clip.id ? (
+                    <ActivityIndicator size="small" color="#3B82F6" />
+                  ) : (
+                    <>
+                      <Ionicons name="eye-outline" size={16} color="#3B82F6" />
+                      <Text style={styles.unhideBtnText}>Unhide Clip</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+
+              {/* Delete button — shown for all clips, primary action for deleted accounts */}
               <TouchableOpacity
-                style={styles.unhideBtn}
-                onPress={() => handleUnhide(clip)}
-                disabled={unhiding === clip.id}
+                style={[styles.deleteBtn, isDeletedAccount && styles.deleteBtnPrimary]}
+                onPress={() => handleDelete(clip)}
+                disabled={deleting === clip.id}
                 activeOpacity={0.7}
               >
-                {unhiding === clip.id ? (
-                  <ActivityIndicator size="small" color="#3B82F6" />
+                {deleting === clip.id ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
                 ) : (
                   <>
-                    <Ionicons name="eye-outline" size={16} color="#3B82F6" />
-                    <Text style={styles.unhideBtnText}>Unhide Clip</Text>
+                    <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                    <Text style={styles.deleteBtnText}>
+                      {isDeletedAccount ? 'Delete Clip (Account Deleted)' : 'Delete Clip'}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -678,11 +749,60 @@ const getStyles = (colors, isDark) =>
       borderColor: isDark ? '#1E40AF' : '#93C5FD',
       marginHorizontal: SPACING.md,
       marginTop: SPACING.xs,
-      marginBottom: SPACING.md,
+      marginBottom: SPACING.xs,
     },
     unhideBtnText: {
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.semibold,
       color: isDark ? '#60A5FA' : '#1D4ED8',
+    },
+
+    // Delete button
+    deleteBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: RADIUS.sm,
+      borderWidth: 1,
+      backgroundColor: isDark ? '#2D1010' : '#FEF2F2',
+      borderColor: isDark ? '#7F1D1D' : '#FECACA',
+      marginHorizontal: SPACING.md,
+      marginTop: SPACING.xs,
+      marginBottom: SPACING.md,
+    },
+    deleteBtnPrimary: {
+      // Slightly stronger background when this is the only action (deleted account)
+      backgroundColor: isDark ? '#3D1010' : '#FEE2E2',
+      borderColor: isDark ? '#991B1B' : '#FCA5A5',
+    },
+    deleteBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#EF4444',
+    },
+
+    // Deleted account indicators
+    uploaderNameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      flexWrap: 'wrap',
+    },
+    deletedAccountName: {
+      color: colors.textMuted,
+      fontStyle: 'italic',
+    },
+    deletedBadge: {
+      backgroundColor: isDark ? '#3D1010' : '#FEE2E2',
+      borderRadius: RADIUS.full,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+    },
+    deletedBadgeText: {
+      fontSize: 10,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#EF4444',
     },
   });

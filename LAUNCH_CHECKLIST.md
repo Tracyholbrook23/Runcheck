@@ -11,7 +11,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] Email/password sign-up and login working
 - [x] Profile screen displays reliability score, stats, rank, courts, friends
 - [x] User profile viewable by others (UserProfileScreen)
-- [ ] Profile photo upload reliable (verify no silent failures on slow connections)
+- [x] **Profile photo upload reliable** — added `withTimeout` wrapper (30s for fetch/upload, 15s for getDownloadURL/Firestore write). Stalled connections now surface a clear "Upload timed out" alert and reset the spinner. Errors were already caught; this closes the infinite-spinner risk on slow/dead connections.
 - [x] **Empty/error states on ProfileScreen if Firestore data is missing or loading fails** — audited 2026-03-17: Combined `profileLoading || reliabilityLoading` gates full screen with spinner; resolves even on error. All rendered fields have safe fallbacks (name→'Player', score→100, stats→0, lists→empty). All `onSnapshot` error callbacks clear loading state. No blank screen or crash possible from missing data. One stray ungated `console.log` gated behind `__DEV__`. No structural code change needed.
 - [x] Rank tier system functional (Bronze → Legend, 6 tiers)
 - [x] Points awarded correctly for all defined actions
@@ -93,10 +93,10 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 ## App Store Readiness
 
 - [x] **Set `cli.appVersionSource` in `eas.json`** — fixed 2026-03-17: Added `"appVersionSource": "remote"` to `cli` block. EAS manages version numbers server-side, no manual bumps needed per build.
-- [ ] App icons and splash screen finalized
-- [ ] Privacy policy URL ready
+- [x] App icons and splash screen finalized — verified 2026-03-18: icon.png and adaptive-icon.png are 1024×1024 RGB, correct RunCheck logo. Splash uses runcheck-logo-full.png. All three referenced correctly in app.json.
+- [x] Privacy policy URL ready — https://www.notion.so/RunCheck-Privacy-Policy-3280818539eb80168b7cc7dd061f3d09
 - [ ] App Store screenshots prepared
-- [ ] TestFlight build distributed for final QA round
+- [ ] TestFlight build distributed for final QA round — **requires native rebuild** (batching with push notifications setup to avoid two rebuilds)
 - [x] **Remove or gate `__DEV__` debug logs in HomeScreen.js and RunDetailsScreen.js** — fixed 2026-03-17: Removed 3 ungated temporary debug logs in RunDetailsScreen (clips effect tracing). Gated 17 remaining `console.error`/`console.warn`/`console.log` calls behind `__DEV__` across both files. All logs in both files now silent in production builds.
 
 ---

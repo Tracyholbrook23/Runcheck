@@ -16,7 +16,7 @@
  *   • Pauses and unloads the video before navigating back to free resources.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -55,7 +55,11 @@ export default function ClipPlayerScreen({ route, navigation }) {
 
   // Playback state — loading, buffering, and error feedback
   const [videoLoaded, setVideoLoaded] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [playbackError, setPlaybackError] = useState(false);
+  // Ref so the statusChange listener can check if initial load has completed
+  // without depending on stale closure state
+  const videoLoadedRef = useRef(false);
 
   // expo-video player instance — autoplay on mount, no looping
   const player = useVideoPlayer(videoUrl, (p) => {
@@ -96,7 +100,13 @@ export default function ClipPlayerScreen({ route, navigation }) {
   useEffect(() => {
     const statusSub = player.addListener('statusChange', ({ status, error }) => {
       if (status === 'readyToPlay') {
+        videoLoadedRef.current = true;
         setVideoLoaded(true);
+        setIsBuffering(false);
+      } else if (status === 'loading') {
+        // Only show buffering spinner after the initial load has completed —
+        // before that the full-screen loading spinner is already shown.
+        if (videoLoadedRef.current) setIsBuffering(true);
       } else if (status === 'error') {
         if (__DEV__) console.error('playback error:', error);
         setPlaybackError(true);

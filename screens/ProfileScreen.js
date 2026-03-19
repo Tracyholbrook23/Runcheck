@@ -330,26 +330,39 @@ export default function ProfileScreen({ navigation }) {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
 
+    // Rejects after ms milliseconds — guards against stalled connections that
+    // never error, which would leave the upload spinner running indefinitely.
+    const withTimeout = (promise, ms) =>
+      Promise.race([
+        promise,
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Upload timed out')), ms)
+        ),
+      ]);
+
     setUploading(true);
     try {
       // Convert local URI → Blob (required by the Firebase Storage web SDK)
-      const response = await fetch(localUri);
+      const response = await withTimeout(fetch(localUri), 30000);
       const blob = await response.blob();
 
       // Upload to Storage — one file per user, overwrites on each update
       const storageRef = ref(storage, `profilePhotos/${uid}.jpg`);
       const uploadTask = uploadBytesResumable(storageRef, blob);
 
-      // Wait for the upload to complete
-      await new Promise((resolve, reject) => {
-        uploadTask.on('state_changed', null, reject, resolve);
-      });
+      // Wait for the upload to complete (30s timeout guards against stalled connections)
+      await withTimeout(
+        new Promise((resolve, reject) => {
+          uploadTask.on('state_changed', null, reject, resolve);
+        }),
+        30000
+      );
 
       // Retrieve the permanent, publicly-readable download URL
-      const downloadURL = await getDownloadURL(storageRef);
+      const downloadURL = await withTimeout(getDownloadURL(storageRef), 15000);
 
       // Persist the URL so it survives app restarts and device changes
-      await updateDoc(doc(db, 'users', uid), { photoURL: downloadURL });
+      await withTimeout(updateDoc(doc(db, 'users', uid), { photoURL: downloadURL }), 15000);
 
       // Update the local avatar immediately without waiting for a Firestore read
       setPhotoUri(downloadURL);
@@ -360,7 +373,13 @@ export default function ProfileScreen({ navigation }) {
       }
     } catch (err) {
       if (__DEV__) console.error('handlePickImage upload error:', err);
-      Alert.alert('Upload Failed', 'Could not save your photo. Please try again.');
+      const isTimeout = err?.message === 'Upload timed out';
+      Alert.alert(
+        'Upload Failed',
+        isTimeout
+          ? 'Upload timed out. Please check your connection and try again.'
+          : 'Could not save your photo. Please try again.'
+      );
     } finally {
       setUploading(false);
     }

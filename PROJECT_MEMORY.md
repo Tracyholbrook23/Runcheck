@@ -166,8 +166,8 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 ### Code changes
 
 - **`services/presenceService.js`** — Added suspension guard to `checkIn()`. Reads `users/{uid}`, checks `isSuspended` + `suspensionEndsAt`, throws clear error. Matches `runService.js` pattern.
-- **`runcheck-backend/functions/src/checkIn.ts`** — Added backend suspension guard after auth check, before any branching. Same pattern as `clipFunctions.ts`. **Deploy required.**
-- **`runcheck-backend/functions/src/createRun.ts`** — Added backend suspension guard after auth check, before input validation. Moved `const db` up to support the early read. **Deploy required.**
+- **`runcheck-backend/functions/src/checkIn.ts`** — Added backend suspension guard after auth check, before any branching. Same pattern as `clipFunctions.ts`. **Deployed 2026-03-18.**
+- **`runcheck-backend/functions/src/createRun.ts`** — Added backend suspension guard after auth check, before input validation. Moved `const db` up to support the early read. **Deployed 2026-03-18.**
 - **`screens/HomeScreen.js`** — Gated 5 `console.error`/`console.warn` calls behind `__DEV__`. No behavior change.
 - **`screens/RunDetailsScreen.js`** — Removed 3 ungated temporary debug `console.log` calls (clips effect tracing). Gated 12 remaining `console.error`/`console.warn`/`console.log` calls behind `__DEV__`. No behavior change.
 - **`screens/ProfileScreen.js`** — Gated 1 stray `console.log` (photoURL sync) behind `__DEV__`. No behavior change.
@@ -192,11 +192,9 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 4. ✅ Remove or gate `__DEV__` debug logs in HomeScreen.js and RunDetailsScreen.js
 5. ✅ Empty/error states on ProfileScreen if Firestore data is missing or loading fails
 
-### Deploy reminder
+### ✅ Deploy completed 2026-03-18
 
-```bash
-cd ~/Desktop/runcheck-backend && firebase deploy --only functions:checkIn,functions:createRun
-```
+`checkIn` and `createRun` suspension guards deployed successfully.
 
 ---
 
@@ -674,10 +672,9 @@ Linking.openURL(INSTAGRAM_URL)
 - `taggedPlayers` on other users' clips show stale name (no crash)
 - Firebase Storage files not purged (soft-delete flags prevent display)
 
-### Deploy required
-```bash
-cd ~/Desktop/runcheck-backend && firebase deploy --only functions:deleteAccount
-```
+### ✅ Deploy completed 2026-03-18
+
+`deleteAccount` Cloud Function deployed successfully.
 
 ## Settings Screen (2026-03-17)
 
@@ -771,5 +768,5 @@ cd ~/Desktop/runcheck-backend && firebase deploy --only functions:deleteAccount
 - `screens/OnboardingHomeCourtScreen.js` — added GYM_LOCAL_IMAGES for correct gym thumbnails, "Request gym" hint
 - `App.js` — removed CityGateScreen
 
-### Important: requires native rebuild
-The `app.json` change (adding `locationWhenInUsePermission`) only takes effect after `npx expo prebuild --clean` + a new EAS/Xcode build. The Info.plist must be regenerated.
+### Important: requires native rebuild (batching with push notifications)
+The `app.json` change (adding `locationWhenInUsePermission`) only takes effect after `npx expo prebuild --clean` + a new EAS/Xcode build. The Info.plist must be regenerated. **Rebuild is being deferred and batched with push notifications setup**, which will also require a native rebuild. Do both at the same time.
