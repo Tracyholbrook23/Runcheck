@@ -8,8 +8,8 @@
 const EXPECTED_COORDS = {
   name: 'Cowboys Fit - Pflugerville',
   address: '1401 Town Center Dr, Pflugerville, TX 78660',
-  latitude: 30.4673,
-  longitude: -97.6021,
+  latitude: 30.465690715984987,
+  longitude: -97.60124257791747,
 };
 
 console.log('🏀 COWBOYS FIT COORDINATE VERIFICATION');

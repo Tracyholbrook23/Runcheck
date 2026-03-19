@@ -10,10 +10,9 @@ import { distanceBetween } from 'geofire-common';
 
 // Cowboys Fit - Pflugerville coordinates for dev testing
 // Must match the Firestore gym document for cowboys-fit-pflugerville
-// Confirmed from live Firestore log: { latitude: 30.4673, longitude: -97.6021 }
 const DEV_LOCATION = {
-  latitude: 30.4673,
-  longitude: -97.6021,
+  latitude: 30.465690715984987,
+  longitude: -97.60124257791747,
 };
 
 const isDevGps = () => process.env.EXPO_PUBLIC_DEV_SKIP_GPS === 'true';
