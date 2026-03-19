@@ -85,13 +85,13 @@ Nothing in this file should be worked on during a session unless the user explic
 ## Technical Improvements (Non-Blocking)
 
 - ~~**GPS timeout + stale-fix hardening**~~ — **Done.** Added `timeout: 15000` and `maximumAge: 30000` to `getCurrentPositionAsync` in `locationUtils.js`.
-- **Silent-error banners on core screens** — HomeScreen, ViewRunsScreen, and RunDetailsScreen currently swallow fetch/snapshot errors and fall back to empty states silently. Add a dismissible error banner ("Something went wrong — pull to refresh") so users know data may be stale vs. genuinely empty. Low risk, post-launch quality improvement.
-- **Deduplicate reliability subscriptions on ProfileScreen** — `useReliability()` hook and an inline `onSnapshot` both listen to `users/{uid}` and both extract `reliability`. The inline listener also reads `receivedRequests` and other fields, so it can't be removed outright, but the `reliability` state variable (line ~215) is redundant with the hook's `stats` return value. Consolidate to a single source when convenient.
+- ~~**Silent-error banners on core screens**~~ — **Done 2026-03-19.** Dismissible amber error banner added to HomeScreen, ViewRunsScreen, and RunDetailsScreen. Users see "Something went wrong — pull to refresh" instead of a silent empty state.
+- ~~**Deduplicate reliability subscriptions on ProfileScreen**~~ — **Done 2026-03-19.** Removed redundant `reliability` state variable and `setReliability` call from inline `onSnapshot`. Display now uses `stats` from `useReliability` hook exclusively.
+- ~~**Switch `useTaggedClips` to native `taggedUserIds` array-contains query**~~ — **Done 2026-03-19.** Replaced client-side filter of 100 docs with `where('taggedUserIds', 'array-contains', uid)`. Requires Firestore composite index on `clips` collection — auto-create link appears in dev console on first run.
+- ~~**Deprecate stale `addGym` Cloud Function**~~ — **Done 2026-03-19.** Export commented out in `index.ts`; deprecation header added to `addGym.ts`.
 - Migrate remaining gym images to Firebase Storage
-- Switch `useTaggedClips` to native `taggedUserIds` array-contains query
 - Server-side presence auto-expiry Cloud Function
-- Composite Firestore indexes for scale (`activity`, `gymClips`)
-- Deprecate stale `addGym` Cloud Function
+- **Composite Firestore indexes for scale** (`activity`, `gymClips`) — also need `clips/taggedUserIds + createdAt` index for `useTaggedClips` (auto-create link shown in console)
 - End-to-end test suite for critical flows
 - CI/CD pipeline for automated builds and deploys
 - Firestore Security Rules audit and tightening
