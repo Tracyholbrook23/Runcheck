@@ -58,7 +58,10 @@ export const registerPushToken = async () => {
     }
 
     // Step 4: Retrieve the Expo push token
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    // projectId is required in Expo SDK 50+ — omitting it causes a silent failure
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: 'bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d',
+    });
     const token = tokenData.data;
 
     // Step 5: Persist the token to Firestore
