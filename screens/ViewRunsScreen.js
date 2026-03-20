@@ -290,17 +290,10 @@ export default function ViewRunsScreen({ navigation, route }) {
     return result;
   }, [gyms, searchQuery, typeFilter, accessFilter, sortByNearest, userLocation, homeCourtId, liveCountMap]);
 
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          <Logo size="small" style={{ marginBottom: SPACING.sm }} />
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading gyms...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
+  // NOTE: loading gate intentionally removed from here.
+  // The header, search bar, and filter pills are static and need no gym data —
+  // they are rendered immediately. Only the list area shows a spinner while
+  // the first Firestore snapshot is in flight.
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -400,7 +393,14 @@ export default function ViewRunsScreen({ navigation, route }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          {filteredGyms.length === 0 ? (
+          {/* Inline spinner — only the list area waits for gyms data.
+              The header, search bar, and filters are already visible above. */}
+          {loading ? (
+            <View style={styles.centered}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Loading gyms...</Text>
+            </View>
+          ) : filteredGyms.length === 0 ? (
             <View style={styles.emptyState}>
               {searchQuery.trim().length > 0 ? (
                 <>

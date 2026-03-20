@@ -1786,6 +1786,22 @@ export default function RunDetailsScreen({ route, navigation }) {
                         <Text style={styles.runJoinButtonText}>Join Run</Text>
                       </TouchableOpacity>
                     )}
+                    {/* Chat button — participants only.
+                        Non-participants cannot enter chat (UI + Firestore rules). */}
+                    {isJoined && (
+                      <TouchableOpacity
+                        onPress={() => navigation.navigate('RunChat', {
+                          runId: run.id,
+                          gymId,
+                          gymName: gym?.name || gymName,
+                        })}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                      >
+                        <Ionicons name="chatbubble-outline" size={15} color={colors.textSecondary} />
+                        <Text style={{ fontSize: FONT_SIZES.xs, color: colors.textSecondary }}>Chat</Text>
+                      </TouchableOpacity>
+                    )}
                     {/* Report run */}
                     <TouchableOpacity
                       onPress={() => { setReportType('run'); setReportTargetId(run.id); setReportVisible(true); }}

@@ -97,6 +97,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] Privacy policy URL ready — https://www.notion.so/RunCheck-Privacy-Policy-3280818539eb80168b7cc7dd061f3d09
 - [ ] App Store screenshots prepared
 - [x] TestFlight build distributed for final QA round — completed 2026-03-19. Push notification handler shipped via OTA (no native rebuild required); final QA build submitted to TestFlight.
+- [ ] **Fresh iOS build required (quota resets ~April 1, 2026)** — Current TestFlight binary is missing `EXUpdatesRequestHeaders` (channel header not baked in). OTA updates do not apply on device. Fix is already in repo: `eas.json` production profile now has `"channel": "production"`. Next build will be fully OTA-capable. Until then, use simulator for frontend validation.
 - [x] **Remove or gate `__DEV__` debug logs in HomeScreen.js and RunDetailsScreen.js** — fixed 2026-03-17: Removed 3 ungated temporary debug logs in RunDetailsScreen (clips effect tracing). Gated 17 remaining `console.error`/`console.warn`/`console.log` calls behind `__DEV__` across both files. All logs in both files now silent in production builds.
 
 ---

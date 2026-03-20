@@ -23,8 +23,8 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Screen Layer
 | File | Role |
 |------|------|
-| `screens/RunDetailsScreen.js` | Per-gym detail view; renders run cards, join/leave buttons, participant count |
-| `screens/ViewRunsScreen.js` | Browse all gyms; shows activity-level badges and navigates to RunDetails |
+| `screens/RunDetailsScreen.js` | Per-gym detail view; renders run cards, join/leave buttons, participant count. Chat button (participants-only, hidden from non-participants) navigates to RunChatScreen. |
+| `screens/ViewRunsScreen.js` | Browse all gyms; shows activity-level badges and navigates to RunDetails. Header/search/filters render immediately (no full-screen loading spinner — spinner is inline within the gym list). |
 | `screens/RunsScreen.js` | Tab-level wrapper for the Runs navigation stack |
 
 ### Test Layer
@@ -33,9 +33,20 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `__tests__/screens/RunDetailsScreen.test.js` | Tests for RunDetailsScreen |
 | `__tests__/screens/ViewRunsScreen.test.js` | Tests for ViewRunsScreen |
 
+### Service Layer (continued)
+| File | Role |
+|------|------|
+| `services/runChatService.js` | Run chat: `subscribeToRunMessages(runId, callback)` (real-time ordered listener), `sendRunMessage({runId, senderId, senderName, senderAvatar, text})` (validates + trims + writes). Error callback calls `callback([], error)` to surface Firestore errors to the component. |
+
+### Screen Layer (continued)
+| File | Role |
+|------|------|
+| `screens/RunChatScreen.js` | Participants-only group chat. Route params: `runId`, `gymId`, `gymName`. Reads participation via `useGymRuns(gymId).joinedRunIds`. Five render states: participant loading → non-participant gate → Firestore error gate → messages loading → live chat. Subscription guarded by `participantLoading` in deps to prevent React Strict Mode double-invocation from opening a premature subscription. Chat button entry point in `RunDetailsScreen` is hidden behind `{isJoined && (...)}`. |
+
 ### Key Firestore Collections
 - `runs/{autoId}` — one document per run
 - `runParticipants/{runId}_{userId}` — one document per participant per run
+- `runs/{runId}/messages/{autoId}` — chat messages subcollection (participants-only read + create)
 
 ### Known Issues (see DEV_TASKS.md)
 - **RC-001**: Empty runs remain visible when `participantCount` reaches 0
@@ -457,11 +468,21 @@ The following files serve multiple zones and should be treated carefully when ma
 | `modules/video-trimmer/` | Native Expo module for video trimming; classified under Zone 8 (Clips). |
 | `__mocks__/` | Test mocks for Expo vector icons and React Native vector icons. Infrastructure, not a feature zone. |
 | `jest.setup.js` | Test infrastructure. |
-| `utils/notifications.js` | Push notification utility: `registerPushToken` — requests permission, retrieves Expo push token, persists to Firestore. One-shot; intended to be called from a top-level component after auth. Not yet wired into the app. |
+| `utils/notifications.js` | Push notification utility: `registerPushToken` — requests permission, retrieves Expo push token, persists to Firestore (`users/{uid}.pushToken`). Called from `MainTabs` mount in `App.js`. Wired as of 2026-03-20. |
 | `utils/openMapsDirections.js` | Opens native maps app with directions to a gym location. iOS: Apple Maps or Google Maps via ActionSheet. Android: `geo:` URI. |
 | `screens/UsersScreen.js` | **Dev/debug only.** Fetches all `users` docs from the Firestore emulator and lists them. Not registered in production navigation. Used for emulator data verification only. |
 
 ---
 
-_Last updated: 2026-03-19 (nightly-memory — added AdminFeaturedClipsScreen, MyReportsScreen, useFeaturedClip, notifications, openMapsDirections, UsersScreen debug screen)_
+### Phase 1 Push Notification Backend Files (in runcheck-backend)
+| File | Role |
+|------|------|
+| `functions/src/notificationHelpers.ts` | Internal module (not a Cloud Function). `sendExpoPush()` — calls Expo Push API. `checkAndSetCooldown()` — Firestore transaction deduplication via `users/{uid}.notifCooldowns`. |
+| `functions/src/notifyRunStartingSoon.ts` | Scheduled Cloud Function (every 5 min). Run start reminders → all participants. |
+| `functions/src/onRunParticipantJoined.ts` | Firestore onCreate trigger on `runParticipants/{docId}`. Participant joined → run creator. |
+| `functions/src/onParticipantCountMilestone.ts` | Firestore onUpdate trigger on `runs/{runId}`. Milestone crossed (5/10/20 players) → run creator. |
+
+---
+
+_Last updated: 2026-03-20 (Run Chat MVP: runChatService.js + RunChatScreen.js added to Zone 1; participants-only Firestore rules for runs/{runId}/messages; ViewRunsScreen inline loading spinner)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

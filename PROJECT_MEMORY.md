@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-19 (nightly-memory)_
+_Last updated: 2026-03-20 (nightly-memory)_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -150,6 +150,15 @@ const getRunEnergyLabel = (count) => {
 - **Player Reviews (RC-007)**: `gyms/{gymId}/reviews` subcollection; eligibility via `runGyms OR gymVisits`; one active review/reward per user per gym; "Verified Run" badge for run-completion reviewers only; rating summary + sort + reviewer run count + tappable profile navigation
 - **Weekly Winners (Top 3)**: `weeklyWinners/{YYYY-MM-DD}` stores podium (1st/2nd/3rd) with `winners` array + `firstPlace` convenience field; `weeklyWinnersService.js` + `useWeeklyWinners` hook (exposes `recordedAt` for 24h celebration); LeaderboardScreen "Last Week's Winners" card; HomeScreen temporary celebration card (24h visibility after reset); automated via `weeklyReset` Cloud Function (Monday 00:05 CT); manual script retained as admin backup
 - **Run Activation (Post-Core Polish, 2026-03-17)**: Runs now derive "live" state client-side using presence ∩ participants — no backend state added (intentional). `runHereCountMap` in RunDetailsScreen cross-references `runParticipantsMap` userIds with `uniqueActivePresences` odIds via Set intersection. Display shows: "N going" (planned, hereCount === 0), "N here · M going" (live, partial arrival), "N here" (fully arrived) with green LIVE dot. Live runs sorted above planned runs via `sortedRuns` useMemo. Zero schema changes, zero new Firestore reads, zero backend changes. When scaling: if presence list grows large, consider moving the intersection to a lightweight Cloud Function or adding a `checkedInUserIds` array on the run doc.
+- **Swipe tabs (2026-03-19)**: Main tab navigator swapped to `createMaterialTopTabNavigator` with `tabBarPosition="bottom"` and `swipeEnabled: true`. Swipe left/right between tabs works on physical device (requires native build; shipped in 2026-03-19 TestFlight build). `tabBarIndicatorStyle: { height: 0 }` removes the top-tab indicator bar.
+- **Gradient avatar ring (2026-03-19)**: Orange/red/dark LinearGradient ring (`#FF4500 → #CC1100 → #1A0000 → #FF6B00`) on own profile (`ProfileScreen`) and other users' profiles (`UserProfileScreen`).
+- **Rank card redesign (2026-03-19)**: Unified rank card on ProfileScreen — rank icon + name + skill badge + points + progress bar + "X pts to next rank" + leaderboard button all in one bordered card. Previous multi-card layout replaced.
+- **Premium plan toggle (2026-03-19)**: Monthly/Annual pricing cards on PremiumScreen are `TouchableOpacity`. `selectedPlan` state defaults to `'annual'`. Selected card gets orange border; CTA button updates to reflect selected price.
+- **Run Chat MVP (2026-03-20, simulator testing pending)**: Participants-only group chat on every run. `runs/{runId}/messages` subcollection with `serverTimestamp()` ordering. Access gated by `runParticipants/{runId}_{userId}` doc existence (Firestore rules + client-side). Chat button on RunDetailsScreen only visible to joined participants. Non-participants and Firestore errors both render clean gated states (no spinner hang, no red screen). React Strict Mode double-invocation handled by guarding the subscription on `participantLoading`. ⚠️ Firestore rules not yet deployed — deploy before testing on device.
+- **ViewRunsScreen immediate render (2026-03-20)**: Header gradient, title, search bar, and filter pills now render immediately on tab open. Loading spinner is inline within the gym list instead of a full-screen early return.
+- **Phase 1 Push Notifications (2026-03-20, deployed)**: Permission prompt fires on first launch; Expo push token saved to `users/{uid}.pushToken` via `registerPushToken()` in `utils/notifications.js` (called on `MainTabs` mount in `App.js`). Foreground notification display wired via `Notifications.setNotificationHandler`. Three Cloud Functions deployed: `notifyRunStartingSoon` (scheduled every 5 min — reminds participants 25–35 min before run start), `onRunParticipantJoined` (Firestore onCreate trigger — notifies creator when someone joins, 5-min cooldown), `onParticipantCountMilestone` (onUpdate trigger — notifies creator at 5/10/20 player milestones). Cooldown deduplication via `users/{uid}.notifCooldowns` map. ⚠️ `notifCooldowns` will grow unboundedly — migrate to subcollection before ~500 active users (BACKEND Known Issue #9).
+- **Open Run flow improvement (2026-03-20)**: HomeScreen "Open Run" quick-action now passes `openStartRun: true` param through ViewRunsScreen directly to RunDetailsScreen, which auto-opens the run creation modal (skipping the intermediate run-type picker). Reduces taps for the most common run creation path. "Start a Run" outlined button added at top of RunDetailsScreen next to "Check In Here". Upcoming Runs section moved above Now Playing in RunDetailsScreen.
+- **OTA channel fix (2026-03-20, requires fresh build)**: `eas.json` production profile now has `"channel": "production"`. Current TestFlight binary is missing the channel header baked in; OTA updates do not apply until a fresh build is submitted (~April 1 when build quota resets). Simulator use recommended for frontend validation until then.
 
 ## Planned: Verified Run History (post-launch, not a launch blocker)
 
@@ -158,6 +167,39 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 - **Phase 1 (approved, post-TestFlight):** Add two new fields to `runs/{runId}` — `joinedCount` (total unique users who ever joined, never decremented) and `peakParticipantCount` (high-water mark of `participantCount`). Both written inside the existing `joinRun` transaction in `runService.js`, guarded by the same `!alreadyJoined` check that protects `participantCount`. ~5 lines, one file, no backend deploy, no UI changes. Silently accumulates data for future use.
 - **Phase 2 (deferred — post-launch, stable user base):** Formal run completion: `status: 'completed'`, `completedAt`, `actualAttendees[]`, `attendedCount`, `durationMinutes`. Triggered in `leaveRun` when `participantCount → 0`. Also needs a `completeStaleRuns` Cloud Function for abandoned runs. Medium risk — changes run lifecycle state irreversibly.
 - **Phase 3 (deferred — growth phase):** Analytics and aggregation. Per-user "Runs Attended" history, turnout estimates, `runHistory` collection, gym trust signals.
+
+---
+
+## Files Modified Recently (2026-03-20 session — Run Chat MVP, ViewRunsScreen Loading Fix)
+
+| File | What changed |
+|------|-------------|
+| `services/runChatService.js` | **NEW** — `subscribeToRunMessages(runId, callback)` + `sendRunMessage({...})`. Error callback calls `callback([], error)` (not just `console.error`) so the component can surface a clean error state instead of hanging on a spinner. |
+| `screens/RunChatScreen.js` | **NEW** — Participants-only group chat screen. Five render states: participant loading → non-participant gate → Firestore error gate → messages loading → live chat with FlatList + input bar. Subscription effect guards on `participantLoading` in deps to prevent React Strict Mode double-invocation from opening a premature Firestore subscription. |
+| `App.js` | Added `RunChatScreen` import + `<Stack.Screen name="RunChat" ...>` inside RunsStack. |
+| `screens/RunDetailsScreen.js` | Chat button added (`<Ionicons name="chatbubble-outline">`), wrapped in `{isJoined && (...)}` so non-participants never see it. Navigates to `RunChat` with `{ runId, gymId, gymName }`. |
+| `runcheck-backend/firestore.rules` | Added `match /messages/{messageId}` subcollection block inside `match /runs/{runId}`. Both read and create require `exists(runParticipants/{runId}_{uid})` participation proof. `senderId` must match `request.auth.uid` on create. Update/delete always denied. **⚠️ Must be deployed: `firebase deploy --only firestore:rules` from `~/Desktop/runcheck-backend`.** |
+| `screens/ViewRunsScreen.js` | Removed full-screen `if (loading) return <SafeAreaView>...` early return. Replaced with inline spinner inside ScrollView so header, search bar, and filter pills render immediately on tab open. |
+
+---
+
+## Files Modified Recently (2026-03-20 session — Phase 1 Push Notifications, Open Run Flow, OTA Diagnosis)
+
+| File | What changed |
+|------|-------------|
+| `screens/HomeScreen.js` | Open Run quick-action now navigates directly to ViewRunsMain with `openStartRun: true` param (skips redundant type picker on gym screen). OTA debug label + `RunCheck ✓` header marker added and removed same session. |
+| `screens/ViewRunsScreen.js` | Reads `route.params?.openStartRun` and passes it through to RunDetailsScreen via navigation params. |
+| `screens/RunDetailsScreen.js` | Auto-opens run creation modal (not type sheet) when `openStartRun` param is true. Moved Upcoming Runs section above Now Playing. Added "Start a Run" outlined button at top of screen next to "Check In Here". Removed Private Run and Paid Run from gym-level type sheet (those are user-provided-venue only). `startRunButton` onPress now opens run modal directly, skipping type picker. |
+| `screens/CreatePrivateRunScreen.js` | Platform fee changed from 10% to 5% — label, disclaimer, and payout math all updated. |
+| `App.js` | Added module-level `Notifications.setNotificationHandler` for foreground notification display. Added `useEffect` with `addNotificationReceivedListener` + `addNotificationResponseReceivedListener`. Wired `registerPushToken()` from `utils/notifications.js` into `MainTabs` mount. |
+| `app.json` | `ios.runtimeVersion` changed from `{ "policy": "appVersion" }` to `"1.0.0"` (bare workflow requirement). `expo-notifications` plugin added. |
+| `eas.json` | Added `"channel": "production"` to production build profile. Fixes OTA — channel header now baked into binary on next build. |
+| `LAUNCH_CHECKLIST.md` | TestFlight build marked complete. Added pending item for fresh iOS build (quota resets ~April 1). |
+| `runcheck-backend/functions/src/notificationHelpers.ts` | **NEW** — shared `sendExpoPush()` (Expo Push API via Node https) + `checkAndSetCooldown()` (Firestore transaction deduplication) helpers. |
+| `runcheck-backend/functions/src/notifyRunStartingSoon.ts` | **NEW** — scheduled Cloud Function (every 5 min). Finds runs starting in 25–35 min window, sends reminder push to all participants. Cooldown key `runReminder_{runId}`, 24h TTL. |
+| `runcheck-backend/functions/src/onRunParticipantJoined.ts` | **NEW** — Firestore onCreate trigger on `runParticipants/{docId}`. Notifies run creator when someone joins. Skips self-join. Cooldown key `participantJoined_{runId}`, 5-min TTL (batches rapid joins). |
+| `runcheck-backend/functions/src/onParticipantCountMilestone.ts` | **NEW** — Firestore onUpdate trigger on `runs/{runId}`. Notifies creator when `participantCount` crosses 5, 10, or 20. Cooldown key `runMilestone_{runId}_{threshold}`, 24h TTL. |
+| `runcheck-backend/functions/src/index.ts` | Exported `notifyRunStartingSoon`, `onRunParticipantJoined`, `onParticipantCountMilestone`. Deployed to Firebase. |
 
 ---
 
@@ -486,6 +528,23 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 - `[RunDetails] raw presences: N ids: [...]`
 - `[RunDetails] unique presences: N ids: [...]`
 - `[RunDetails] missing profiles (will show placeholder): [...]`
+
+## iOS Build & OTA Status (updated 2026-03-20)
+
+### Current situation
+- **OTA is broken on the current TestFlight binary.** Root cause diagnosed: the binary was built without `channel: "production"` in `eas.json`, so `EXUpdatesRequestHeaders` was never injected into `Expo.plist`. The device sends update checks with no channel header → EAS Update server returns nothing.
+- **The fix is already in place in `eas.json`** — `"channel": "production"` was added to the production build profile on 2026-03-20. It will take effect on the next build.
+- **EAS free-plan iOS build quota is exhausted.** Quota resets ~April 1, 2026. No new iOS build until then.
+- **Development workflow until quota resets:** Use simulator/local testing (`npx expo start`) to validate all frontend changes. OTA publishing is paused — don't bother pushing updates to the production branch until a new binary is installed.
+
+### Next iOS build checklist (do all at once when quota resets)
+- [ ] `eas.json` production profile already has `"channel": "production"` ✅
+- [ ] `ios.runtimeVersion` is already `"1.0.0"` (string, not policy) ✅
+- [ ] `expo-notifications` plugin already in `app.json` ✅
+- [ ] All UI/navigation changes from 2026-03-20 session are already in the repo ✅
+- [ ] After build installs: verify OTA with `eas update --branch production`, do 2 cold starts, confirm changes appear
+
+---
 
 ## Known Issues / Risks
 - **Firestore rules live in the backend repo only** — `~/Desktop/runcheck-backend/firestore.rules` is the single source of truth. This frontend repo no longer contains `firestore.rules` or `firebase.json`. All rule changes must be made in the backend repo and deployed with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`.

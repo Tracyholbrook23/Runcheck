@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-17_
+_Last updated: 2026-03-20_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -53,6 +53,12 @@ Firebase-only backend. No custom server. Logic lives in:
   unsuspendedAt: Timestamp,
   unsuspendReason: string | null,
   autoModerated: boolean,        // true if suspended by auto-moderation
+  // ── Push Notifications (written by utils/notifications.js on app launch) ──
+  pushToken: string | null,      // Expo push token — saved by registerPushToken(); null if not granted
+  // ── Notification deduplication (written by Phase 1 Cloud Functions) ──
+  notifCooldowns: {              // map of cooldown keys → last-sent Timestamp (written lazily)
+    [key: string]: Timestamp,    // e.g. "runReminder_{runId}", "participantJoined_{runId}", "runMilestone_{runId}_5"
+  },                             // ⚠️ will grow unboundedly — migrate to subcollection before ~500 active users (see Known Issues #9)
   createdAt, updatedAt: Timestamp,
 }
 ```
@@ -140,6 +146,21 @@ Firebase-only backend. No custom server. Logic lives in:
 }
 ```
 > Compound key `{runId}_{userId}` makes joins idempotent (setDoc overwrites) and leaveRun O(1) (delete by ID, no query). Ownership enforced via the `userId` field since Firestore rules cannot split the doc ID string.
+
+### `runs/{runId}/messages/{autoId}`   ← subcollection per run (Run Chat)
+```js
+{
+  senderId: string,          // Firebase Auth UID — must match request.auth.uid on create
+  senderName: string,        // denormalized display name; defaults to 'Player' if blank
+  senderAvatar: string|null, // denormalized avatar URL; null if none
+  text: string,              // trimmed + capped at 500 chars before write
+  createdAt: Timestamp,      // serverTimestamp() — used for ASC ordering
+  type: 'text',              // reserved for future message types
+}
+```
+> **Access control**: read + create require `exists(runParticipants/{runId}_{uid})`. Update/delete always denied (no editing or deleting messages). Participation is confirmed by doc existence — the `runParticipants` doc is **deleted** (not status-updated) on `leaveRun`, so `exists()` is the correct and cheapest check (one read, no field comparison).
+> **Ordering**: `orderBy('createdAt', 'asc')` — oldest first. `serverTimestamp()` is safe here (unlike `presence.checkedInAt`) because messages are never used in Firestore `>=` inequality queries.
+> **Client-side validation**: `sendRunMessage` in `runChatService.js` trims text, rejects empty strings, enforces 500-char cap, and requires `runId` and `senderId` before writing.
 
 ### `gyms/{gymId}/reviews/{autoId}`   ← subcollection per gym
 ```js
@@ -428,6 +449,15 @@ Single source of truth for all moderation actions. Both admin callables and auto
 | `unfeatureClip` | `unfeatureClip.ts` | Admin callable: removes daily highlight. |
 | `addClipToProfile` | `addClipToProfile.ts` | User callable: tagged user marks own `addedToProfile: true`. Validates caller is in `taggedPlayers`. Idempotent. **Only path for client-side taggedPlayers writes.** |
 
+### Phase 1 Push Notification Functions (deployed 2026-03-20)
+Shared helper: `notificationHelpers.ts` — `sendExpoPush()` (Expo Push API via Node `https`) + `checkAndSetCooldown()` (Firestore transaction dedup via `users/{uid}.notifCooldowns`). Not exported as a Cloud Function — internal module only.
+
+| Function | File | Role |
+|----------|------|------|
+| `notifyRunStartingSoon` | `notifyRunStartingSoon.ts` | **Scheduled every 5 min.** Finds `runs` with `status=='upcoming'` and `startTime` in [now+25min, now+35min]. Sends "run starts soon" push to every participant. Cooldown key `runReminder_{runId}`, 24h TTL per participant. |
+| `onRunParticipantJoined` | `onRunParticipantJoined.ts` | **Firestore onCreate** on `runParticipants/{docId}`. Notifies run creator when a new player joins. Skips self-join (creator joining their own run). Cooldown key `participantJoined_{runId}` on creator doc, 5-min TTL (batches rapid joins). |
+| `onParticipantCountMilestone` | `onParticipantCountMilestone.ts` | **Firestore onUpdate** on `runs/{runId}`. Fires when `participantCount` crosses milestone thresholds [5, 10, 20]. Notifies creator once per milestone. Cooldown key `runMilestone_{runId}_{threshold}` on creator doc, 24h TTL. |
+
 ---
 
 ## Points & Ranks
@@ -491,6 +521,8 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 6. **~~`'joined a run at'` activity writes~~** — ✅ RESOLVED. Activity writes removed from `runService.js`; existing Firestore docs suppressed by client-side filter in HomeScreen.js (`item.action === 'joined a run at'` → `return false`).
 7. **~~`participantCount` floor~~** — ✅ RESOLVED. `leaveRun` transaction now reads `participantCount` from `runSnap` and skips `increment(-1)` when count is already `<= 0`. Existing negative counts (if any) are not repaired — only new negatives are prevented. A one-time cleanup script can fix historical data if needed.
 8. **Runs indexes** — three new composite indexes required (see Required Firestore Indexes #8–10). Create these in the Firebase console or `firestore.indexes.json` to avoid "index required" errors at query time.
+10. **Run Chat Firestore rules must be deployed** — `runcheck-backend/firestore.rules` now includes `match /messages/{messageId}` inside `match /runs/{runId}` with `exists(runParticipants/{runId}_{uid})` for both read and create. Deploy with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`. Until deployed, any participant attempting to open Run Chat will hit `permission-denied`.
+
 9. **`notifCooldowns` map will grow unboundedly** — Phase 1 notifications store cooldown keys as a map on `users/{uid}.notifCooldowns`. Each key is unique per run (e.g. `runReminder_{runId}`, `participantJoined_{runId}`, `runMilestone_{runId}_5`). Power users who join hundreds of runs over time will accumulate a large map, approaching Firestore's 1 MB doc limit. **Migration plan:** Move to `users/{uid}/notifCooldowns/{key}` subcollection (one doc per cooldown key, `setAt: Timestamp`). Only `checkAndSetCooldown` in `notificationHelpers.ts` needs to change. Add a Firestore TTL policy on the subcollection to auto-delete docs after 48h. **Do this before serious marketing / ~500+ active users.**
 
 ---

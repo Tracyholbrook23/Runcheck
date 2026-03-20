@@ -68,6 +68,7 @@ import AdminFeaturedClipsScreen from './screens/AdminFeaturedClipsScreen';
 import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
 import CreatePrivateRunScreen from './screens/CreatePrivateRunScreen';
+import RunChatScreen from './screens/RunChatScreen';
 import { registerPushToken } from './utils/notifications';
 
 // ─── Global Notification Handler ──────────────────────────────────────────────
@@ -139,6 +140,7 @@ function RunsStack() {
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="RequestGym" component={RequestGymScreen} options={{ title: 'Request a Gym' }} />
+      <Stack.Screen name="RunChat" component={RunChatScreen} options={{ title: 'Run Chat' }} />
     </Stack.Navigator>
   );
 }
