@@ -29,6 +29,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import * as Notifications from 'expo-notifications';
 
 import HomeScreen from './screens/HomeScreen';
 import SignupScreen from './screens/SignupScreen';
@@ -68,6 +69,20 @@ import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
 import CreatePrivateRunScreen from './screens/CreatePrivateRunScreen';
 import { registerPushToken } from './utils/notifications';
+
+// ─── Global Notification Handler ──────────────────────────────────────────────
+// Must be set at module level (outside any component) so it is registered
+// before the first notification can arrive. Without this, iOS silently drops
+// foreground notifications; background / closed state notifications may also
+// fail to present depending on the iOS version.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,   // show the banner at top of screen (iOS 14+)
+    shouldShowList: true,     // show in Notification Centre
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const Stack = createNativeStackNavigator();
 const Tab = createMaterialTopTabNavigator();
@@ -300,6 +315,53 @@ function AppContent() {
  * @returns {JSX.Element} The fully themed and navigable RunCheck app.
  */
 export default function App() {
+  // ─── Notification Debug Listeners ─────────────────────────────────────────
+  // These listeners are wired up at the root level so they fire regardless of
+  // which screen is active.  They are for debugging the push pipeline and as
+  // foundation for future in-app notification handling (e.g. navigating on tap).
+  //
+  // addNotificationReceivedListener   — fires when a notification arrives while
+  //   the app is FOREGROUNDED. (Background/closed notifications are presented
+  //   by iOS directly; this listener will NOT fire for those.)
+  //
+  // addNotificationResponseReceivedListener — fires when the user TAPS a
+  //   notification (foreground, background, or closed state).  This is the
+  //   correct hook for handling notification taps in all app states.
+  useEffect(() => {
+    const receivedSub = Notifications.addNotificationReceivedListener(
+      (notification) => {
+        if (__DEV__) {
+          console.log('[Notifications] received (foreground):', {
+            title: notification.request.content.title,
+            body: notification.request.content.body,
+            data: notification.request.content.data,
+          });
+        }
+      }
+    );
+
+    const responseSub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        if (__DEV__) {
+          console.log('[Notifications] tapped by user:', {
+            title: response.notification.request.content.title,
+            body: response.notification.request.content.body,
+            data: response.notification.request.content.data,
+            actionIdentifier: response.actionIdentifier,
+          });
+        }
+      }
+    );
+
+    // Clean up both subscriptions when the root component unmounts.
+    // In practice the root never unmounts during normal use, but this keeps
+    // the pattern correct for testing and future refactors.
+    return () => {
+      receivedSub.remove();
+      responseSub.remove();
+    };
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
