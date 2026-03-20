@@ -611,6 +611,17 @@ export default function RunDetailsScreen({ route, navigation }) {
     return () => clearTimeout(timer);
   }, [route.params?.scrollToClips]);
 
+  // Auto-open the run creation modal when arriving from the Open Run flow
+  // (Home → Start a Group Run → Open Run → pick a gym).
+  // The user already chose "Open Run" so we skip the type picker entirely
+  // and go straight to the date/time picker.
+  useEffect(() => {
+    if (route.params?.openStartRun) {
+      setRunModalVisible(true);
+      navigation.setParams({ openStartRun: undefined });
+    }
+  }, []);
+
   // Clip posting — tracks in-flight createClipSession calls
   const [postingClip, setPostingClip] = useState(false);
 
@@ -1576,6 +1587,16 @@ export default function RunDetailsScreen({ route, navigation }) {
             </Text>
           )}
 
+          {/* Start a Run — secondary CTA, visually distinct from Check In */}
+          <TouchableOpacity
+            style={styles.startRunCTA}
+            onPress={() => setRunModalVisible(true)}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={styles.startRunCTAText}>Start a Run</Text>
+          </TouchableOpacity>
+
           {/* Location permission CTA — shown when not granted and not already checked in */}
           {!locationEnabled && !isCheckedInHere && (
             <TouchableOpacity style={styles.locationCTA} activeOpacity={0.8} onPress={handleEnableLocation}>
@@ -1708,21 +1729,9 @@ export default function RunDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Now Playing section — deduplicated real-time presences */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Now Playing</Text>
-          <PresenceList
-            items={uniqueActivePresences}
-            type="presence"
-            navigation={navigation}
-            emptyMessage="No one here yet"
-            emptySubtext="Be the first to check in!"
-          />
-        </View>
-
         {/* ── Upcoming Runs ───────────────────────────────────────────────────
-            Organized group runs at this gym (today and tomorrow). Runs are a
-            stronger planning signal than loose planned visits and appear first.
+            Organized group runs at this gym (today and tomorrow). Shown above
+            Now Playing so the Start a Run CTA is prominent near the top.
             Separate from the check-in / presence system — no Firestore schema changes.
         ─────────────────────────────────────────────────────────────────── */}
         <View style={[styles.runsSection, { marginHorizontal: SPACING.lg }]}>
@@ -1731,13 +1740,6 @@ export default function RunDetailsScreen({ route, navigation }) {
               <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
               <Text style={styles.runsSectionTitle}>Upcoming Runs</Text>
             </View>
-            <TouchableOpacity
-              style={styles.startRunButton}
-              onPress={() => setRunTypeSheetVisible(true)}
-            >
-              <Ionicons name="add" size={14} color={colors.primary} style={{ marginRight: 3 }} />
-              <Text style={styles.startRunButtonText}>Start a Run</Text>
-            </TouchableOpacity>
           </View>
 
           {sortedRuns.length === 0 ? (
@@ -1797,6 +1799,18 @@ export default function RunDetailsScreen({ route, navigation }) {
               );
             })
           )}
+        </View>
+
+        {/* Now Playing section — deduplicated real-time presences */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Now Playing</Text>
+          <PresenceList
+            items={uniqueActivePresences}
+            type="presence"
+            navigation={navigation}
+            emptyMessage="No one here yet"
+            emptySubtext="Be the first to check in!"
+          />
         </View>
 
         {/* Clips — Stories-style horizontal row */}
@@ -2143,8 +2157,9 @@ export default function RunDetailsScreen({ route, navigation }) {
       </Modal>
 
       {/* ── Run Type Picker Sheet ────────────────────────────────────────── */}
-      {/* Lets the user choose Open / Private / Paid before committing.       */}
-      {/* Private and Paid options navigate to the CreatePrivateRunScreen.    */}
+      {/* Only Open Run is available at app-listed gyms. Private and Paid     */}
+      {/* runs are only accessible from the Home screen (user supplies own    */}
+      {/* venue). The "+ Start a Run" button now bypasses this sheet entirely. */}
       <Modal
         visible={runTypeSheetVisible}
         transparent
@@ -2178,60 +2193,6 @@ export default function RunDetailsScreen({ route, navigation }) {
             <View style={{ flex: 1 }}>
               <Text style={styles.typeSheetOptionTitle}>Open Run</Text>
               <Text style={styles.typeSheetOptionDesc}>Anyone can see and join. Great for getting a full court going.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.typeSheetDivider} />
-
-          {/* Private Run */}
-          <TouchableOpacity
-            style={styles.typeSheetOption}
-            onPress={() => {
-              setRunTypeSheetVisible(false);
-              navigation.navigate('CreatePrivateRun', { runType: 'private' });
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(255,107,53,0.15)' }]}>
-              <Ionicons name="lock-closed-outline" size={22} color="#FF6B35" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                <Text style={styles.typeSheetOptionTitle}>Private Run</Text>
-                <View style={styles.typeSheetPremiumChip}>
-                  <Ionicons name="flash" size={9} color="#FF6B35" style={{ marginRight: 2 }} />
-                  <Text style={styles.typeSheetPremiumChipText}>Premium</Text>
-                </View>
-              </View>
-              <Text style={styles.typeSheetOptionDesc}>Invite-only. You control who gets in and the skill level.</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-          </TouchableOpacity>
-
-          <View style={styles.typeSheetDivider} />
-
-          {/* Paid Run */}
-          <TouchableOpacity
-            style={styles.typeSheetOption}
-            onPress={() => {
-              setRunTypeSheetVisible(false);
-              navigation.navigate('CreatePrivateRun', { runType: 'paid' });
-            }}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
-              <Ionicons name="cash-outline" size={22} color="#22C55E" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                <Text style={styles.typeSheetOptionTitle}>Paid Run</Text>
-                <View style={styles.typeSheetPremiumChip}>
-                  <Ionicons name="flash" size={9} color="#FF6B35" style={{ marginRight: 2 }} />
-                  <Text style={styles.typeSheetPremiumChipText}>Premium</Text>
-                </View>
-              </View>
-              <Text style={styles.typeSheetOptionDesc}>Charge players an entry fee. You set the price and collect the payout.</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </TouchableOpacity>
@@ -3366,6 +3327,22 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.xs,
+  },
+  startRunCTA: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  startRunCTAText: {
+    color: colors.primary,
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   locationCTA: {
     flexDirection: 'row',

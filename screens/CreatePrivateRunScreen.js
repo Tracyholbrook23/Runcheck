@@ -34,7 +34,7 @@ import { FONT_SIZES, FONT_WEIGHTS, SPACING, RADIUS, SHADOWS } from '../constants
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PLATFORM_FEE_PCT = 0.10; // RunCheck takes 10%
+const PLATFORM_FEE_PCT = 0.05; // RunCheck takes 5%
 const MIN_PLAYERS = 2;
 const MAX_PLAYERS = 20;
 
@@ -318,7 +318,7 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
                 </View>
 
                 <View style={styles.payoutRow}>
-                  <Text style={styles.payoutLabel}>RunCheck platform fee (10%)</Text>
+                  <Text style={styles.payoutLabel}>RunCheck platform fee (5%)</Text>
                   <Text style={styles.payoutValueDeduct}>− {formatCurrency(platformCut)}</Text>
                 </View>
 
@@ -338,7 +338,7 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
               </View>
 
               <Text style={styles.payoutDisclaimer}>
-                Payouts are sent after the run ends. RunCheck keeps 10% to cover payment processing and platform costs.
+                Payouts are sent after the run ends. RunCheck keeps 5% to cover payment processing and platform costs.
               </Text>
             </>
           )}

@@ -85,7 +85,7 @@ const ACCESS_FILTERS = [
   { key: 'membership', label: 'Membership' },
 ];
 
-export default function ViewRunsScreen({ navigation }) {
+export default function ViewRunsScreen({ navigation, route }) {
   const { gyms, loading, error: fetchError } = useGyms();
   const { followedGyms, homeCourtId } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
@@ -440,6 +440,7 @@ export default function ViewRunsScreen({ navigation }) {
                       imageUrl: gym.imageUrl,
                       plannedToday: gym.plannedToday || 0,
                       plannedTomorrow: gym.plannedTomorrow || 0,
+                      openStartRun: route.params?.openStartRun ?? false,
                     })
                   }
                 >

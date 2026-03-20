@@ -491,6 +491,7 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 6. **~~`'joined a run at'` activity writes~~** — ✅ RESOLVED. Activity writes removed from `runService.js`; existing Firestore docs suppressed by client-side filter in HomeScreen.js (`item.action === 'joined a run at'` → `return false`).
 7. **~~`participantCount` floor~~** — ✅ RESOLVED. `leaveRun` transaction now reads `participantCount` from `runSnap` and skips `increment(-1)` when count is already `<= 0`. Existing negative counts (if any) are not repaired — only new negatives are prevented. A one-time cleanup script can fix historical data if needed.
 8. **Runs indexes** — three new composite indexes required (see Required Firestore Indexes #8–10). Create these in the Firebase console or `firestore.indexes.json` to avoid "index required" errors at query time.
+9. **`notifCooldowns` map will grow unboundedly** — Phase 1 notifications store cooldown keys as a map on `users/{uid}.notifCooldowns`. Each key is unique per run (e.g. `runReminder_{runId}`, `participantJoined_{runId}`, `runMilestone_{runId}_5`). Power users who join hundreds of runs over time will accumulate a large map, approaching Firestore's 1 MB doc limit. **Migration plan:** Move to `users/{uid}/notifCooldowns/{key}` subcollection (one doc per cooldown key, `setAt: Timestamp`). Only `checkAndSetCooldown` in `notificationHelpers.ts` needs to change. Add a Firestore TTL policy on the subcollection to auto-delete docs after 48h. **Do this before serious marketing / ~500+ active users.**
 
 ---
 

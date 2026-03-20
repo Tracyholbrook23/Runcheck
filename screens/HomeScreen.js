@@ -59,6 +59,7 @@ import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import * as Updates from 'expo-updates'; // DEBUG ONLY — remove after OTA verification
 
 // Instagram community link — used by both the header icon and the footer card.
 const INSTAGRAM_URL = 'https://www.instagram.com/run.check?igsh=dWdieWZteXlvd21k&utm_source=qr';
@@ -574,7 +575,7 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Logo size="small" />
-            <Text style={styles.headerTitle}>RunCheck</Text>
+            <Text style={styles.headerTitle}>RunCheck ✓</Text>
           </View>
           <View style={styles.headerIcons}>
             <TouchableOpacity
@@ -1244,6 +1245,19 @@ const HomeScreen = ({ navigation }) => {
             </BlurView>
           </TouchableOpacity>
 
+          {/* DEBUG LABEL — remove after OTA verification */}
+          <View style={{ alignItems: 'center', paddingVertical: 6 }}>
+            <Text style={{ color: '#ff4444', fontSize: 10, fontFamily: 'monospace' }}>
+              {`[OTA DEBUG] ${Updates.isEmbeddedLaunch ? 'EMBEDDED (no OTA)' : 'OTA UPDATE ACTIVE'}`}
+            </Text>
+            <Text style={{ color: '#ff4444', fontSize: 10, fontFamily: 'monospace' }}>
+              {`channel: ${Updates.channel ?? 'unknown'} | runtime: ${Updates.runtimeVersion ?? 'unknown'}`}
+            </Text>
+            <Text style={{ color: '#ff4444', fontSize: 10, fontFamily: 'monospace' }}>
+              {`id: ${Updates.updateId ?? 'none'}`}
+            </Text>
+          </View>
+
           {/* Footer tagline */}
           <View style={styles.footer}>
             <Text style={styles.footerText}>Built for hoopers. Powered by community.</Text>
@@ -1277,7 +1291,10 @@ const HomeScreen = ({ navigation }) => {
             activeOpacity={0.75}
             onPress={() => {
               setRunTypeSheetVisible(false);
-              goToTab('Runs');
+              navigation.getParent()?.navigate('Runs', {
+                screen: 'ViewRunsMain',
+                params: { openStartRun: true },
+              });
             }}
           >
             <View style={[styles.typeSheetIconWrap, { backgroundColor: 'rgba(255,107,53,0.18)' }]}>
