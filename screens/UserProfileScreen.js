@@ -47,6 +47,7 @@ import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getUserRank } from '../utils/rankHelpers';
+import { openOrCreateConversation } from '../services/dmService';
 
 /**
  * UserProfileScreen — Public view of another player's profile.
@@ -228,6 +229,31 @@ export default function UserProfileScreen({ route, navigation }) {
       Alert.alert('Error', 'Could not send friend request. Please try again.');
     } finally {
       setAddingFriend(false);
+    }
+  };
+
+  // ── Message handler — opens or creates a DM conversation ─────────────────
+  // openOrCreateConversation is idempotent: returns the existing conversation ID
+  // if one already exists, creating only on the first tap between two users.
+  // profile.name and profile.photoURL are already in state from the mount fetch.
+  const handleMessage = async () => {
+    if (!currentUid || isOwnProfile || !profile) return;
+    try {
+      const conversationId = await openOrCreateConversation({
+        currentUid,
+        otherUid: userId,
+        otherName: profile.name || 'Player',
+        otherAvatar: profile.photoURL || null,
+      });
+      navigation.navigate('DMConversation', {
+        conversationId,
+        otherUserId: userId,
+        otherUserName: profile.name || 'Player',
+        otherUserAvatar: profile.photoURL || null,
+      });
+    } catch (err) {
+      if (__DEV__) console.error('[UserProfileScreen] handleMessage error:', err);
+      Alert.alert('Error', 'Could not open conversation. Please try again.');
     }
   };
 
@@ -417,6 +443,18 @@ export default function UserProfileScreen({ route, navigation }) {
               )}
             </TouchableOpacity>
           )
+        )}
+
+        {/* Message button — shown to non-own profiles */}
+        {!isOwnProfile && (
+          <TouchableOpacity
+            style={[styles.messageButton, { borderColor: colors.primary }]}
+            onPress={handleMessage}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
+            <Text style={[styles.messageButtonText, { color: colors.primary }]}>Message</Text>
+          </TouchableOpacity>
         )}
 
         {/* ── Clips ── */}
@@ -829,6 +867,24 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   friendButtonTextPending: {
     color: colors.textSecondary,
+  },
+
+  // ── Message button ────────────────────────────────────────────────────────
+  messageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.full,
+    borderWidth: 1.5,
+  },
+  messageButtonText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 
   // ── Followed Gyms ────────────────────────────────────────────────────────

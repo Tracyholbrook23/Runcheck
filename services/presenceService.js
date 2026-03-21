@@ -472,19 +472,25 @@ const markPresenceExpired = async (presenceId, gymId) => {
 
       // Remove the "checked in at" activity feed entry — same logic as checkOut().
       // Attendance credit in users.reliability.totalAttended is unaffected.
-      getDocs(
-        query(
-          collection(db, 'activity'),
-          where('userId', '==', data.odId),
-          where('gymId',  '==', gymId),
-          where('action', '==', 'checked in at'),
-          limit(1)
+      // Guard: only the owner of the presence can delete their own activity doc
+      // (Firestore rules enforce resource.data.userId == request.auth.uid).
+      // When another user expires a stale presence, skip the activity cleanup —
+      // it's non-critical display data and will age out naturally.
+      if (auth.currentUser?.uid === data.odId) {
+        getDocs(
+          query(
+            collection(db, 'activity'),
+            where('userId', '==', data.odId),
+            where('gymId',  '==', gymId),
+            where('action', '==', 'checked in at'),
+            limit(1)
+          )
         )
-      )
-        .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id)))))
-        .catch((err) => {
-          if (__DEV__) console.error('Activity cleanup error (expiry):', err);
-        });
+          .then((snap) => Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id)))))
+          .catch((err) => {
+            if (__DEV__) console.error('Activity cleanup error (expiry):', err);
+          });
+      }
     }
   } catch (error) {
     if (__DEV__) console.error('Error marking presence expired:', error);

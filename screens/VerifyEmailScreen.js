@@ -27,7 +27,7 @@ import { useTheme } from '../contexts';
 import { Logo, Button } from '../components';
 import { auth, db } from '../config/firebase';
 import { sendEmailVerification, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, runTransaction } from 'firebase/firestore';
 
 /**
  * VerifyEmailScreen — Gate screen for unverified email addresses.
@@ -36,7 +36,10 @@ import { doc, getDoc } from 'firebase/firestore';
  * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
  * @returns {JSX.Element}
  */
-export default function VerifyEmailScreen({ navigation }) {
+export default function VerifyEmailScreen({ navigation, route }) {
+  // signupData is passed from SignupScreen. It is null/undefined when an
+  // existing (already-profiled) user lands here to re-verify.
+  const signupData = route?.params?.signupData ?? null;
   const [resending, setResending] = useState(false);
   const [checking, setChecking] = useState(false);
   const [cooldown, setCooldown] = useState(false);
@@ -83,7 +86,9 @@ export default function VerifyEmailScreen({ navigation }) {
 
   /**
    * handleCheckVerified — Reloads the Firebase Auth user to refresh the
-   * emailVerified flag, then navigates forward if now verified.
+   * emailVerified flag. If now verified AND this is a new signup (signupData
+   * present), writes the Firestore profile + username reservation atomically
+   * before navigating forward. Nothing is written for unverified accounts.
    */
   const handleCheckVerified = async () => {
     setChecking(true);
@@ -91,26 +96,64 @@ export default function VerifyEmailScreen({ navigation }) {
 
     try {
       const user = auth.currentUser;
-      if (user) {
-        await user.reload();
-        if (user.emailVerified) {
-          // Check if user has a username before routing to Main
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
-          const data = userDoc.data();
-          if (!data?.username) {
-            navigation.replace('ClaimUsername');
-          } else if (!data?.onboardingCompleted) {
-            navigation.replace('OnboardingWelcome');
-          } else {
-            navigation.replace('Main');
+      if (!user) return;
+
+      await user.reload();
+
+      if (!user.emailVerified) {
+        setHint('Not verified yet. Tap the link in the email we sent, then come back and tap this button again.');
+        return;
+      }
+
+      // ── Email is verified ─────────────────────────────────────────────────
+
+      if (signupData) {
+        // New signup — write profile + reserve username now that email is confirmed.
+        const { name, firstName, lastName, username, usernameLower, age, skillLevel, email } = signupData;
+        const usernameRef = doc(db, 'usernames', usernameLower);
+        const userRef = doc(db, 'users', user.uid);
+
+        await runTransaction(db, async (transaction) => {
+          const usernameSnap = await transaction.get(usernameRef);
+          // Allow if the reservation already belongs to this user (idempotent retry).
+          if (usernameSnap.exists() && usernameSnap.data().uid !== user.uid) {
+            throw new Error('USERNAME_TAKEN');
           }
+          transaction.set(usernameRef, { uid: user.uid, createdAt: new Date() });
+          transaction.set(userRef, {
+            name,
+            firstName,
+            lastName,
+            username,
+            usernameLower,
+            phoneNumber: null,
+            age,
+            skillLevel,
+            email,
+          });
+        });
+
+        // Profile written — proceed to region notice, then welcome.
+        navigation.replace('OnboardingRegion');
+      } else {
+        // Returning user (e.g. logged in but unverified) — profile already exists.
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        const data = userDoc.data();
+        if (!data?.username) {
+          navigation.replace('ClaimUsername');
+        } else if (!data?.onboardingCompleted) {
+          navigation.replace('OnboardingWelcome');
         } else {
-          setHint('Not verified yet. Tap the link in the email we sent, then come back and tap this button again.');
+          navigation.replace('Main');
         }
       }
     } catch (error) {
-      if (__DEV__) console.warn('[VerifyEmail] Reload error:', error.code);
-      setHint('Something went wrong. Please try again.');
+      if (error.message === 'USERNAME_TAKEN') {
+        setHint('That username was just claimed by someone else. Please sign out and sign up again with a different username.');
+      } else {
+        if (__DEV__) console.warn('[VerifyEmail] Verify error:', error);
+        setHint('Something went wrong. Please try again.');
+      }
     } finally {
       setChecking(false);
     }
@@ -168,7 +211,7 @@ export default function VerifyEmailScreen({ navigation }) {
             style={{ marginBottom: SPACING.sm }}
           />
           <Button
-            title="Sign Out"
+            title="Wrong email address? Sign out & start over"
             variant="ghost"
             size="sm"
             onPress={handleSignOut}

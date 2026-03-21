@@ -21,8 +21,8 @@ Nothing in this file should be worked on during a session unless the user explic
 
 ## Social Features
 
-- **Run Chat** — Per-run group chat for players who have RSVP'd "Going". Messages stored in a `messages` subcollection under each run doc (`runs/{runId}/messages`). Real-time via Firestore `onSnapshot`. Access gated to run participants only. Needs: `RunChatScreen`, chat entry point on run card / run detail, Cloud Function to fan out push notifications to all participants when a new message is sent. Push notification infrastructure (expo-notifications) is already in place. Use cases: "I'm running late", "court is locked", "who's bringing the ball". Pairs naturally with the push notifications build.
-- In-app messaging / chat (DMs or gym-level group chat)
+- ~~**Run Chat**~~ — **Done 2026-03-20.** Per-run group chat fully implemented. `RunChatScreen` with real-time Firestore `onSnapshot`, access gated to run participants, Cloud Function push notifications to all participants, gym name + start time shown in Messages inbox, back button wired up in HomeStack and ProfileStack.
+- ~~In-app messaging / DMs~~ — **Done 2026-03-20.** Full DM system built: `openOrCreateConversation`, `DMConversationScreen`, `MessagesScreen` (SectionList with DMs + Run Chats), push notifications via `onDmMessageCreated` Cloud Function, unread count badge on home screen Messages icon.
 - "Challenge" system (1v1 or crew vs crew invites)
 - Crew/team creation and management
 - Follow other players (not just gyms)
@@ -99,5 +99,5 @@ Nothing in this file should be worked on during a session unless the user explic
 
 ---
 
-_Last updated: 2026-03-19_
+_Last updated: 2026-03-20_
 _To add an idea: append it to the relevant section with a brief description. Do not act on it without explicit approval._

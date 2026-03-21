@@ -37,7 +37,7 @@ import { formatSkillLevel } from '../services/models';
 import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
-import { setDoc, doc, getDoc, runTransaction } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 
 /** The three play-style options a user can choose from during registration. */
 const SKILL_OPTIONS = ['Casual', 'Competitive', 'Either'];
@@ -55,6 +55,74 @@ const SKILL_OPTIONS = ['Casual', 'Competitive', 'Either'];
 const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9._]{2,19}$/;
 
 /**
+ * EMAIL_REGEX — Basic format check. Catches missing @, missing dot in domain,
+ * etc. Firebase's own validation covers most cases, but this runs first so
+ * the user gets an inline message instead of waiting for a round-trip.
+ */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/**
+ * DOMAIN_TYPOS — Common personal-email domain misspellings mapped to the
+ * likely intended domain. Used by detectEmailTypo() to surface a "did you
+ * mean …?" hint before account creation is attempted.
+ */
+const DOMAIN_TYPOS = {
+  // Gmail
+  'gmail.co': 'gmail.com',
+  'gmail.cm': 'gmail.com',
+  'gmail.con': 'gmail.com',
+  'gmail.cpm': 'gmail.com',
+  'gmail.comm': 'gmail.com',
+  'gmail.coom': 'gmail.com',
+  'gmail.ocm': 'gmail.com',
+  'gmail.coim': 'gmail.com',
+  'gmai.com': 'gmail.com',
+  'gmial.com': 'gmail.com',
+  'gmali.com': 'gmail.com',
+  'gmil.com': 'gmail.com',
+  'gnail.com': 'gmail.com',
+  'gmal.com': 'gmail.com',
+  'gmaill.com': 'gmail.com',
+  'gmaim.com': 'gmail.com',
+  // Yahoo
+  'yahoo.co': 'yahoo.com',
+  'yahoo.comm': 'yahoo.com',
+  'yahoo.con': 'yahoo.com',
+  'yaho.com': 'yahoo.com',
+  'yahooo.com': 'yahoo.com',
+  'yhoo.com': 'yahoo.com',
+  // Hotmail / Outlook
+  'hotmail.co': 'hotmail.com',
+  'hotmail.comm': 'hotmail.com',
+  'hotmail.con': 'hotmail.com',
+  'hotmai.com': 'hotmail.com',
+  'hotmial.com': 'hotmail.com',
+  'hotmali.com': 'hotmail.com',
+  'outlok.com': 'outlook.com',
+  'outook.com': 'outlook.com',
+  'outloook.com': 'outlook.com',
+  'outlook.comm': 'outlook.com',
+  // iCloud
+  'iclod.com': 'icloud.com',
+  'icoud.com': 'icloud.com',
+  'icloud.co': 'icloud.com',
+  'icloud.comm': 'icloud.com',
+};
+
+/**
+ * detectEmailTypo — Returns a corrected email string if a known domain typo
+ * is detected, or null if the email looks fine.
+ */
+function detectEmailTypo(email) {
+  const trimmed = email.trim().toLowerCase();
+  const atIndex = trimmed.lastIndexOf('@');
+  if (atIndex === -1) return null;
+  const domain = trimmed.slice(atIndex + 1);
+  const fix = DOMAIN_TYPOS[domain];
+  return fix ? `${trimmed.slice(0, atIndex + 1)}${fix}` : null;
+}
+
+/**
  * SignupScreen — Account creation form.
  *
  * @param {object} props
@@ -64,7 +132,8 @@ const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9._]{2,19}$/;
  */
 export default function SignupScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
-  const [name, setName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [username, setUsername] = useState('');
   const [age, setAge] = useState('');
   const [skillLevel, setSkillLevel] = useState('');
@@ -75,6 +144,28 @@ export default function SignupScreen({ navigation }) {
 
   // Recompute styles only when the theme changes
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  // Password requirements — evaluated live as the user types
+  const pwChecks = useMemo(() => ({
+    length: password.length >= 8,
+    hasNumber: /[0-9]/.test(password),
+    hasLetter: /[a-zA-Z]/.test(password),
+  }), [password]);
+
+  // All fields must have a value before the button becomes active.
+  // Deep validation (email format, password strength, etc.) runs on submit.
+  const isFormComplete = Boolean(
+    firstName.trim() &&
+    lastName.trim() &&
+    username.trim() &&
+    age.trim() &&
+    skillLevel &&
+    email.trim() &&
+    password &&
+    pwChecks.length &&
+    pwChecks.hasNumber &&
+    pwChecks.hasLetter,
+  );
 
   /**
    * handleSignup — Validates the form, creates the Firebase Auth user,
@@ -98,10 +189,20 @@ export default function SignupScreen({ navigation }) {
   const handleSignup = async () => {
     setFormError('');
 
-    if (!name || !username || !email || !password || !age || !skillLevel) {
+    if (!firstName.trim() || !lastName.trim() || !username || !email || !password || !age || !skillLevel) {
       setFormError('Please fill out all fields.');
       return;
     }
+
+    // Validate age is a real number in a sensible range
+    const ageNum = parseInt(age, 10);
+    if (isNaN(ageNum) || ageNum < 13 || ageNum > 100) {
+      setFormError('Please enter a valid age (13–100).');
+      return;
+    }
+
+    // Combine first + last name into a single display name for the profile
+    const name = `${firstName.trim()} ${lastName.trim()}`;
 
     // Validate username format
     if (!USERNAME_REGEX.test(username)) {
@@ -111,53 +212,66 @@ export default function SignupScreen({ navigation }) {
       return;
     }
 
+    // Password strength check
+    if (!pwChecks.length || !pwChecks.hasNumber || !pwChecks.hasLetter) {
+      setFormError('Password must be at least 8 characters and include a letter and a number.');
+      return;
+    }
+
+    // Basic email format check
+    if (!EMAIL_REGEX.test(email.trim())) {
+      setFormError('Please enter a valid email address.');
+      return;
+    }
+
+    // Typo detection — catches things like @gmail.co before Firebase ever sees it
+    const typoSuggestion = detectEmailTypo(email);
+    if (typoSuggestion) {
+      setFormError(`Did you mean ${typoSuggestion}? Double-check your email and try again.`);
+      return;
+    }
+
     setLoading(true);
     const usernameLower = username.toLowerCase();
 
+    // Firestore is NOT written here. The profile + username reservation happens
+    // in VerifyEmailScreen AFTER the user confirms their email. This ensures
+    // nothing is ever stored for an unverified account.
+    let authUser = null;
+
     try {
-      // Step 1: Create the Firebase Auth account
+      // Step 1: Create the Firebase Auth account only
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
+      authUser = userCredential.user;
 
-      // Step 2: Atomic transaction — reserve username + write profile
-      const usernameRef = doc(db, 'usernames', usernameLower);
-      const userRef = doc(db, 'users', user.uid);
+      // Step 2: Send verification email
+      await sendEmailVerification(authUser);
 
-      await runTransaction(db, async (transaction) => {
-        const usernameSnap = await transaction.get(usernameRef);
-        if (usernameSnap.exists()) {
-          throw new Error('USERNAME_TAKEN');
-        }
-
-        // Reserve the username
-        transaction.set(usernameRef, {
-          uid: user.uid,
-          createdAt: new Date(),
-        });
-
-        // Write the user profile
-        transaction.set(userRef, {
+      // Step 3: Navigate to verification gate, passing form data so
+      // VerifyEmailScreen can write to Firestore once email is confirmed.
+      navigation.replace('VerifyEmail', {
+        signupData: {
           name,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           username,
           usernameLower,
-          phoneNumber: null,
           age,
           skillLevel,
           email,
-        });
+        },
       });
-
-      // Step 3: Send email verification (only after transaction succeeds)
-      await sendEmailVerification(user);
-
-      // Step 4: Navigate to verification gate
-      navigation.replace('VerifyEmail');
     } catch (error) {
-      // Known, expected errors — show inline message, no console noise
-      if (error.message === 'USERNAME_TAKEN') {
-        setFormError('That username is already taken. Please choose another.');
-      } else if (error.code === 'auth/email-already-in-use') {
-        setFormError('An account with this email already exists.');
+      // If the Auth user was created but something failed (e.g. email send),
+      // delete it immediately so there's no orphaned Auth account.
+      if (authUser) {
+        try { await authUser.delete(); } catch (e) {
+          if (__DEV__) console.warn('[Signup] Auth cleanup failed:', e);
+        }
+      }
+
+      if (error.code === 'auth/email-already-in-use') {
+        setFormError('An account with this email already exists. Try logging in instead.');
       } else if (error.code === 'auth/weak-password') {
         setFormError('Password should be at least 6 characters.');
       } else if (error.code === 'auth/invalid-email') {
@@ -165,7 +279,6 @@ export default function SignupScreen({ navigation }) {
       } else if (error.code === 'auth/network-request-failed') {
         setFormError('Network error. Check your connection and try again.');
       } else {
-        // Truly unexpected — log for debugging
         if (__DEV__) console.error('[Signup] Unexpected error:', error);
         setFormError('Something went wrong. Please try again.');
       }
@@ -206,15 +319,43 @@ export default function SignupScreen({ navigation }) {
             </View>
 
             <View style={styles.formCard}>
-              <Input label="Full Name" placeholder="Your name" value={name} onChangeText={setName} />
+              <View style={styles.nameRow}>
+                <View style={styles.nameField}>
+                  <Input
+                    label="First Name"
+                    placeholder="First"
+                    value={firstName}
+                    onChangeText={setFirstName}
+                  />
+                </View>
+                <View style={styles.nameField}>
+                  <Input
+                    label="Last Name"
+                    placeholder="Last"
+                    value={lastName}
+                    onChangeText={setLastName}
+                  />
+                </View>
+              </View>
               <Input
                 label="Username"
                 placeholder="e.g. hoopKing23"
                 autoCapitalize="none"
+                autoCorrect={false}
                 value={username}
-                onChangeText={setUsername}
+                onChangeText={(val) => setUsername(val.replace(/[^a-zA-Z0-9._]/g, ''))}
               />
-              <Input label="Age" placeholder="Your age" keyboardType="numeric" value={age} onChangeText={setAge} />
+              <Text style={styles.fieldHint}>
+                3–20 characters · letters, numbers, dots, underscores · must start with a letter
+              </Text>
+              <Input
+                label="Age"
+                placeholder="Your age"
+                keyboardType="number-pad"
+                value={age}
+                onChangeText={(val) => setAge(val.replace(/[^0-9]/g, ''))}
+                maxLength={3}
+              />
 
               {/* Skill Level Picker — pill buttons styled by the selected skill's theme color */}
               <Text style={styles.fieldLabel}>Skill Level</Text>
@@ -262,6 +403,21 @@ export default function SignupScreen({ navigation }) {
                 onChangeText={setPassword}
               />
 
+              {/* Live password requirement indicators */}
+              {password.length > 0 && (
+                <View style={styles.pwChecks}>
+                  <Text style={[styles.pwCheck, pwChecks.length ? styles.pwCheckMet : styles.pwCheckUnmet]}>
+                    {pwChecks.length ? '✓' : '✗'} At least 8 characters
+                  </Text>
+                  <Text style={[styles.pwCheck, pwChecks.hasLetter ? styles.pwCheckMet : styles.pwCheckUnmet]}>
+                    {pwChecks.hasLetter ? '✓' : '✗'} Contains a letter
+                  </Text>
+                  <Text style={[styles.pwCheck, pwChecks.hasNumber ? styles.pwCheckMet : styles.pwCheckUnmet]}>
+                    {pwChecks.hasNumber ? '✓' : '✗'} Contains a number
+                  </Text>
+                </View>
+              )}
+
               {formError ? (
                 <Text style={styles.errorText}>{formError}</Text>
               ) : null}
@@ -272,6 +428,7 @@ export default function SignupScreen({ navigation }) {
                 size="lg"
                 onPress={handleSignup}
                 loading={loading}
+                disabled={!isFormComplete}
                 testID="signup-button"
                 style={{ marginTop: SPACING.sm }}
               />
@@ -325,6 +482,13 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.2,
   },
+  nameRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  nameField: {
+    flex: 1,
+  },
   formCard: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: RADIUS.lg,
@@ -358,6 +522,27 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
     color: 'rgba(255,255,255,0.75)',
+  },
+  fieldHint: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.40)',
+    marginTop: -SPACING.xs,
+    marginBottom: SPACING.sm,
+    lineHeight: 16,
+  },
+  pwChecks: {
+    marginBottom: SPACING.sm,
+    gap: 4,
+  },
+  pwCheck: {
+    fontSize: FONT_SIZES.xs,
+    lineHeight: 18,
+  },
+  pwCheckMet: {
+    color: '#22C55E',
+  },
+  pwCheckUnmet: {
+    color: 'rgba(255,255,255,0.45)',
   },
   errorText: {
     fontSize: FONT_SIZES.small,

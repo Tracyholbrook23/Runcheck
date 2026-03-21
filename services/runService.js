@@ -142,11 +142,12 @@ const fetchUserDisplayInfo = async () => {
  * as calling it once.
  *
  * @param {string} runId
- * @param {string} gymId — Denormalized onto participant for query convenience
+ * @param {string} gymId   — Denormalized onto participant for query convenience
+ * @param {string} gymName — Denormalized gym display name (for Messages inbox run chat rows)
  * @param {{ userName: string, userAvatar: string|null }} userInfo
  * @returns {Promise<void>}
  */
-const joinRun = async (runId, gymId, userInfo) => {
+const joinRun = async (runId, gymId, gymName, userInfo) => {
   const uid = auth.currentUser?.uid;
   const participantId = participantDocId(runId, uid);
   const participantRef = doc(db, 'runParticipants', participantId);
@@ -165,6 +166,7 @@ const joinRun = async (runId, gymId, userInfo) => {
       joinedAt: Timestamp.now(),
       status: 'going',
       gymId,
+      gymName: gymName || '',
     });
 
     // Only increment count for genuinely new joins
@@ -235,7 +237,7 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
   if (matchingRun) {
     // ── Join existing run ──────────────────────────────────────────────────
     const runId = matchingRun.id;
-    await joinRun(runId, gymId, userInfo);
+    await joinRun(runId, gymId, gymName, userInfo);
     // No activity write for joining an existing run — only 'started a run at'
     // is written (on creation below) to keep the feed clean. See RC-002.
     return { runId, created: false };
@@ -264,7 +266,7 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
   await batch.commit();
 
   const runId = newRunRef.id;
-  await joinRun(runId, gymId, userInfo);
+  await joinRun(runId, gymId, gymName, userInfo);
 
   // Activity feed — fire and forget (non-critical display data)
   addDoc(collection(db, 'activity'), {
@@ -304,7 +306,7 @@ export const joinExistingRun = async (runId, gymId, gymName) => {
   await assertNotSuspended();
 
   const userInfo = await fetchUserDisplayInfo();
-  await joinRun(runId, gymId, userInfo);
+  await joinRun(runId, gymId, gymName, userInfo);
   // No activity write for joining — only 'started a run at' is kept. See RC-002.
 };
 
@@ -513,6 +515,38 @@ export const subscribeToUserRunsAtGym = (userId, gymId, callback) => {
       if (__DEV__) console.error('[runService] subscribeToUserRunsAtGym error:', err);
       callback([]);
     }
+  );
+};
+
+/**
+ * subscribeToAllUserRuns — Real-time subscription to all runs the current
+ * user is actively participating in, across all gyms.
+ *
+ * Queries `runParticipants` where `userId == uid`. Because `leaveRun` deletes
+ * the participant doc (rather than updating status), all returned docs are for
+ * runs the user is currently in — no status filter needed.
+ *
+ * Used by the Messages inbox to surface run chat threads the user can access.
+ * Uses the auto-generated single-field index on `userId`.
+ *
+ * @param {string} userId — Firebase Auth UID of the current user
+ * @param {(participants: object[]) => void} callback
+ * @returns {() => void} Unsubscribe function
+ */
+export const subscribeToAllUserRuns = (userId, callback) => {
+  const participantsRef = collection(db, 'runParticipants');
+  const q = query(participantsRef, where('userId', '==', userId));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const participants = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      callback(participants);
+    },
+    (err) => {
+      if (__DEV__) console.error('[runService] subscribeToAllUserRuns error:', err);
+      callback([]);
+    },
   );
 };
 

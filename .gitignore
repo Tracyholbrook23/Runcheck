@@ -47,3 +47,10 @@ node_modules/
 coverage/
 serviceAccountKey.json
 node_modules_old/
+
+# Added: native builds + explicit env file rules
+ios/build
+android/build
+build
+.env
+.env.*

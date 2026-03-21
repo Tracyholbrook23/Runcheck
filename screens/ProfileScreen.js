@@ -53,6 +53,7 @@ import { useTheme } from '../contexts';
 import { useFocusEffect } from '@react-navigation/native';
 import { Logo } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips, useTaggedClips } from '../hooks';
+import { useConversations } from '../hooks/useConversations';
 import { auth, db, storage } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -188,6 +189,7 @@ export default function ProfileScreen({ navigation }) {
   // Real-time player counts — same canonical source used by HomeScreen and ViewRunsScreen.
   const { countMap: liveCountMap } = useLivePresenceMap();
   const { pendingCount: gymRequestCount } = useMyGymRequests();
+  const { unreadCount: dmUnreadCount } = useConversations();
   const { clips: userClips, videoUrls: clipVideoUrls, thumbnails: clipThumbnails, loading: clipsLoading } = useUserClips(user?.uid);
   const { allTagged: taggedClips, featuredIn: featuredInClips, videoUrls: taggedVideoUrls, thumbnails: taggedThumbnails, loading: taggedClipsLoading, refetch: refetchTaggedClips } = useTaggedClips(user?.uid);
 
@@ -1282,6 +1284,26 @@ export default function ProfileScreen({ navigation }) {
           <View style={styles.premiumCtaRow}>
             <Text style={styles.premiumCtaText}>See What's Included</Text>
             <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
+          </View>
+        </TouchableOpacity>
+
+        {/* ── Messages ──────────────────────────────────────────────────── */}
+        <TouchableOpacity
+          style={styles.gymRequestsRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('Messages')}
+        >
+          <View style={styles.gymRequestsLeft}>
+            <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
+            <Text style={styles.gymRequestsLabel}>Messages</Text>
+          </View>
+          <View style={styles.gymRequestsRight}>
+            {dmUnreadCount > 0 && (
+              <View style={styles.gymRequestsBadge}>
+                <Text style={styles.gymRequestsBadgeText}>{dmUnreadCount}</Text>
+              </View>
+            )}
+            <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
           </View>
         </TouchableOpacity>
 

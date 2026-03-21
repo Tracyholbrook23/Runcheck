@@ -177,7 +177,7 @@ function MessageBubble({ message, isOwn, colors }) {
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
 export default function RunChatScreen({ route, navigation }) {
-  const { runId, gymId, gymName } = route.params;
+  const { runId, gymId, gymName, startTime } = route.params;
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -298,11 +298,35 @@ export default function RunChatScreen({ route, navigation }) {
   const keyExtractor = useCallback((item) => item.id, []);
 
   // ── Header title ───────────────────────────────────────────────────────────
+  // Two-line header: "Run Chat" bold + "Gym Name · 7:00 PM" subtitle.
+  // Subtitle only shows time if startTime is available.
   useEffect(() => {
+    let subtitle = gymName || null;
+    if (subtitle && startTime) {
+      try {
+        const date = startTime.toDate ? startTime.toDate() : new Date(startTime);
+        const timeStr = date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        subtitle = `${subtitle} · ${timeStr}`;
+      } catch {
+        // startTime unreadable — just show gym name
+      }
+    }
+
     navigation.setOptions({
-      title: gymName ? `${gymName} Run Chat` : 'Run Chat',
+      headerTitle: () => (
+        <View style={{ alignItems: 'center' }}>
+          <Text style={{ color: colors.textPrimary, fontSize: FONT_SIZES.body, fontWeight: FONT_WEIGHTS.bold }}>
+            Run Chat
+          </Text>
+          {subtitle ? (
+            <Text style={{ color: colors.textMuted, fontSize: FONT_SIZES.xs }} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
+      ),
     });
-  }, [navigation, gymName]);
+  }, [navigation, gymName, startTime, colors]);
 
   // ─── Render ────────────────────────────────────────────────────────────────
   // Render priority:

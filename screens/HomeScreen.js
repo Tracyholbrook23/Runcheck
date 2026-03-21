@@ -52,7 +52,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip, useProfile } from '../hooks';
+import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip, useProfile, useConversations } from '../hooks';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { useSchedules } from '../hooks/useSchedules';
 import { Logo } from '../components';
@@ -138,6 +138,7 @@ const HomeScreen = ({ navigation }) => {
 
   const { gyms } = useGyms();
   const { homeCourtId } = useProfile();
+  const { unreadCount: dmUnreadCount } = useConversations();
 
   // Resolve home court gym object for quick-action card
   const homeCourtGym = useMemo(() => {
@@ -574,20 +575,27 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Logo size="small" />
-            <Text style={styles.headerTitle}>RunCheck</Text>
           </View>
           <View style={styles.headerIcons}>
+            {/* Messages — with unread badge */}
+            <TouchableOpacity
+              style={styles.headerIcon}
+              onPress={() => navigation.navigate('Messages')}
+            >
+              <Ionicons name="chatbubble-outline" size={22} color="#FFFFFF" />
+              {dmUnreadCount > 0 && (
+                <View style={styles.headerBadge}>
+                  <Text style={styles.headerBadgeText}>
+                    {dmUnreadCount > 99 ? '99+' : dmUnreadCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerIcon}
               onPress={() => navigation.navigate('SearchUsers')}
             >
               <Ionicons name="search-outline" size={22} color="#FFFFFF" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.headerIcon}
-              onPress={() => Linking.openURL(INSTAGRAM_URL)}
-            >
-              <Ionicons name="logo-instagram" size={24} color="#FFFFFF" />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerIcon}
@@ -597,9 +605,9 @@ const HomeScreen = ({ navigation }) => {
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerIcon}
-              onPress={() => goToTab('Profile')}
+              onPress={() => Linking.openURL(INSTAGRAM_URL)}
             >
-              <Ionicons name="person-circle-outline" size={28} color="#FFFFFF" />
+              <Ionicons name="logo-instagram" size={24} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1380,12 +1388,6 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  headerTitle: {
-    fontSize: FONT_SIZES.h3,
-    fontWeight: FONT_WEIGHTS.bold,
-    color: '#FFFFFF',
-    letterSpacing: -0.3,
-  },
   headerIcons: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1395,6 +1397,24 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  headerBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#F97316',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  headerBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 12,
   },
   scrollContent: {
     padding: SPACING.md,

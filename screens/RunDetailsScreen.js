@@ -800,17 +800,16 @@ export default function RunDetailsScreen({ route, navigation }) {
         });
     };
 
-    // Recency-based query: show clips created within the last 48 hours.
-    // Clips now persist in Firestore permanently (no TTL deletion).
-    // Gym page visibility is controlled by this recency window, not by expiresAt.
-    // Uses existing composite index: gymId ASC + createdAt DESC.
-    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    // Gym Highlights query: show the 4 most recent clips for this gym within
+    // the last 7 days. Clips persist permanently; visibility is controlled by
+    // this recency window, not expiresAt. Uses composite index: gymId ASC + createdAt DESC.
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const clipsQuery = query(
       collection(db, 'gymClips'),
       where('gymId', '==', gymId),
-      where('createdAt', '>', Timestamp.fromDate(fortyEightHoursAgo)),
+      where('createdAt', '>', Timestamp.fromDate(sevenDaysAgo)),
       orderBy('createdAt', 'desc'),
-      limit(20)
+      limit(4)
     );
 
     // Client-side guard: show clips that are either fully finalized ("ready")
@@ -1794,6 +1793,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                           runId: run.id,
                           gymId,
                           gymName: gym?.name || gymName,
+                          startTime: run.startTime ?? null,
                         })}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
@@ -1829,19 +1829,15 @@ export default function RunDetailsScreen({ route, navigation }) {
           />
         </View>
 
-        {/* Clips — Stories-style horizontal row */}
+        {/* Gym Highlights — Stories-style horizontal row */}
         <View
           style={styles.section}
           onLayout={(e) => { clipsYRef.current = e.nativeEvent.layout.y; }}
         >
           {/* Section header */}
           <View style={clipPlayerStyles.storiesHeaderRow}>
-            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Clips</Text>
-            {!clipsLoading && gymClips.length > 0 && (
-              <View style={clipPlayerStyles.clipCountBadge}>
-                <Text style={clipPlayerStyles.clipCountText}>{gymClips.length}</Text>
-              </View>
-            )}
+            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Gym Highlights</Text>
+            <Text style={clipPlayerStyles.storiesSubtitle}>From recent sessions</Text>
           </View>
 
           {clipsLoading ? (
@@ -1862,9 +1858,9 @@ export default function RunDetailsScreen({ route, navigation }) {
                 {postingClip ? (
                   <ActivityIndicator color="#FF7A45" size="small" />
                 ) : hasAlreadyPostedClip ? (
-                  <Ionicons name="checkmark-circle-outline" size={30} color="#6B7280" />
+                  <Ionicons name="checkmark-circle-outline" size={24} color="#6B7280" />
                 ) : (
-                  <Ionicons name="add-circle-outline" size={30} color="#FF7A45" />
+                  <Ionicons name="add-circle-outline" size={24} color="#FF7A45" />
                 )}
                 <Text style={clipPlayerStyles.storiesPostLabel}>
                   {postingClip ? 'Starting…' : hasAlreadyPostedClip ? 'Posted' : 'Post'}
@@ -1893,9 +1889,9 @@ export default function RunDetailsScreen({ route, navigation }) {
                   {postingClip ? (
                     <ActivityIndicator color="#FF7A45" size="small" />
                   ) : hasAlreadyPostedClip ? (
-                    <Ionicons name="checkmark-circle-outline" size={30} color="#6B7280" />
+                    <Ionicons name="checkmark-circle-outline" size={24} color="#6B7280" />
                   ) : (
-                    <Ionicons name="add-circle-outline" size={30} color="#FF7A45" />
+                    <Ionicons name="add-circle-outline" size={24} color="#FF7A45" />
                   )}
                   <Text style={clipPlayerStyles.storiesPostLabel}>
                     {postingClip ? 'Starting…' : hasAlreadyPostedClip ? 'Posted' : 'Post'}
@@ -1904,9 +1900,9 @@ export default function RunDetailsScreen({ route, navigation }) {
               }
               ListEmptyComponent={
                 <View style={clipPlayerStyles.storiesEmptyWrap}>
-                  <Text style={clipPlayerStyles.storiesEmptyText}>
-                    No clips yet — be the first.
-                  </Text>
+                  <Ionicons name="film-outline" size={22} color="rgba(255,255,255,0.18)" style={{ marginBottom: 6 }} />
+                  <Text style={clipPlayerStyles.storiesEmptyText}>No highlights yet</Text>
+                  <Text style={clipPlayerStyles.storiesEmptySubtext}>Post a clip from your session</Text>
                 </View>
               }
               renderItem={({ item }) => (
@@ -2893,48 +2889,41 @@ const clipPlayerStyles = StyleSheet.create({
 
   // ── Stories-style horizontal clips row ────────────────────────────────────
   storiesHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    flexDirection: 'column',
+    alignItems: 'flex-start',
+    gap: 2,
     marginBottom: SPACING.sm,
   },
-  // Small orange pill showing the live clip count next to the section title.
-  clipCountBadge: {
-    backgroundColor: 'rgba(255,122,69,0.18)',
-    borderRadius: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,122,69,0.35)',
+  storiesSubtitle: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '400',
   },
-  clipCountText: {
-    color: '#FF7A45',
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.bold,
-  },
+  // (clipCountBadge / clipCountText removed — count badge no longer shown)
   // Shared horizontal scroll container for both loaded and skeleton states.
   storiesRow: {
-    gap: 10,
+    gap: 12,
     alignItems: 'flex-start',
     paddingVertical: SPACING.xs,
+    paddingRight: 4,
   },
   // "+ Post" tile — same shape as clip tiles, more subtle styling.
   storiesPostTile: {
     width: 120,
     height: 160,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,107,53,0.4)',
-    backgroundColor: 'rgba(255,107,53,0.06)',
+    borderColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     overflow: 'hidden',
   },
   storiesPostLabel: {
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.semibold,
-    color: '#FF7A45',
+    color: 'rgba(255,255,255,0.45)',
   },
   // Override applied on top of gridTile for the horizontal stories row.
   // Fixed height — all content (thumbnail + overlays) lives inside the clip.
@@ -2942,19 +2931,20 @@ const clipPlayerStyles = StyleSheet.create({
     width: 120,
     height: 160,
     flex: 0,
-    borderRadius: 12,
+    aspectRatio: 0.75,              // overrides gridTile's 1:1 → forces 3:4 portrait
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',  // subtle card edge
+    borderColor: 'rgba(255,255,255,0.06)',  // subtle card edge
     // overflow:'hidden' is inherited from gridTile — all overlays stay inside
   },
   // ── Tile overlay internals ─────────────────────────────────────────────────
   // Dark scrim covering the bottom portion of the thumbnail for text legibility.
   tileScrim: {
     ...StyleSheet.absoluteFillObject,
-    top: '55%',                   // starts lower → play icon area stays clean
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderBottomLeftRadius: 12,
-    borderBottomRightRadius: 12,
+    top: '50%',                   // bottom half scrim → more coverage for identity overlay
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
   },
   // Bottom-left identity row (avatar + name + time), rendered over the scrim.
   tileIdentityOverlay: {
@@ -3029,18 +3019,28 @@ const clipPlayerStyles = StyleSheet.create({
   storiesSkeletonTile: {
     width: 120,
     height: 160,
-    borderRadius: 12,
-    backgroundColor: '#2a2a2a',
+    borderRadius: 14,
+    backgroundColor: '#252525',
   },
   // Empty state wrapper — same height as tiles so text centers in the row.
   storiesEmptyWrap: {
     height: 160,
+    width: 150,
     justifyContent: 'center',
-    paddingLeft: SPACING.sm,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.sm,
   },
   storiesEmptyText: {
     fontSize: FONT_SIZES.small,
-    color: '#888',
+    color: 'rgba(255,255,255,0.38)',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  storiesEmptySubtext: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.22)',
+    textAlign: 'center',
+    marginTop: 3,
   },
   // "Processing…" badge overlaid on ready_raw clip tiles.
   processingBadge: {

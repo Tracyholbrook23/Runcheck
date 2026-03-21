@@ -99,3 +99,6 @@ export { useLocation } from './useLocation';
 
 // Smart Proximity Check-In
 export { useProximityCheckIn } from './useProximityCheckIn';
+
+// Direct Messages
+export { useConversations } from './useConversations';

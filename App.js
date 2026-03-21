@@ -25,7 +25,7 @@
 import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,6 +49,7 @@ import VerifyEmailScreen from './screens/VerifyEmailScreen';
 import ClaimUsernameScreen from './screens/ClaimUsernameScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import SearchUsersScreen from './screens/SearchUsersScreen';
+import OnboardingRegionScreen from './screens/OnboardingRegionScreen';
 import OnboardingWelcomeScreen from './screens/OnboardingWelcomeScreen';
 import OnboardingHomeCourtScreen from './screens/OnboardingHomeCourtScreen';
 import OnboardingFinishScreen from './screens/OnboardingFinishScreen';
@@ -69,7 +70,14 @@ import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
 import CreatePrivateRunScreen from './screens/CreatePrivateRunScreen';
 import RunChatScreen from './screens/RunChatScreen';
+import MessagesScreen from './screens/MessagesScreen';
+import DMConversationScreen from './screens/DMConversationScreen';
 import { registerPushToken } from './utils/notifications';
+
+// ─── Navigation Ref ───────────────────────────────────────────────────────────
+// Module-level ref so the notification tap handler (inside App, outside the
+// NavigationContainer tree) can imperatively navigate to any screen.
+const navigationRef = createNavigationContainerRef();
 
 // ─── Global Notification Handler ──────────────────────────────────────────────
 // Must be set at module level (outside any component) so it is registered
@@ -105,6 +113,9 @@ function HomeStack() {
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
       <Stack.Screen name="SearchUsers" component={SearchUsersScreen} options={{ title: 'Find Players', headerBackTitle: 'Home', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages', headerBackTitle: 'Home', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="DMConversation" component={DMConversationScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="RunChat" component={RunChatScreen} options={{ headerBackTitle: 'Messages', ...themeStyles.NAV_HEADER }} />
     </Stack.Navigator>
   );
 }
@@ -140,7 +151,8 @@ function RunsStack() {
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UserProfile" component={UserProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="RequestGym" component={RequestGymScreen} options={{ title: 'Request a Gym' }} />
-      <Stack.Screen name="RunChat" component={RunChatScreen} options={{ title: 'Run Chat' }} />
+      <Stack.Screen name="RunChat" component={RunChatScreen} options={{ headerBackTitle: 'Messages', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="DMConversation" component={DMConversationScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
@@ -208,6 +220,9 @@ function ProfileStack() {
       <Stack.Screen name="AdminFeaturedClips" component={AdminFeaturedClipsScreen} options={{ title: 'Featured Clips', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminAllClips" component={AdminAllClipsScreen} options={{ title: 'All Clips', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="ClipPlayer" component={ClipPlayerScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Messages" component={MessagesScreen} options={{ title: 'Messages', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="DMConversation" component={DMConversationScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="RunChat" component={RunChatScreen} options={{ headerBackTitle: 'Messages', ...themeStyles.NAV_HEADER }} />
     </Stack.Navigator>
   );
 }
@@ -291,13 +306,14 @@ function MainTabs() {
  */
 function AppContent() {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
         <Stack.Screen name="ClaimUsername" component={ClaimUsernameScreen} />
+        <Stack.Screen name="OnboardingRegion" component={OnboardingRegionScreen} />
         <Stack.Screen name="OnboardingWelcome" component={OnboardingWelcomeScreen} />
         <Stack.Screen name="OnboardingHomeCourt" component={OnboardingHomeCourtScreen} />
         <Stack.Screen name="OnboardingFinish" component={OnboardingFinishScreen} />
@@ -344,12 +360,32 @@ export default function App() {
 
     const responseSub = Notifications.addNotificationResponseReceivedListener(
       (response) => {
+        const data = response.notification.request.content.data;
+
         if (__DEV__) {
           console.log('[Notifications] tapped by user:', {
             title: response.notification.request.content.title,
             body: response.notification.request.content.body,
-            data: response.notification.request.content.data,
+            data,
             actionIdentifier: response.actionIdentifier,
+          });
+        }
+
+        // ── DM notification tap: navigate to the conversation ─────────────
+        // data.type === 'dm' is set by the onDmMessageCreated Cloud Function.
+        // Navigate into HomeStack › DMConversation so the user can reply.
+        if (data?.type === 'dm' && data?.conversationId && navigationRef.isReady()) {
+          navigationRef.navigate('Main', {
+            screen: 'Home',
+            params: {
+              screen: 'DMConversation',
+              params: {
+                conversationId: data.conversationId,
+                otherUserId: data.senderId ?? null,
+                otherUserName: data.senderName ?? 'Player',
+                otherUserAvatar: null,
+              },
+            },
           });
         }
       }
