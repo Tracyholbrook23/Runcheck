@@ -284,7 +284,7 @@ export default function CheckInScreen({ navigation }) {
             </TouchableOpacity>
 
             <Text style={styles.hint}>
-              Checking out early deducts 10 pts. Auto-expiry after 2 hrs keeps your points.
+              Your points are yours — checking out never deducts them.
             </Text>
           </View>
         </View>
