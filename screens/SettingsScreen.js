@@ -33,8 +33,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { auth } from '../config/firebase';
+import { useProfile } from '../hooks';
+import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
+import { doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // ── App constants ──────────────────────────────────────────────────────────
@@ -55,6 +57,23 @@ const TERMS_URL = 'https://runcheckapp.com/terms';     // update with real URL
 export default function SettingsScreen({ navigation }) {
   const { colors, isDark, toggleTheme } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+  const { profile } = useProfile();
+
+  // Derive current preference — default true (feed shown) if not yet set
+  const showCommunityFeed = profile?.preferences?.showCommunityFeed ?? true;
+
+  // ── Preference updater ──────────────────────────────────────────────────
+  const updatePreference = async (key, value) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      await updateDoc(doc(db, 'users', uid), {
+        [`preferences.${key}`]: value,
+      });
+    } catch (err) {
+      if (__DEV__) console.warn('[Settings] updatePreference error:', err);
+    }
+  };
 
   // ── Sign Out ────────────────────────────────────────────────────────────
   const handleSignOut = () => {
@@ -218,6 +237,27 @@ export default function SettingsScreen({ navigation }) {
             trackColor={{ false: colors.border, true: colors.primary }}
             thumbColor="#FFFFFF"
             disabled
+          />
+        </View>
+
+        <View style={styles.menuDivider} />
+
+        {/* Community Activity Feed */}
+        <View style={styles.settingRow}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#6366F122' }]}>
+              <Ionicons name="people-outline" size={18} color="#6366F1" />
+            </View>
+            <View>
+              <Text style={styles.settingLabel}>Community Activity</Text>
+              <Text style={styles.settingHint}>Show recent runs on the Home screen</Text>
+            </View>
+          </View>
+          <Switch
+            value={showCommunityFeed}
+            onValueChange={(val) => updatePreference('showCommunityFeed', val)}
+            trackColor={{ false: colors.border, true: '#6366F1' }}
+            thumbColor="#FFFFFF"
           />
         </View>
       </View>

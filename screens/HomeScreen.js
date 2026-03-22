@@ -138,7 +138,9 @@ const HomeScreen = ({ navigation }) => {
   } = usePresence();
 
   const { gyms } = useGyms();
-  const { homeCourtId } = useProfile();
+  const { homeCourtId, profile } = useProfile();
+  // Community feed visibility — persisted to Firestore, defaults to shown
+  const showCommunityFeed = profile?.preferences?.showCommunityFeed ?? true;
   const { unreadCount: dmUnreadCount } = useConversations();
   const { runChatUnreadCount } = useMyRunChats();
   const totalUnreadCount = dmUnreadCount + runChatUnreadCount;
@@ -1221,19 +1223,34 @@ const HomeScreen = ({ navigation }) => {
           )}
 
           {/* Community Activity feed — run events and clips only (non-friends).
-              Low-signal events (check-ins, plan visits) are intentionally excluded. */}
-          <Text style={styles.sectionTitleStandalone}>Community Activity</Text>
-          <View style={styles.activityFeed}>
-            {communityDisplayFeed.length === 0 ? (
-              <BlurView intensity={40} tint="dark" style={styles.activityRow}>
-                <View style={styles.activityInfo}>
-                  <Text style={styles.activityTime}>No recent activity yet</Text>
-                </View>
-              </BlurView>
-            ) : (
-              communityDisplayFeed.map(renderActivityRow)
-            )}
-          </View>
+              Low-signal events (check-ins, plan visits) are intentionally excluded.
+              Visibility controlled by profile.preferences.showCommunityFeed (Settings). */}
+          {showCommunityFeed ? (
+            <>
+              <Text style={styles.sectionTitleStandalone}>Community Activity</Text>
+              <View style={styles.activityFeed}>
+                {communityDisplayFeed.length === 0 ? (
+                  <BlurView intensity={40} tint="dark" style={styles.activityRow}>
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityTime}>No recent activity yet</Text>
+                    </View>
+                  </BlurView>
+                ) : (
+                  communityDisplayFeed.map(renderActivityRow)
+                )}
+              </View>
+            </>
+          ) : (
+            <TouchableOpacity
+              style={styles.feedHiddenRow}
+              activeOpacity={0.7}
+              onPress={() => navigation.getParent()?.navigate('Profile', { screen: 'Settings' })}
+            >
+              <Ionicons name="people-outline" size={16} color={colors.textMuted} style={{ marginRight: 8 }} />
+              <Text style={styles.feedHiddenText}>Community Activity is hidden</Text>
+              <Text style={styles.feedHiddenLink}> · Turn on in Settings</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Instagram community card */}
           <TouchableOpacity
@@ -2129,6 +2146,22 @@ actionCard: {
   // Community Activity feed
   activityFeed: {
     gap: SPACING.xs,
+  },
+  feedHiddenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  feedHiddenText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+  },
+  feedHiddenLink: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.medium,
   },
   activityRow: {
     flexDirection: 'row',
