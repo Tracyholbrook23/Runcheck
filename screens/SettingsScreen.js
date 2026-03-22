@@ -17,7 +17,7 @@
  * Navigation: ProfileStack → SettingsScreen → MyReports
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -59,8 +59,23 @@ export default function SettingsScreen({ navigation }) {
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { profile } = useProfile();
 
-  // Derive current preference — default true (feed shown) if not yet set
-  const showCommunityFeed = profile?.preferences?.showCommunityFeed ?? true;
+  // ── Community feed toggle — optimistic local state ───────────────────────
+  // Local state snaps instantly on press; Firestore write happens in background.
+  const [showCommunityFeed, setShowCommunityFeed] = useState(
+    profile?.preferences?.showCommunityFeed ?? true
+  );
+
+  // Sync once when profile first loads (handles cold start before profile arrives)
+  useEffect(() => {
+    if (profile?.preferences?.showCommunityFeed !== undefined) {
+      setShowCommunityFeed(profile.preferences.showCommunityFeed);
+    }
+  }, [profile?.preferences?.showCommunityFeed]);
+
+  const handleToggleFeed = (val) => {
+    setShowCommunityFeed(val);                    // instant UI snap
+    updatePreference('showCommunityFeed', val);   // background Firestore write
+  };
 
   // ── Preference updater ──────────────────────────────────────────────────
   const updatePreference = async (key, value) => {
@@ -255,7 +270,7 @@ export default function SettingsScreen({ navigation }) {
           </View>
           <Switch
             value={showCommunityFeed}
-            onValueChange={(val) => updatePreference('showCommunityFeed', val)}
+            onValueChange={handleToggleFeed}
             trackColor={{ false: colors.border, true: '#6366F1' }}
             thumbColor="#FFFFFF"
           />
