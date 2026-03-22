@@ -31,7 +31,7 @@
  *   - Message deletion
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -52,7 +52,7 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { auth } from '../config/firebase';
 import { useProfile } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
-import { subscribeToRunMessages, sendRunMessage } from '../services/runChatService';
+import { subscribeToRunMessages, sendRunMessage, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -198,6 +198,22 @@ export default function RunChatScreen({ route, navigation }) {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [messagesError, setMessagesError] = useState(false);
 
+  // ── Chat expiration ────────────────────────────────────────────────────────
+  // The chat window closes RUN_CHAT_EXPIRY_MS after startTime.
+  // After expiry: messages are still readable (history preserved) but the
+  // input bar is hidden and new messages are blocked.
+  //
+  // startTime comes from route.params (set by MessagesScreen when navigating
+  // here). It may be a Firestore Timestamp or a plain Date — handle both.
+  // If startTime is absent (e.g., very old participant doc), treat as not expired.
+  const isChatExpired = useMemo(() => {
+    if (!startTime) return false;
+    const startMs = startTime.toDate
+      ? startTime.toDate().getTime()
+      : new Date(startTime).getTime();
+    return startMs + RUN_CHAT_EXPIRY_MS < Date.now();
+  }, [startTime]);
+
   // Input state
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
@@ -260,7 +276,7 @@ export default function RunChatScreen({ route, navigation }) {
 
   // ── Send message ───────────────────────────────────────────────────────────
   const handleSend = async () => {
-    if (!inputText.trim() || sending || !isParticipant || !uid) return;  // participation double-check
+    if (!inputText.trim() || sending || !isParticipant || !uid || isChatExpired) return;  // participation + expiry double-check
 
     const textToSend = inputText.trim();
     setInputText('');
@@ -408,58 +424,76 @@ export default function RunChatScreen({ route, navigation }) {
               }
             />
 
-            {/* Input bar — only rendered for confirmed participants */}
-            <View
-              style={[
-                chatStyles.inputBar,
-                {
-                  backgroundColor: colors.background,
-                  borderTopColor: colors.border,
-                  paddingBottom: insets.bottom > 0 ? insets.bottom : SPACING.sm,
-                },
-              ]}
-            >
-              <TextInput
+            {/* Bottom bar — input for active chats, expiry notice for closed ones */}
+            {isChatExpired ? (
+              <View
                 style={[
-                  chatStyles.textInput,
+                  chatStyles.expiredBar,
                   {
                     backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                    color: colors.textPrimary,
+                    borderTopColor: colors.border,
+                    paddingBottom: insets.bottom > 0 ? insets.bottom : SPACING.sm,
                   },
                 ]}
-                placeholder="Message..."
-                placeholderTextColor={colors.textMuted}
-                value={inputText}
-                onChangeText={setInputText}
-                maxLength={500}
-                multiline
-                returnKeyType="send"
-                onSubmitEditing={handleSend}
-                blurOnSubmit={false}
-              />
-              <TouchableOpacity
-                style={[
-                  chatStyles.sendButton,
-                  {
-                    backgroundColor:
-                      inputText.trim() ? colors.primary : colors.surfaceLight,
-                  },
-                ]}
-                onPress={handleSend}
-                disabled={!inputText.trim() || sending}
               >
-                {sending ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Ionicons
-                    name="send"
-                    size={18}
-                    color={inputText.trim() ? '#fff' : colors.textMuted}
-                  />
-                )}
-              </TouchableOpacity>
-            </View>
+                <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+                <Text style={[chatStyles.expiredText, { color: colors.textMuted }]}>
+                  This run chat has ended
+                </Text>
+              </View>
+            ) : (
+              <View
+                style={[
+                  chatStyles.inputBar,
+                  {
+                    backgroundColor: colors.background,
+                    borderTopColor: colors.border,
+                    paddingBottom: insets.bottom > 0 ? insets.bottom : SPACING.sm,
+                  },
+                ]}
+              >
+                <TextInput
+                  style={[
+                    chatStyles.textInput,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      color: colors.textPrimary,
+                    },
+                  ]}
+                  placeholder="Message..."
+                  placeholderTextColor={colors.textMuted}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  maxLength={500}
+                  multiline
+                  returnKeyType="send"
+                  onSubmitEditing={handleSend}
+                  blurOnSubmit={false}
+                />
+                <TouchableOpacity
+                  style={[
+                    chatStyles.sendButton,
+                    {
+                      backgroundColor:
+                        inputText.trim() ? colors.primary : colors.surfaceLight,
+                    },
+                  ]}
+                  onPress={handleSend}
+                  disabled={!inputText.trim() || sending}
+                >
+                  {sending ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons
+                      name="send"
+                      size={18}
+                      color={inputText.trim() ? '#fff' : colors.textMuted}
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
           </>
         )}
       </KeyboardAvoidingView>
@@ -579,6 +613,20 @@ const chatStyles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 0,
   },
+  // Expired chat bar — replaces the input bar after chatExpiresAt
+  expiredBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: SPACING.xxs,
+  },
+  expiredText: {
+    fontSize: FONT_SIZES.small,
+  },
+
   // Gated state — shown when user is confirmed non-participant
   // (or has left the run mid-session)
   gatedContainer: {

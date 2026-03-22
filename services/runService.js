@@ -42,6 +42,7 @@
 
 import { db, auth } from '../config/firebase';
 import { awardPoints, penalizePoints } from './pointsService';
+import { RUN_CHAT_EXPIRY_MS } from './runChatService';
 import {
   collection,
   doc,
@@ -256,6 +257,11 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
     createdBy: uid,
     creatorName: userInfo.userName,
     startTime: Timestamp.fromDate(startTime),
+    // chatExpiresAt — when the group chat closes. After this time:
+    //   • Messages inbox hides this chat (useMyRunChats filter)
+    //   • RunChatScreen shows read-only state (input bar hidden)
+    //   • Firestore rules hard-block new message writes
+    chatExpiresAt: Timestamp.fromDate(new Date(startTime.getTime() + RUN_CHAT_EXPIRY_MS)),
     status: 'upcoming',
     createdAt: serverTimestamp(),
     participantCount: 0, // joinRun will increment this to 1

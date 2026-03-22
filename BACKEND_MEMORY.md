@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-20_
+_Last updated: 2026-03-21_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -130,11 +130,16 @@ Firebase-only backend. No custom server. Logic lives in:
   createdBy: string,         // userId of the user who started the run
   creatorName: string,
   startTime: Timestamp,
+  chatExpiresAt: Timestamp,  // startTime + 4 hours — when the run's group chat closes.
+                             // Written by startOrJoinRun() at run creation.
+                             // Absent on runs created before 2026-03-22 (treated as non-expiring by rules).
+                             // Single source of truth: RUN_CHAT_EXPIRY_MS in runChatService.js
   status: 'upcoming',        // only status for MVP
   participantCount: number,  // denormalized; kept in sync via runTransaction
   createdAt: Timestamp,      // serverTimestamp()
 }
 ```
+> **chatExpiresAt lifecycle**: after this timestamp, `useMyRunChats` hides the chat from the Messages inbox, `RunChatScreen` shows a read-only "Chat has ended" banner, and the Firestore `isChatActive()` rule hard-blocks new message writes. Old messages remain in Firestore for history/admin purposes.
 
 ### `runParticipants/{runId}_{userId}`   ← compound doc ID
 ```js
@@ -289,6 +294,34 @@ Firebase-only backend. No custom server. Logic lives in:
 
 ---
 
+
+### `conversations/{conversationId}`
+Deterministic ID: `[uid_a, uid_b].sort().join('_')` — same two users always share one doc.
+```js
+{
+  participantIds: string[],    // [uid_a, uid_b] — used for Firestore array-contains queries
+  participants: {
+    [uid]: { name: string, photoURL: string | null }
+  },
+  lastMessage: string,         // text of most recent message (for inbox preview)
+  lastActivityAt: Timestamp,   // drives inbox ordering (desc)
+  createdAt: Timestamp,
+  lastSeenAt: {
+    [uid]: Timestamp           // per-user last-seen timestamp; unread = lastActivityAt > lastSeenAt[uid]
+  }
+}
+```
+
+### `conversations/{conversationId}/messages/{autoId}`
+```js
+{
+  senderId: string,    // Firebase Auth UID of sender
+  text: string,
+  createdAt: Timestamp  // serverTimestamp() — drives message ordering
+}
+```
+⚠️ **Firestore rules for `conversations` collection not yet written.** Currently no security rules protect this collection. Add rules before any real users access DMs.
+
 ## Services
 
 ### `presenceService.js`
@@ -311,6 +344,13 @@ Firebase-only backend. No custom server. Logic lives in:
   ```js
   // if (distanceFromGym > checkInRadius) { throw new Error(...) }
   ```
+
+
+### `dmService.js`
+- **`openOrCreateConversation({currentUid, currentUserName, currentUserAvatar, otherUid, otherUserName, otherUserAvatar})`** — Idempotent. Checks if conversation doc exists before reading users. Returns `conversationId`.
+- **`subscribeToConversations(uid, callback)`** — Real-time inbox ordered by `lastActivityAt` desc. Queries `conversations` where `participantIds array-contains uid`.
+- **`sendDMMessage({conversationId, senderId, text})`** — Two sequential writes: (1) `addDoc` to messages subcollection with `serverTimestamp()`; (2) `updateDoc` on conversation doc for `lastMessage`, `lastActivityAt`. Not transactional — `lastMessage` may lag by one message under tight race.
+- **`markConversationSeen(conversationId, uid)`** — Writes `lastSeenAt.${uid}` via dot-notation field path. Called on DM screen mount.
 
 ### `pointsService.js`
 Single source of truth for all point writes. Never write `totalPoints` anywhere else.
@@ -390,6 +430,8 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useUserClips(uid)` | `{ clips, videoUrls, thumbnails, loading }` | User's own clips (by `uploaderUid`). |
 | `useTaggedClips(uid)` | `{ allTagged, featuredIn, videoUrls, thumbnails, loading, refetch }` | Clips user is tagged in. V1: queries 100 recent clips, client-side filters by `taggedPlayers[].uid`. `allTagged` = all tagged clips. `featuredIn` = clips where `addedToProfile === true`. `refetch` bumps internal counter to re-query. Called with `useFocusEffect` on ProfileScreen and UserProfileScreen. |
 
+| `useConversations()` | `{ conversations, loading, unreadCount }` | `dmService.subscribeToConversations`. Unread = `lastActivityAt > lastSeenAt[uid]`. |
+| `useMyRunChats()` | `{ runChats, loading }` | `runService.subscribeToAllUserRuns` + `getDoc` per run for gymName/startTime. For Messages inbox Run Chats section. |
 ---
 
 ## Cloud Functions (in runcheck-backend)
@@ -522,6 +564,9 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 7. **~~`participantCount` floor~~** — ✅ RESOLVED. `leaveRun` transaction now reads `participantCount` from `runSnap` and skips `increment(-1)` when count is already `<= 0`. Existing negative counts (if any) are not repaired — only new negatives are prevented. A one-time cleanup script can fix historical data if needed.
 8. **Runs indexes** — three new composite indexes required (see Required Firestore Indexes #8–10). Create these in the Firebase console or `firestore.indexes.json` to avoid "index required" errors at query time.
 10. **Run Chat Firestore rules must be deployed** — `runcheck-backend/firestore.rules` now includes `match /messages/{messageId}` inside `match /runs/{runId}` with `exists(runParticipants/{runId}_{uid})` for both read and create. Deploy with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`. Until deployed, any participant attempting to open Run Chat will hit `permission-denied`.
+
+11. **`conversations` Firestore rules not written** — The DM feature (`dmService.js`) reads/writes `conversations/{id}` and `conversations/{id}/messages/{autoId}` but no Firestore security rules exist for this collection yet. Any authenticated user can read/write any conversation doc. Add rules before real user testing: require `request.auth.uid in resource.data.participantIds` for read/write.
+12. **`onDmMessageCreated` Cloud Function not implemented** — Push notifications for new DMs are not yet wired up. The notification tap handler in App.js expects `data.type === 'dm'` from a Cloud Function payload, but that function doesn't exist yet.
 
 9. **`notifCooldowns` map will grow unboundedly** — Phase 1 notifications store cooldown keys as a map on `users/{uid}.notifCooldowns`. Each key is unique per run (e.g. `runReminder_{runId}`, `participantJoined_{runId}`, `runMilestone_{runId}_5`). Power users who join hundreds of runs over time will accumulate a large map, approaching Firestore's 1 MB doc limit. **Migration plan:** Move to `users/{uid}/notifCooldowns/{key}` subcollection (one doc per cooldown key, `setAt: Timestamp`). Only `checkAndSetCooldown` in `notificationHelpers.ts` needs to change. Add a Firestore TTL policy on the subcollection to auto-delete docs after 48h. **Do this before serious marketing / ~500+ active users.**
 

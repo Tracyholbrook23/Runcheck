@@ -25,6 +25,18 @@ import {
 const MAX_MESSAGE_LENGTH = 500;
 
 /**
+ * RUN_CHAT_EXPIRY_MS — How long a run's group chat stays active after startTime.
+ *
+ * Single source of truth for expiration duration. Imported by:
+ *   - runService.js      → writes chatExpiresAt on run creation
+ *   - useMyRunChats.js   → filters expired chats out of the Messages inbox
+ *   - RunChatScreen.js   → enforces read-only state after expiry
+ *
+ * Default: 4 hours (14_400_000 ms). Adjust here to change it everywhere.
+ */
+export const RUN_CHAT_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+/**
  * subscribeToRunMessages — Real-time listener for a run's chat messages.
  *
  * Subscribes to `runs/{runId}/messages` ordered by createdAt ASC.

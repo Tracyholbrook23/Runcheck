@@ -19,6 +19,7 @@ import { useState, useEffect } from 'react';
 import { db, auth } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { subscribeToAllUserRuns } from '../services/runService';
+import { RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
 
 export function useMyRunChats() {
   const [runChats, setRunChats] = useState([]);
@@ -40,8 +41,9 @@ export function useMyRunChats() {
         return;
       }
 
-      // Fetch each run doc (gymName + startTime) and gym doc (imageUrl) in parallel.
-      // Participant docs may lack gymName (older docs) and never carry startTime.
+      // Fetch each run doc (gymName + startTime + chatExpiresAt) and gym doc
+      // (imageUrl) in parallel. Participant docs may lack gymName (older docs)
+      // and never carry startTime or chatExpiresAt.
       const enriched = await Promise.all(
         participants.map(async (p) => {
           try {
@@ -56,6 +58,10 @@ export function useMyRunChats() {
               ...p,
               gymName: runData.gymName || p.gymName || '',
               startTime: runData.startTime || null,
+              // chatExpiresAt: stored on new runs. For old runs that pre-date
+              // this field, fall back to startTime + RUN_CHAT_EXPIRY_MS so the
+              // filter still works correctly.
+              chatExpiresAt: runData.chatExpiresAt || null,
               gymImageUrl: gymData.imageUrl || null,
             };
           } catch {
@@ -65,7 +71,31 @@ export function useMyRunChats() {
         }),
       );
 
-      setRunChats(enriched);
+      // Filter out expired run chats — they should not appear in the Messages
+      // inbox once the chat window has closed.
+      //
+      // Expiry resolution order:
+      //   1. chatExpiresAt field (new runs — explicit server-stored timestamp)
+      //   2. startTime + RUN_CHAT_EXPIRY_MS (old runs without chatExpiresAt)
+      //   3. No time info → show the chat (conservative, avoids hiding valid chats)
+      const now = Date.now();
+      const active = enriched.filter((chat) => {
+        if (chat.chatExpiresAt) {
+          const expiresMs = chat.chatExpiresAt.toDate
+            ? chat.chatExpiresAt.toDate().getTime()
+            : new Date(chat.chatExpiresAt).getTime();
+          return expiresMs > now;
+        }
+        if (chat.startTime) {
+          const startMs = chat.startTime.toDate
+            ? chat.startTime.toDate().getTime()
+            : new Date(chat.startTime).getTime();
+          return startMs + RUN_CHAT_EXPIRY_MS > now;
+        }
+        return true; // no time info — show conservatively
+      });
+
+      setRunChats(active);
       setLoading(false);
     });
 
