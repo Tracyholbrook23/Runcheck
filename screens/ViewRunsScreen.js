@@ -506,7 +506,7 @@ export default function ViewRunsScreen({ navigation, route }) {
                           },
                         ]}>
                           <Text style={[styles.inlineAccessPillText, { color: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
-                            {gym.accessType === 'free' ? 'Free' : 'Membership'}
+                            {gym.accessType === 'free' ? 'Free' : 'Member / Day Pass'}
                           </Text>
                         </View>
                       )}

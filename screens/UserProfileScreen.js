@@ -257,18 +257,67 @@ export default function UserProfileScreen({ route, navigation }) {
     }
   };
 
-  // ── Loading state ────────────────────────────────────────────────────────
+  // ── Loading state — skeleton screen ─────────────────────────────────────
+  // Show a structural placeholder instead of a blank spinner so navigation
+  // feels instant. Grey shimmer boxes mirror the actual layout.
+  const skeletonColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.07)';
+  const skeletonColorLight = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
+        {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
             <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
+          <View style={[{ width: 80, height: 16, borderRadius: 8, backgroundColor: skeletonColor }]} />
+          <View style={styles.backButton} />
         </View>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+
+        <ScrollView contentContainerStyle={styles.scrollContent} scrollEnabled={false}>
+          {/* Avatar placeholder */}
+          <View style={[styles.avatarSection]}>
+            <View style={{ width: 106, height: 106, borderRadius: 53, backgroundColor: skeletonColor }} />
+          </View>
+
+          {/* Name placeholder */}
+          <View style={{ width: 160, height: 20, borderRadius: 10, backgroundColor: skeletonColor, marginBottom: 8 }} />
+          {/* Username placeholder */}
+          <View style={{ width: 100, height: 13, borderRadius: 7, backgroundColor: skeletonColorLight, marginBottom: SPACING.md }} />
+
+          {/* Badge row placeholder */}
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+            <View style={{ width: 90, height: 28, borderRadius: 14, backgroundColor: skeletonColor }} />
+            <View style={{ width: 80, height: 28, borderRadius: 14, backgroundColor: skeletonColor }} />
+          </View>
+
+          {/* Stats row placeholder */}
+          <View style={{
+            flexDirection: 'row',
+            backgroundColor: skeletonColorLight,
+            borderRadius: RADIUS.lg,
+            padding: SPACING.md,
+            width: '100%',
+            marginBottom: SPACING.xl,
+            gap: SPACING.md,
+          }}>
+            {[1, 2, 3].map(i => (
+              <View key={i} style={{ flex: 1, alignItems: 'center', gap: 6 }}>
+                <View style={{ width: 36, height: 20, borderRadius: 6, backgroundColor: skeletonColor }} />
+                <View style={{ width: 50, height: 12, borderRadius: 6, backgroundColor: skeletonColorLight }} />
+              </View>
+            ))}
+          </View>
+
+          {/* Friend button placeholder */}
+          <View style={{ width: '100%', height: 44, borderRadius: RADIUS.lg, backgroundColor: skeletonColor, marginBottom: SPACING.xl }} />
+
+          {/* Section rows placeholder */}
+          {[1, 2, 3].map(i => (
+            <View key={i} style={{ width: '100%', height: 16, borderRadius: 8, backgroundColor: skeletonColorLight, marginBottom: SPACING.md }} />
+          ))}
+        </ScrollView>
       </SafeAreaView>
     );
   }

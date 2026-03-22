@@ -62,9 +62,9 @@ Nothing in this file should be worked on during a session unless the user explic
 ## UI & Polish
 
 - Dark mode refinement and per-screen audit
-- **Swipe between tabs** — Swipe left/right to navigate between Home, Runs, Check In, Plan, Profile. Requires `@react-navigation/material-top-tabs` + `react-native-pager-view` (both already installed in package.json). Implementation: replace `createBottomTabNavigator` with `createMaterialTopTabNavigator` at `tabBarPosition="bottom"` + custom tab bar. **Requires native rebuild** (`react-native-pager-view` has native code).
+- ~~**Swipe between tabs**~~ — **Done 2026-03-22.** Swipe left/right navigation between Home, Runs, Check In, Plan, Profile implemented using `@react-navigation/material-top-tabs` + `react-native-pager-view`.
 - Animated transitions between screens
-- Skeleton loading screens (replace spinners with content placeholders)
+- ~~**Skeleton loading screens**~~ — **Done 2026-03-22.** Replaced full-screen blank spinners on `UserProfileScreen`, `RunDetailsScreen`, and `ProfileScreen` with structural skeleton placeholders (grey placeholder boxes that mirror the real layout). Back button always tappable during load.
 - ~~Haptic feedback on key actions (check-in, join run, post clip)~~ — **Done.** `utils/haptics.js` helper wrapping `expo-haptics`. Success haptic on check-in, join run, post clip. Medium impact on record button press. Light on checkout.
 - ~~Pull-to-refresh on all list screens~~ — **Done.** Added to HomeScreen, ProfileScreen, RunDetailsScreen, LeaderboardScreen (plus ViewRunsScreen and admin screens already had it).
 - ~~Onboarding tutorial / walkthrough for new users~~ — **Done.** 3-step onboarding flow implemented (Welcome → Home Court → Location + Finish).
@@ -99,5 +99,5 @@ Nothing in this file should be worked on during a session unless the user explic
 
 ---
 
-_Last updated: 2026-03-20_
+_Last updated: 2026-03-22_
 _To add an idea: append it to the relevant section with a brief description. Do not act on it without explicit approval._

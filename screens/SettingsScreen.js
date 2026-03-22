@@ -281,6 +281,26 @@ export default function SettingsScreen({ navigation }) {
       <Text style={styles.sectionTitle}>My Account</Text>
       <View style={styles.card}>
 
+        {/* Account Info */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('EditProfile')}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: colors.primary + '22' }]}>
+              <Ionicons name="person-outline" size={18} color={colors.primary} />
+            </View>
+            <View>
+              <Text style={styles.menuLabel}>Account Info</Text>
+              <Text style={styles.settingHint}>Name, email, skill level</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
+
         {/* My Reports */}
         <TouchableOpacity
           style={styles.menuRow}

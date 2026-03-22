@@ -1395,14 +1395,51 @@ export default function RunDetailsScreen({ route, navigation }) {
     return data;
   }, [gymClips]);
 
+  // ── Loading state — skeleton screen ─────────────────────────────────────
+  // Mirrors the hero → header → section layout so navigation feels instant.
+  const skeletonBase  = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)';
+  const skeletonLight = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          <Logo size="small" style={{ marginBottom: SPACING.sm }} />
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
+        <ScrollView scrollEnabled={false}>
+          {/* Hero image placeholder */}
+          <View style={{ position: 'relative' }}>
+            <View style={{ width: '100%', height: 260, backgroundColor: skeletonBase }} />
+            {/* Back button always available */}
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ViewRunsMain')}
+            >
+              <Ionicons name="chevron-back" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Header section */}
+          <View style={[styles.header, { gap: SPACING.sm }]}>
+            {/* Gym name */}
+            <View style={{ width: '70%', height: 22, borderRadius: 8, backgroundColor: skeletonBase }} />
+            {/* Action buttons row */}
+            <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: 4 }}>
+              <View style={{ width: 100, height: 34, borderRadius: RADIUS.md, backgroundColor: skeletonLight }} />
+              <View style={{ width: 120, height: 34, borderRadius: RADIUS.md, backgroundColor: skeletonLight }} />
+            </View>
+          </View>
+
+          {/* Info section rows */}
+          <View style={{ padding: SPACING.lg, gap: SPACING.md }}>
+            {[1, 2, 3, 4].map(i => (
+              <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+                <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: skeletonLight }} />
+                <View style={{ flex: 1, height: 14, borderRadius: 7, backgroundColor: skeletonLight }} />
+              </View>
+            ))}
+          </View>
+
+          {/* Run status card placeholder */}
+          <View style={{ marginHorizontal: SPACING.lg, height: 100, borderRadius: RADIUS.lg, backgroundColor: skeletonLight }} />
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1626,6 +1663,19 @@ export default function RunDetailsScreen({ route, navigation }) {
               <Text style={styles.gymType}>
                 {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
               </Text>
+            )}
+            {/* Access info — only for paid gyms; explains day pass option so users
+                don't assume they need a full membership to play */}
+            {gym?.accessType && gym.accessType !== 'free' && (
+              <View style={styles.accessInfoRow}>
+                <Ionicons name="information-circle-outline" size={15} color="#F59E0B" style={{ marginRight: 8, marginTop: 1 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.accessInfoTitle}>Membership or day pass required</Text>
+                  <Text style={styles.accessInfoBody}>
+                    Day passes are typically available at the front desk. Call ahead to confirm pricing and availability.
+                  </Text>
+                </View>
+              </View>
             )}
             {gym?.notes ? (
               <Text style={styles.gymNotes}>{gym.notes}</Text>
@@ -3197,6 +3247,27 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textSecondary,
     fontStyle: 'italic',
     marginTop: SPACING.xs,
+  },
+  accessInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: SPACING.sm,
+    padding: SPACING.sm,
+    backgroundColor: 'rgba(245,158,11,0.08)',
+    borderRadius: RADIUS.md,
+    borderLeftWidth: 3,
+    borderLeftColor: '#F59E0B',
+  },
+  accessInfoTitle: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#F59E0B',
+    marginBottom: 3,
+  },
+  accessInfoBody: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textSecondary,
+    lineHeight: 16,
   },
 
   // ── Hours of operation ──────────────────────────────────────────────────────

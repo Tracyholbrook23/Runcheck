@@ -546,8 +546,11 @@ export default function ProfileScreen({ navigation }) {
   // Guard against stale skill values from the old 4-tier system (Pro, Beginner,
   // Intermediate, Advanced). Only the three current values are valid.
   const VALID_SKILL_LEVELS = ['Casual', 'Competitive', 'Either'];
-  const displaySkillLevel = VALID_SKILL_LEVELS.includes(profile?.skillLevel)
-    ? profile.skillLevel
+  // Prefer liveProfile (real-time subscription) so edits from EditProfileScreen
+  // reflect immediately. Fall back to the one-time `profile` snapshot if needed.
+  const rawSkillLevel = liveProfile?.skillLevel ?? profile?.skillLevel;
+  const displaySkillLevel = VALID_SKILL_LEVELS.includes(rawSkillLevel)
+    ? rawSkillLevel
     : 'Casual';
 
   // Look up skill badge colors for the validated level
@@ -576,12 +579,47 @@ export default function ProfileScreen({ navigation }) {
 
   const loading = profileLoading || reliabilityLoading;
 
+  // ── Loading state — skeleton screen ──────────────────────────────────────
+  // Mirrors the gradient header → stats → sections layout for instant feel.
+  const skelBase  = 'rgba(255,255,255,0.10)';  // always on dark gradient
+  const skelLight = 'rgba(255,255,255,0.06)';
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={false}>
+
+          {/* Header gradient placeholder */}
+          <LinearGradient
+            colors={['#3D1E00', '#1A0A00', '#000000']}
+            locations={[0, 0.55, 1]}
+            style={[styles.headerGradient, { alignItems: 'center', paddingBottom: 32 }]}
+          >
+            {/* Avatar circle */}
+            <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: skelBase, marginBottom: 12 }} />
+            {/* Name */}
+            <View style={{ width: 140, height: 18, borderRadius: 9, backgroundColor: skelBase, marginBottom: 8 }} />
+            {/* Username */}
+            <View style={{ width: 90, height: 12, borderRadius: 6, backgroundColor: skelLight, marginBottom: 16 }} />
+            {/* Rank card placeholder */}
+            <View style={{ width: 200, height: 56, borderRadius: RADIUS.lg, backgroundColor: skelBase }} />
+          </LinearGradient>
+
+          {/* Stats row placeholder */}
+          <View style={{ flexDirection: 'row', marginHorizontal: SPACING.md, marginTop: SPACING.lg, gap: SPACING.sm }}>
+            {[1, 2, 3].map(i => (
+              <View key={i} style={{ flex: 1, height: 72, borderRadius: RADIUS.md, backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)' }} />
+            ))}
+          </View>
+
+          {/* Section placeholder rows */}
+          <View style={{ padding: SPACING.lg, gap: SPACING.md, marginTop: SPACING.sm }}>
+            {[1, 2, 3, 4, 5].map(i => (
+              <View key={i} style={{ height: 14, borderRadius: 7, width: i % 2 === 0 ? '60%' : '85%', backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' }} />
+            ))}
+          </View>
+
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -626,7 +664,7 @@ export default function ProfileScreen({ navigation }) {
                 ) : (
                   <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
                     <Text style={styles.avatarInitial}>
-                      {(profile?.name || liveProfile?.name || user?.displayName || '?')[0].toUpperCase()}
+                      {(liveProfile?.name || profile?.name || user?.displayName || '?')[0].toUpperCase()}
                     </Text>
                   </View>
                 )}
@@ -645,7 +683,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
             )}
           </TouchableOpacity>
-          <Text style={styles.name}>{profile?.name || user?.displayName || 'Player'}</Text>
+          <Text style={styles.name}>{liveProfile?.name || profile?.name || user?.displayName || 'Player'}</Text>
           {(profile?.username || liveProfile?.username) ? (
             <Text style={styles.usernameText}>@{profile?.username || liveProfile?.username}</Text>
           ) : null}
