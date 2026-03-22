@@ -25,6 +25,7 @@ import {
   ImageBackground,
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
+  TouchableOpacity,
   Keyboard,
   Platform,
 } from 'react-native';
@@ -32,7 +33,7 @@ import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 
 /**
@@ -118,6 +119,40 @@ export default function LoginScreen({ navigation }) {
     }
   };
 
+  /**
+   * handleForgotPassword — Sends a Firebase password-reset email.
+   * Uses the email already in the input if present; otherwise prompts the user
+   * to enter one first.
+   */
+  const handleForgotPassword = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      alert('Enter your email address above, then tap "Forgot password?" again.');
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, trimmedEmail);
+      alert('Check your inbox — we\'ve sent a password reset link to ' + trimmedEmail + '.');
+    } catch (error) {
+      if (__DEV__) console.warn('[Login] Password reset error:', error.code);
+
+      let message = 'Something went wrong. Please try again.';
+      switch (error.code) {
+        case 'auth/user-not-found':
+          message = 'No account found with that email address.';
+          break;
+        case 'auth/invalid-email':
+          message = 'Please enter a valid email address.';
+          break;
+        case 'auth/network-request-failed':
+          message = 'Network error. Check your connection and try again.';
+          break;
+      }
+      alert(message);
+    }
+  };
+
   return (
     <ImageBackground
       source={require('../assets/images/court-bg.jpg')}
@@ -159,6 +194,14 @@ export default function LoginScreen({ navigation }) {
                 onChangeText={setPassword}
                 testID="password-input"
               />
+
+              <TouchableOpacity
+                onPress={handleForgotPassword}
+                style={styles.forgotPassword}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+              </TouchableOpacity>
 
               <Button
                 title="Log In"
@@ -229,5 +272,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  forgotPasswordText: {
+    fontSize: FONT_SIZES.sm,
+    color: 'rgba(255,255,255,0.55)',
   },
 });
