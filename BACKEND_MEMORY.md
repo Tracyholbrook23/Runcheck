@@ -136,6 +136,11 @@ Firebase-only backend. No custom server. Logic lives in:
                              // Single source of truth: RUN_CHAT_EXPIRY_MS in runChatService.js
   status: 'upcoming',        // only status for MVP
   participantCount: number,  // denormalized; kept in sync via runTransaction
+  runLevel: 'casual' | 'mixed' | 'competitive',
+                             // Competitiveness tag set by run creator at creation.
+                             // Default: 'mixed'. Absent on runs created before 2026-03-22;
+                             // treat as 'mixed' in all UI reads (use `run.runLevel ?? 'mixed'`).
+                             // Added 2026-03-22. Client-side only — no Cloud Function involvement.
   createdAt: Timestamp,      // serverTimestamp()
 }
 ```

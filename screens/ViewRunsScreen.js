@@ -28,7 +28,7 @@
  * when the theme changes.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -59,6 +59,7 @@ import {
   arrayRemove,
 } from 'firebase/firestore';
 import { handleFollowPoints } from '../services/pointsService';
+import { subscribeToAllUpcomingRuns } from '../services/runService';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 /**
@@ -77,6 +78,15 @@ const TYPE_FILTERS = [
   { key: 'outdoor', label: 'Outdoor' },
 ];
 
+// ── Run level filter options ───────────────────────────────────────────────────
+// null = Any level. Filters gyms to those that have at least one active run
+// with the matching runLevel. Runs without runLevel are treated as 'mixed'.
+const RUN_LEVEL_FILTERS = [
+  { key: 'casual',      label: '😊 Casual',       color: '#22C55E' },
+  { key: 'mixed',       label: '🤝 Mixed',         color: '#94A3B8' },
+  { key: 'competitive', label: '🔥 Competitive',   color: '#EF4444' },
+];
+
 // ── Access filter options ─────────────────────────────────────────────────────
 // null = All, 'free' = Free courts only, 'membership' = Membership/day-pass gyms only
 const ACCESS_FILTERS = [
@@ -90,14 +100,23 @@ export default function ViewRunsScreen({ navigation, route }) {
   const { followedGyms, homeCourtId } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState(null);     // null | 'indoor' | 'outdoor'
-  const [accessFilter, setAccessFilter] = useState(null); // null | 'free' | 'membership'
-  const [cityFilter, setCityFilter] = useState(null);     // null | city string
+  const [typeFilter, setTypeFilter] = useState(null);         // null | 'indoor' | 'outdoor'
+  const [accessFilter, setAccessFilter] = useState(null);     // null | 'free' | 'membership'
+  const [cityFilter, setCityFilter] = useState(null);         // null | city string
+  const [runLevelFilter, setRunLevelFilter] = useState(null); // null | 'casual' | 'mixed' | 'competitive'
+  const [allUpcomingRuns, setAllUpcomingRuns] = useState([]); // live runs across all gyms for level filter
   const [sortByNearest, setSortByNearest] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
 
+  // Subscribe to all upcoming runs so the run level filter can match gym IDs.
+  // Same subscription used by PlanVisitScreen — no new index needed.
+  useEffect(() => {
+    const unsub = subscribeToAllUpcomingRuns((runs) => setAllUpcomingRuns(runs));
+    return () => unsub();
+  }, []);
+
   // Count how many filters/sorts are active so we can badge the Filter button
-  const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (cityFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
+  const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (cityFilter ? 1 : 0) + (runLevelFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
@@ -265,7 +284,19 @@ export default function ViewRunsScreen({ navigation, route }) {
       result = result.filter((gym) => gym.city === cityFilter);
     }
 
-    // ── 5. Sort ────────────────────────────────────────────────────────────
+    // ── 5. Run level filter ────────────────────────────────────────────────
+    // Shows only gyms that have at least one upcoming run tagged at the
+    // selected level. Runs without a runLevel field are treated as 'mixed'.
+    if (runLevelFilter) {
+      const matchingGymIds = new Set(
+        allUpcomingRuns
+          .filter((r) => (r.runLevel ?? 'mixed') === runLevelFilter)
+          .map((r) => r.gymId)
+      );
+      result = result.filter((gym) => matchingGymIds.has(gym.id));
+    }
+
+    // ── 6. Sort ────────────────────────────────────────────────────────────
     if (sortByNearest && userLocation) {
       // Sort purely by distance from user — closest gym first
       result = [...result].sort((a, b) => {
@@ -289,7 +320,7 @@ export default function ViewRunsScreen({ navigation, route }) {
     }
 
     return result;
-  }, [gyms, searchQuery, typeFilter, accessFilter, cityFilter, sortByNearest, userLocation, homeCourtId, liveCountMap]);
+  }, [gyms, searchQuery, typeFilter, accessFilter, cityFilter, runLevelFilter, allUpcomingRuns, sortByNearest, userLocation, homeCourtId, liveCountMap]);
 
   // NOTE: loading gate intentionally removed from here.
   // The header, search bar, and filter pills are static and need no gym data —
@@ -361,6 +392,21 @@ export default function ViewRunsScreen({ navigation, route }) {
                 <TouchableOpacity style={[styles.activeChip, { backgroundColor: '#6366F1' }]} onPress={() => setCityFilter(null)} activeOpacity={0.8}>
                   <Ionicons name="location" size={11} color="#fff" style={{ marginRight: 3 }} />
                   <Text style={styles.activeChipText}>{cityFilter}</Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+              {runLevelFilter && (
+                <TouchableOpacity
+                  style={[styles.activeChip, {
+                    backgroundColor: runLevelFilter === 'competitive' ? '#EF4444' : runLevelFilter === 'casual' ? '#22C55E' : '#94A3B8',
+                  }]}
+                  onPress={() => setRunLevelFilter(null)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="basketball-outline" size={11} color="#fff" style={{ marginRight: 3 }} />
+                  <Text style={styles.activeChipText}>
+                    {runLevelFilter.charAt(0).toUpperCase() + runLevelFilter.slice(1)}
+                  </Text>
                   <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
                 </TouchableOpacity>
               )}
@@ -652,6 +698,24 @@ export default function ViewRunsScreen({ navigation, route }) {
               </>
             )}
 
+            {/* ── Run Level ── */}
+            <Text style={styles.sheetSectionLabel}>Run Level</Text>
+            <View style={styles.sheetPillRow}>
+              {RUN_LEVEL_FILTERS.map(({ key, label, color }) => {
+                const active = runLevelFilter === key;
+                return (
+                  <TouchableOpacity
+                    key={key}
+                    style={[styles.sheetPill, active && { backgroundColor: color, borderColor: color }]}
+                    onPress={() => setRunLevelFilter(active ? null : key)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
             {/* ── Sort By ── */}
             <Text style={styles.sheetSectionLabel}>Sort By</Text>
             <TouchableOpacity
@@ -679,6 +743,7 @@ export default function ViewRunsScreen({ navigation, route }) {
                   setTypeFilter(null);
                   setAccessFilter(null);
                   setCityFilter(null);
+                  setRunLevelFilter(null);
                   setSortByNearest(false);
                   setFilterSheetVisible(false);
                 }}

@@ -192,12 +192,15 @@ const joinRun = async (runId, gymId, gymName, userInfo) => {
  * @param {string} gymId
  * @param {string} gymName — Denormalized display name
  * @param {Date}   startTime — Desired start time for the run
+ * @param {'casual'|'mixed'|'competitive'} [runLevel='mixed'] — Competitiveness level.
+ *   Only used when creating a NEW run; ignored when joining an existing one.
+ *   Existing runs without this field are treated as 'mixed' by the UI.
  * @returns {Promise<{ runId: string, created: boolean }>}
  *   `created: true` when a new run was created, `false` when an existing one
  *   was joined. Callers can use this to customize the confirmation message.
  * @throws {Error} If not authenticated or if startTime is invalid
  */
-export const startOrJoinRun = async (gymId, gymName, startTime) => {
+export const startOrJoinRun = async (gymId, gymName, startTime, runLevel = 'mixed') => {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Must be logged in to start or join a run');
 
@@ -263,6 +266,10 @@ export const startOrJoinRun = async (gymId, gymName, startTime) => {
     //   • Firestore rules hard-block new message writes
     chatExpiresAt: Timestamp.fromDate(new Date(startTime.getTime() + RUN_CHAT_EXPIRY_MS)),
     status: 'upcoming',
+    // runLevel — competitiveness tag set by the run creator.
+    // 'casual' | 'mixed' | 'competitive'. Defaults to 'mixed'.
+    // Runs created before this field existed are treated as 'mixed' by the UI.
+    runLevel: runLevel ?? 'mixed',
     createdAt: serverTimestamp(),
     participantCount: 0, // joinRun will increment this to 1
   });

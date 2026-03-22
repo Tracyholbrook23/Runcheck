@@ -484,5 +484,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-20 (Run Chat MVP: runChatService.js + RunChatScreen.js added to Zone 1; participants-only Firestore rules for runs/{runId}/messages; ViewRunsScreen inline loading spinner)_
+_Last updated: 2026-03-22 (Run Level Phase 1: `runLevel` field added to `runs/{autoId}` schema. Picker in RunDetailsScreen Start-a-Run modal, badge on run cards. Filter (Any/Casual/Mixed/Competitive) in ViewRunsScreen filter sheet using `subscribeToAllUpcomingRuns`. Client-side only, backwards compatible.)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

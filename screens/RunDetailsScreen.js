@@ -377,6 +377,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [runTypeSheetVisible, setRunTypeSheetVisible] = useState(false);
   const [selectedRunDay, setSelectedRunDay] = useState(null);   // day chip object
   const [selectedRunSlot, setSelectedRunSlot] = useState(null); // time slot object
+  const [runLevel, setRunLevel] = useState('mixed');            // 'casual' | 'mixed' | 'competitive'
   const [startingRun, setStartingRun] = useState(false);
   const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
   const [joiningRunId, setJoiningRunId] = useState(null);       // runId being joined
@@ -427,7 +428,8 @@ export default function RunDetailsScreen({ route, navigation }) {
       const { created } = await startOrJoinRun(
         gymId,
         gymDisplayName,
-        selectedRunSlot.date
+        selectedRunSlot.date,
+        runLevel
       );
       setRunModalVisible(false);
       setSelectedRunDay(null);
@@ -1809,6 +1811,19 @@ export default function RunDetailsScreen({ route, navigation }) {
                 <View key={run.id} style={[styles.runCard, { alignItems: 'flex-start' }]}>
                   <View style={styles.runCardLeft}>
                     <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
+                    {/* Run level badge — hidden for 'mixed' (default/neutral) to reduce clutter */}
+                    {(() => {
+                      const level = run.runLevel ?? 'mixed';
+                      if (level === 'mixed') return null;
+                      const levelColor = level === 'competitive' ? '#EF4444' : '#22C55E';
+                      return (
+                        <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
+                          <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
+                            {level.charAt(0).toUpperCase() + level.slice(1)}
+                          </Text>
+                        </View>
+                      );
+                    })()}
                     {renderRunParticipantAvatars(run.id)}
                     {run.creatorName ? (
                       <Text style={styles.runStartedBy}>Started by {run.creatorName}</Text>
@@ -2292,6 +2307,35 @@ export default function RunDetailsScreen({ route, navigation }) {
                 Pick a time — others nearby will see it and can join.
               </Text>
 
+              {/* Run level picker — Casual / Mixed / Competitive */}
+              <View style={styles.runLevelRow}>
+                {[
+                  { value: 'casual',      label: 'Casual',      color: '#22C55E' },
+                  { value: 'mixed',       label: 'Mixed',       color: colors.textMuted },
+                  { value: 'competitive', label: 'Competitive', color: '#EF4444' },
+                ].map(({ value, label, color }) => {
+                  const active = runLevel === value;
+                  return (
+                    <TouchableOpacity
+                      key={value}
+                      style={[
+                        styles.runLevelPill,
+                        active && { borderColor: color, backgroundColor: color + '18' },
+                      ]}
+                      onPress={() => setRunLevel(value)}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={[
+                        styles.runLevelPillText,
+                        active && { color, fontWeight: FONT_WEIGHTS.semibold },
+                      ]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
               {/* Day picker */}
               <ScrollView
                 horizontal
@@ -2364,6 +2408,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                     setRunModalVisible(false);
                     setSelectedRunDay(null);
                     setSelectedRunSlot(null);
+                    setRunLevel('mixed');
                   }}
                   disabled={startingRun}
                 >
@@ -4148,7 +4193,40 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   runModalSubtitle: {
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
+    marginBottom: SPACING.md,
+  },
+  // ── Run level picker (in modal) ───────────────────────────────────────────
+  runLevelRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
     marginBottom: SPACING.lg,
+  },
+  runLevelPill: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  runLevelPillText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  // ── Run level badge (on run cards) ────────────────────────────────────────
+  runLevelBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  runLevelBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   runDayPickerRow: {
     marginBottom: SPACING.md,
