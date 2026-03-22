@@ -9,9 +9,12 @@
  * active run, re-fetched whenever the participant list changes). Users are
  * typically in 0–3 active runs at a time, so this is acceptable for MVP.
  *
- * No push notification or unread-count logic (deferred per spec).
+ * Unread detection: compares runs/{runId}.lastMessageAt against
+ * runParticipants/{runId}_{uid}.lastReadAt (written by markRunChatSeen when
+ * the user opens RunChatScreen). Both fields are nullable — old docs without
+ * them are treated as read (conservative: no phantom unread badges).
  *
- * @returns {{ runChats: object[], loading: boolean }}
+ * @returns {{ runChats: object[], loading: boolean, runChatUnreadCount: number }}
  *   Each runChat object: { id, runId, gymId, gymName, startTime, ... }
  */
 
@@ -54,6 +57,20 @@ export function useMyRunChats() {
             ]);
             const runData = runSnap.exists() ? runSnap.data() : {};
             const gymData = gymSnap?.exists() ? gymSnap.data() : {};
+            // Unread detection:
+            //   lastMessageAt — stamped on the run doc each time a message is sent
+            //   lastReadAt    — stamped on the participant doc when user opens the chat
+            // Both nullable: docs created before this feature are treated as read.
+            const lastMessageAt = runData.lastMessageAt || null;
+            const lastReadAt = p.lastReadAt || null;
+            const lastMessageMs = lastMessageAt?.toDate
+              ? lastMessageAt.toDate().getTime()
+              : lastMessageAt ? new Date(lastMessageAt).getTime() : 0;
+            const lastReadMs = lastReadAt?.toDate
+              ? lastReadAt.toDate().getTime()
+              : lastReadAt ? new Date(lastReadAt).getTime() : 0;
+            const isUnread = lastMessageMs > 0 && lastMessageMs > lastReadMs;
+
             return {
               ...p,
               gymName: runData.gymName || p.gymName || '',
@@ -63,6 +80,7 @@ export function useMyRunChats() {
               // filter still works correctly.
               chatExpiresAt: runData.chatExpiresAt || null,
               gymImageUrl: gymData.imageUrl || null,
+              isUnread,
             };
           } catch {
             // If the docs can't be fetched, fall back gracefully.
@@ -102,5 +120,7 @@ export function useMyRunChats() {
     return unsubscribe;
   }, [uid]);
 
-  return { runChats, loading };
+  const runChatUnreadCount = runChats.filter((c) => c.isUnread).length;
+
+  return { runChats, loading, runChatUnreadCount };
 }

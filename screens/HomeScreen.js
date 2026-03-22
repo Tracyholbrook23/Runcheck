@@ -53,6 +53,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, SHADOWS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip, useProfile, useConversations } from '../hooks';
+import { useMyRunChats } from '../hooks/useMyRunChats';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { useSchedules } from '../hooks/useSchedules';
 import { Logo } from '../components';
@@ -139,6 +140,8 @@ const HomeScreen = ({ navigation }) => {
   const { gyms } = useGyms();
   const { homeCourtId } = useProfile();
   const { unreadCount: dmUnreadCount } = useConversations();
+  const { runChatUnreadCount } = useMyRunChats();
+  const totalUnreadCount = dmUnreadCount + runChatUnreadCount;
 
   // Resolve home court gym object for quick-action card
   const homeCourtGym = useMemo(() => {
@@ -583,10 +586,10 @@ const HomeScreen = ({ navigation }) => {
               onPress={() => navigation.navigate('Messages')}
             >
               <Ionicons name="chatbubble-outline" size={22} color="#FFFFFF" />
-              {dmUnreadCount > 0 && (
+              {totalUnreadCount > 0 && (
                 <View style={styles.headerBadge}>
                   <Text style={styles.headerBadgeText}>
-                    {dmUnreadCount > 99 ? '99+' : dmUnreadCount}
+                    {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
                   </Text>
                 </View>
               )}

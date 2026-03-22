@@ -52,7 +52,7 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { auth } from '../config/firebase';
 import { useProfile } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
-import { subscribeToRunMessages, sendRunMessage, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
+import { subscribeToRunMessages, sendRunMessage, markRunChatSeen, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -260,6 +260,14 @@ export default function RunChatScreen({ route, navigation }) {
 
     return unsubscribe;
   }, [runId, participantLoading, isParticipant]);
+
+  // ── Mark chat as seen when user opens it ──────────────────────────────────
+  // Clears the unread badge on HomeScreen. Fires as soon as participant status
+  // is confirmed. Non-fatal if it fails (unread badge may stay until next open).
+  useEffect(() => {
+    if (!runId || !uid || !isParticipant) return;
+    markRunChatSeen(runId, uid);
+  }, [runId, uid, isParticipant]);
 
   // ── Auto-scroll to bottom on new messages ─────────────────────────────────
   const scrollToBottom = useCallback(() => {

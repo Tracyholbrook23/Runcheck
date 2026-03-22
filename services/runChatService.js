@@ -16,6 +16,8 @@ import { db } from '../config/firebase';
 import {
   collection,
   addDoc,
+  doc,
+  updateDoc,
   query,
   orderBy,
   onSnapshot,
@@ -109,4 +111,31 @@ export async function sendRunMessage({ runId, senderId, senderName, senderAvatar
     createdAt: serverTimestamp(),
     type: 'text',
   });
+
+  // Stamp lastMessageAt on the run doc so useMyRunChats can detect unread chats.
+  // Fire-and-forget — never blocks sending and never throws to the caller.
+  updateDoc(doc(db, 'runs', runId), { lastMessageAt: serverTimestamp() }).catch(() => {});
+}
+
+/**
+ * markRunChatSeen — Records that the current user has viewed this run chat.
+ *
+ * Writes `lastReadAt` to the `runParticipants/{runId}_{uid}` document.
+ * Used by RunChatScreen on mount so the unread badge clears when the
+ * user opens the chat. Matches the markConversationSeen pattern in dmService.
+ *
+ * @param {string} runId — Firestore run document ID.
+ * @param {string} uid   — Firebase Auth UID of the viewing user.
+ * @returns {Promise<void>}
+ */
+export async function markRunChatSeen(runId, uid) {
+  if (!runId || !uid) return;
+  try {
+    await updateDoc(doc(db, 'runParticipants', `${runId}_${uid}`), {
+      lastReadAt: serverTimestamp(),
+    });
+  } catch (err) {
+    // Non-fatal — unread count may be stale but app continues normally.
+    if (__DEV__) console.warn('[runChatService] markRunChatSeen error:', err.code);
+  }
 }

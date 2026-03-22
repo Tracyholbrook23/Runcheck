@@ -233,6 +233,7 @@ function RunChatRow({ item, colors, navigation }) {
   const gymName = item.gymName || 'Run Chat';
   const timeLabel = formatRunTime(item.startTime);
   const rowTitle = timeLabel ? `${gymName} – ${timeLabel}` : gymName;
+  const isUnread = !!item.isUnread;
 
   return (
     <TouchableOpacity
@@ -252,7 +253,11 @@ function RunChatRow({ item, colors, navigation }) {
       <View style={styles.rowContent}>
         <View style={styles.rowTop}>
           <Text
-            style={[styles.rowName, { color: colors.textPrimary }]}
+            style={[
+              styles.rowName,
+              { color: colors.textPrimary },
+              isUnread && styles.rowNameUnread,
+            ]}
             numberOfLines={1}
           >
             {rowTitle}
@@ -260,9 +265,19 @@ function RunChatRow({ item, colors, navigation }) {
         </View>
 
         <View style={styles.rowBottom}>
-          <Text style={[styles.rowPreview, { color: colors.textMuted }]} numberOfLines={1}>
+          <Text
+            style={[
+              styles.rowPreview,
+              { color: isUnread ? colors.textPrimary : colors.textMuted },
+              isUnread && styles.rowPreviewUnread,
+            ]}
+            numberOfLines={1}
+          >
             Group chat
           </Text>
+          {isUnread && (
+            <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+          )}
         </View>
       </View>
     </TouchableOpacity>
