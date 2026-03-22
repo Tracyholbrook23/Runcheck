@@ -182,26 +182,6 @@ export default function ViewRunsScreen({ navigation, route }) {
   };
 
   /**
-   * getActivityLevel — Maps a presence count to a display label and badge color.
-   *
-   * Thresholds match `useGyms.getActivityLevel` for consistency:
-   *   0      → Empty  (grey)
-   *   1–4    → Light  (green)
-   *   5–9    → Active (amber)
-   *   10+    → Busy   (red)
-   *
-   * @param {number} count — Current number of checked-in players at the gym.
-   * @returns {{ label: string, color: string }} Label text and hex color for the badge.
-   */
-  const getActivityLevel = (count) => {
-    if (count === 0) return { label: 'Empty', color: colors.activityEmpty };
-    if (count < 5) return { label: 'Light', color: colors.activityLight };
-    if (count < 10) return { label: 'Active', color: colors.activityActive };
-    return { label: 'Busy', color: colors.activityBusy };
-  };
-
-
-  /**
    * sanitizeSearch — Strips unsafe characters from raw search input and
    * enforces structural constraints before the value is stored or used.
    *
@@ -420,7 +400,6 @@ export default function ViewRunsScreen({ navigation, route }) {
             filteredGyms.map((gym) => {
               // Real-time deduplicated count — NOT gym.currentPresenceCount
               const count = liveCountMap[gym.id] ?? 0;
-              const activity = getActivityLevel(count);
               const runStatus = getRunStatusLabel(count);
 
               const isFollowed = followedGyms.includes(gym.id);
@@ -465,13 +444,10 @@ export default function ViewRunsScreen({ navigation, route }) {
                         <Text style={styles.homeCourtBadgeText}>Your Home Court</Text>
                       </View>
                     )}
-                    <View style={styles.gymRow}>
-                      <Text style={[styles.gymName, { flex: 1 }]} numberOfLines={2}>{gym.name}</Text>
-                      {/* Activity badge — color dynamically set by getActivityLevel */}
-                      <View style={[styles.activityBadge, { backgroundColor: activity.color }]}>
-                        <Text style={styles.activityText}>{activity.label}</Text>
-                      </View>
-                      {/* Heart icon — follow / unfollow toggle */}
+
+                    {/* Row 1 — Gym name + heart */}
+                    <View style={styles.nameRow}>
+                      <Text style={styles.gymName} numberOfLines={2}>{gym.name}</Text>
                       <TouchableOpacity
                         style={styles.heartButton}
                         onPress={() => toggleFollow(gym.id, isFollowed)}
@@ -485,30 +461,30 @@ export default function ViewRunsScreen({ navigation, route }) {
                       </TouchableOpacity>
                     </View>
 
-                    {/* Access type badge — Free (green) or Membership / Day Pass (amber) */}
-                    {gym.accessType && (
-                      <View style={styles.accessBadgeRow}>
-                        <View style={[styles.accessBadge, { backgroundColor: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
-                          <Text style={styles.accessBadgeText}>
-                            {gym.accessType === 'free' ? 'Free' : 'Membership / Day Pass'}
+                    {/* Row 2 — Run status dot + label + access pill */}
+                    <View style={styles.statusRow}>
+                      <View style={styles.statusLeft}>
+                        <View style={[styles.statusDot, { backgroundColor: runStatus.color }]} />
+                        <Text style={[styles.statusText, { color: runStatus.color }]}>
+                          {runStatus.label}{runStatus.countText ? ` ${runStatus.countText}` : ''}
+                        </Text>
+                      </View>
+                      {gym.accessType && (
+                        <View style={[
+                          styles.inlineAccessPill,
+                          {
+                            backgroundColor: gym.accessType === 'free' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
+                            borderColor: gym.accessType === 'free' ? '#22C55E' : '#F59E0B',
+                          },
+                        ]}>
+                          <Text style={[styles.inlineAccessPillText, { color: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
+                            {gym.accessType === 'free' ? 'Free' : 'Membership'}
                           </Text>
                         </View>
-                      </View>
-                    )}
-
-                    <View style={styles.gymRow}>
-                      <Text style={styles.runType}>
-                        {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
-                        <Text style={styles.runTypeAccent}>OPEN RUN</Text>
-                      </Text>
-                      {/* Run quality label — replaces the old "{count}/15" format.
-                          Public gyms have no hard cap so showing /15 was misleading.
-                          Count comes from real-time liveCountMap, deduped by odId. */}
-                      <Text style={[styles.runStatusLabel, { color: runStatus.color }]}>
-                        {runStatus.label}{runStatus.countText ? ` ${runStatus.countText}` : ''}
-                      </Text>
+                      )}
                     </View>
 
+                    {/* Row 3 — Address + directions */}
                     <View style={styles.addressRow}>
                       <Text style={styles.gymAddress} numberOfLines={1}>{gym.address}</Text>
                       {gym.location && (
@@ -799,58 +775,56 @@ loadingText: {
   justifyContent: 'center',
   padding: SPACING.md,
 },
-  gymRow: {
+  // ── Card Row 1: name + heart ───────────────────────────────────────────────
+  nameRow: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
+    marginBottom: 5,
   },
   gymName: {
-  fontSize: FONT_SIZES.h3,
-  fontWeight: FONT_WEIGHTS.semibold,
-  color: colors.textPrimary,
-  marginRight: SPACING.xs,
-  letterSpacing: 0.3,
-  flexShrink: 1,
-},
+    fontSize: FONT_SIZES.h3,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+    letterSpacing: 0.3,
+    flex: 1,
+    marginRight: SPACING.xs,
+  },
   heartButton: {
+    marginTop: 1,
     marginLeft: SPACING.xs,
   },
-  activityBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.full,
+  // ── Card Row 2: run status + access pill ──────────────────────────────────
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 5,
   },
-  activityText: {
-    color: '#fff',
-    fontSize: FONT_SIZES.xs,
+  statusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  statusText: {
+    fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
   },
-  accessBadgeRow: {
-    flexDirection: 'row',
-    marginBottom: 4,
-  },
-  accessBadge: {
-    paddingHorizontal: SPACING.sm,
+  inlineAccessPill: {
+    paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: RADIUS.full,
-    alignSelf: 'flex-start',
+    borderWidth: 1,
+    marginLeft: SPACING.xs,
   },
-  accessBadgeText: {
-    color: '#fff',
+  inlineAccessPillText: {
     fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  runType: {
-    fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
-  },
-  runTypeAccent: {
-    color: colors.primary,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  runStatusLabel: {
-    fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.semibold,
   },
   addressRow: {
