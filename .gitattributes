@@ -1,0 +1,20 @@
+# ─── Diff suppression for auto-generated lock files ──────────────────────────
+# These files are still tracked (needed for reproducible builds) but they are
+# machine-generated and create thousands of noisy lines in every PR diff.
+# -diff tells GitHub and `git diff` to collapse them instead of showing them.
+
+package-lock.json    -diff
+ios/Podfile.lock     -diff
+
+# ─── Binary assets — treat as binary so git doesn't try to diff them ─────────
+*.png                binary
+*.jpg                binary
+*.jpeg               binary
+*.webp               binary
+*.gif                binary
+*.ico                binary
+*.pdf                binary
+*.otf                binary
+*.ttf                binary
+*.woff               binary
+*.woff2              binary

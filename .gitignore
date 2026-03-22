@@ -1,56 +1,70 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
-# dependencies
+# ─── Dependencies ────────────────────────────────────────────────────────────
 node_modules/
+node_modules_old/
 
-# Expo
+# ─── Expo ────────────────────────────────────────────────────────────────────
 .expo/
+.expo-shared/
 dist/
 web-build/
 expo-env.d.ts
 
-# Native
-.kotlin/
-*.orig.*
+# ─── Native iOS ──────────────────────────────────────────────────────────────
+ios/build/
+ios/Pods/              # CocoaPods — reproduced via `pod install`
+ios/.xcode.env.local
+
+# ─── Native Android ──────────────────────────────────────────────────────────
+android/build/
+android/app/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+android/.cxx/
+
+# ─── Build / Metro cache ─────────────────────────────────────────────────────
+build/
+.metro-health-check*
+.metro-cache/
+__pycache__/
+
+# ─── Environment variables ───────────────────────────────────────────────────
+# Keep .env.example (template for teammates) — ignore everything else
+.env
+.env.*
+!.env.example
+
+# ─── Secrets / Keys ──────────────────────────────────────────────────────────
+serviceAccountKey.json
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+*.pem
+google-services.json
+GoogleService-Info.plist
 
-# Metro
-.metro-health-check*
-
-# debug
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# ─── Editor / OS artifacts ───────────────────────────────────────────────────
 .DS_Store
-*.pem
+.idea/
+*.orig.*
+*.orig
+.vscode/settings.json
 
-# local env files
-.env*.local
-
-# typescript
+# ─── TypeScript ──────────────────────────────────────────────────────────────
 *.tsbuildinfo
 
-node_modules/
-.expo/
-.expo-shared/
-*.log
-*.env
-.DS_Store
-
-# Test coverage
+# ─── Test coverage ───────────────────────────────────────────────────────────
 coverage/
-serviceAccountKey.json
-node_modules_old/
 
-# Added: native builds + explicit env file rules
-ios/build
-android/build
-build
-.env
-.env.*
+# ─── Temp / junk files ───────────────────────────────────────────────────────
+package.json.save      # npm temp file — never commit this
+*.bak
+*.tmp
