@@ -45,6 +45,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile, useLivePresenceMap } from '../hooks';
+import { useMyRunChats } from '../hooks/useMyRunChats';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { subscribeToAllUpcomingRuns, startOrJoinRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
@@ -146,6 +147,10 @@ export default function PlanVisitScreen({ navigation }) {
 
   const { gyms, loading: gymsLoading } = useGyms();
   const { countMap } = useLivePresenceMap();
+
+  // ── Runs the user has joined — used to show/hide chat button ────────────
+  const { runChats } = useMyRunChats();
+  const joinedRunIds = useMemo(() => new Set(runChats.map((c) => c.runId)), [runChats]);
 
   // ── Community runs — all upcoming runs across all gyms ──────────────────
   const [communityRuns, setCommunityRuns] = useState([]);
@@ -369,6 +374,7 @@ export default function PlanVisitScreen({ navigation }) {
                 {communityRuns.length > 0 ? (
                   communityRuns.map((run) => {
                     const runGym = gyms.find((g) => g.id === run.gymId);
+                    const isJoined = joinedRunIds.has(run.id);
                     return (
                       <TouchableOpacity
                         key={run.id}
@@ -403,6 +409,25 @@ export default function PlanVisitScreen({ navigation }) {
                             </Text>
                           </View>
                         </View>
+                        {isJoined && (
+                          <TouchableOpacity
+                            style={styles.runCardChatButton}
+                            activeOpacity={0.7}
+                            onPress={() =>
+                              navigation.getParent()?.navigate('Runs', {
+                                screen: 'RunChat',
+                                params: {
+                                  runId: run.id,
+                                  gymId: run.gymId,
+                                  gymName: run.gymName,
+                                  startTime: run.startTime ?? null,
+                                },
+                              })
+                            }
+                          >
+                            <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
+                          </TouchableOpacity>
+                        )}
                         <View style={styles.viewRunButton}>
                           <Text style={styles.viewRunButtonText}>View</Text>
                           <Ionicons name="chevron-forward" size={12} color={colors.primary} />
@@ -965,6 +990,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: FONT_WEIGHTS.medium,
     marginTop: 1,
+  },
+  runCardChatButton: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.full,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   viewRunButton: {
     flexDirection: 'row',
