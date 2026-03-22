@@ -92,13 +92,28 @@ export default function ViewRunsScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState(null);     // null | 'indoor' | 'outdoor'
   const [accessFilter, setAccessFilter] = useState(null); // null | 'free' | 'membership'
+  const [cityFilter, setCityFilter] = useState(null);     // null | city string
   const [sortByNearest, setSortByNearest] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
 
   // Count how many filters/sorts are active so we can badge the Filter button
-  const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
+  const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (cityFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  // ── City list for city filter ─────────────────────────────────────────────
+  // Derived dynamically from loaded gyms so it auto-expands as new gyms are added.
+  const availableCities = useMemo(() => {
+    const seen = new Set();
+    const cities = [];
+    gyms.forEach((g) => {
+      if (g.city && !seen.has(g.city)) {
+        seen.add(g.city);
+        cities.push(g.city);
+      }
+    });
+    return cities.sort();
+  }, [gyms]);
 
   // ── User location for "Nearest" sort ────────────────────────────────────────
   // useLocation is already available in the hooks barrel. If the user hasn't
@@ -224,7 +239,8 @@ export default function ViewRunsScreen({ navigation, route }) {
       result = result.filter((gym) => {
         const name    = gym.name?.toLowerCase()    ?? '';
         const address = gym.address?.toLowerCase() ?? '';
-        return name.includes(q) || address.includes(q);
+        const city    = gym.city?.toLowerCase()    ?? '';
+        return name.includes(q) || address.includes(q) || city.includes(q);
       });
     }
 
@@ -244,7 +260,12 @@ export default function ViewRunsScreen({ navigation, route }) {
       result = result.filter((gym) => gym.accessType !== 'free');
     }
 
-    // ── 4. Sort ────────────────────────────────────────────────────────────
+    // ── 4. City filter ─────────────────────────────────────────────────────
+    if (cityFilter) {
+      result = result.filter((gym) => gym.city === cityFilter);
+    }
+
+    // ── 5. Sort ────────────────────────────────────────────────────────────
     if (sortByNearest && userLocation) {
       // Sort purely by distance from user — closest gym first
       result = [...result].sort((a, b) => {
@@ -268,7 +289,7 @@ export default function ViewRunsScreen({ navigation, route }) {
     }
 
     return result;
-  }, [gyms, searchQuery, typeFilter, accessFilter, sortByNearest, userLocation, homeCourtId, liveCountMap]);
+  }, [gyms, searchQuery, typeFilter, accessFilter, cityFilter, sortByNearest, userLocation, homeCourtId, liveCountMap]);
 
   // NOTE: loading gate intentionally removed from here.
   // The header, search bar, and filter pills are static and need no gym data —
@@ -333,6 +354,13 @@ export default function ViewRunsScreen({ navigation, route }) {
                   <Text style={styles.activeChipText}>
                     {accessFilter === 'free' ? 'Free' : 'Membership'}
                   </Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+              {cityFilter && (
+                <TouchableOpacity style={[styles.activeChip, { backgroundColor: '#6366F1' }]} onPress={() => setCityFilter(null)} activeOpacity={0.8}>
+                  <Ionicons name="location" size={11} color="#fff" style={{ marginRight: 3 }} />
+                  <Text style={styles.activeChipText}>{cityFilter}</Text>
                   <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
                 </TouchableOpacity>
               )}
@@ -590,6 +618,40 @@ export default function ViewRunsScreen({ navigation, route }) {
               })}
             </View>
 
+            {/* ── City ── */}
+            {availableCities.length > 0 && (
+              <>
+                <Text style={styles.sheetSectionLabel}>City</Text>
+                <View style={styles.sheetPillRow}>
+                  {availableCities.map((city) => {
+                    const active = cityFilter === city;
+                    return (
+                      <TouchableOpacity
+                        key={city}
+                        style={[styles.sheetPill, active && { backgroundColor: '#6366F1', borderColor: '#6366F1' }]}
+                        onPress={() => setCityFilter(active ? null : city)}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons name="location-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />
+                        <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{city}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <TouchableOpacity
+                  style={styles.sheetCityHint}
+                  onPress={() => {
+                    setFilterSheetVisible(false);
+                    navigation.navigate('RequestGym');
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="add-circle-outline" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+                  <Text style={styles.sheetCityHintText}>Don't see your city? Request a gym to get it added</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
             {/* ── Sort By ── */}
             <Text style={styles.sheetSectionLabel}>Sort By</Text>
             <TouchableOpacity
@@ -616,6 +678,7 @@ export default function ViewRunsScreen({ navigation, route }) {
                 onPress={() => {
                   setTypeFilter(null);
                   setAccessFilter(null);
+                  setCityFilter(null);
                   setSortByNearest(false);
                   setFilterSheetVisible(false);
                 }}
@@ -1077,6 +1140,18 @@ loadingText: {
   },
   sheetToggleThumbOn: {
     alignSelf: 'flex-end',
+  },
+  sheetCityHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: 4,
+  },
+  sheetCityHintText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.medium,
+    flexShrink: 1,
   },
   sheetClearBtn: {
     marginTop: SPACING.lg,
