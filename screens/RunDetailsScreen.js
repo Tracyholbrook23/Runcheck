@@ -379,6 +379,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [selectedRunSlot, setSelectedRunSlot] = useState(null); // time slot object
   const [startingRun, setStartingRun] = useState(false);
   const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
+  const [joiningRunId, setJoiningRunId] = useState(null);       // runId being joined
 
   // ── Report modal state ──────────────────────────────────────────────────
   const [reportVisible, setReportVisible] = useState(false);
@@ -458,7 +459,9 @@ export default function RunDetailsScreen({ route, navigation }) {
    * "start time must be in the future" validation.
    */
   const handleJoinRun = async (run) => {
+    if (joiningRunId === run.id) return;  // already in flight for this run
     const gymDisplayName = gym?.name || gymName;
+    setJoiningRunId(run.id);
     try {
       await joinExistingRun(run.id, gymId, gymDisplayName);
       hapticSuccess();
@@ -469,6 +472,8 @@ export default function RunDetailsScreen({ route, navigation }) {
       );
     } catch (err) {
       Alert.alert('Error', err.message || 'Could not join run. Please try again.');
+    } finally {
+      setJoiningRunId(null);
     }
   };
 
@@ -1779,10 +1784,15 @@ export default function RunDetailsScreen({ route, navigation }) {
                       </View>
                     ) : (
                       <TouchableOpacity
-                        style={styles.runJoinButton}
+                        style={[styles.runJoinButton, joiningRunId === run.id && { opacity: 0.6 }]}
                         onPress={() => handleJoinRun(run)}
+                        disabled={joiningRunId === run.id}
                       >
-                        <Text style={styles.runJoinButtonText}>Join Run</Text>
+                        {joiningRunId === run.id ? (
+                          <ActivityIndicator size="small" color="#fff" />
+                        ) : (
+                          <Text style={styles.runJoinButtonText}>Join Run</Text>
+                        )}
                       </TouchableOpacity>
                     )}
                     {/* Chat button — participants only.
