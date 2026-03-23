@@ -68,10 +68,16 @@ export default function ClaimUsernameScreen({ navigation }) {
       return;
     }
 
+    if (username.length < 3 || username.length > 20) {
+      setError('Username must be between 3 and 20 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z]/.test(username)) {
+      setError('Username must start with a letter (a–z).');
+      return;
+    }
     if (!USERNAME_REGEX.test(username)) {
-      setError(
-        'Username must be 3–20 characters, start with a letter, and contain only letters, numbers, dots, or underscores.',
-      );
+      setError('Username can only contain letters, numbers, dots, and underscores.');
       return;
     }
 
@@ -176,6 +182,9 @@ export default function ClaimUsernameScreen({ navigation }) {
                   setError('');
                 }}
               />
+              <Text style={styles.fieldHint}>
+                3–20 characters · must start with a letter · letters, numbers, dots, underscores
+              </Text>
 
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -239,6 +248,12 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     padding: SPACING.lg,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
+  },
+  fieldHint: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.sm,
   },
   errorText: {
     fontSize: FONT_SIZES.small,

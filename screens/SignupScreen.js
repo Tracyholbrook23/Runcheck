@@ -204,11 +204,17 @@ export default function SignupScreen({ navigation }) {
     // Combine first + last name into a single display name for the profile
     const name = `${firstName.trim()} ${lastName.trim()}`;
 
-    // Validate username format
+    // Validate username format — targeted messages so the user knows exactly what to fix
+    if (username.length < 3 || username.length > 20) {
+      setFormError('Username must be between 3 and 20 characters.');
+      return;
+    }
+    if (!/^[a-zA-Z]/.test(username)) {
+      setFormError('Username must start with a letter (a–z).');
+      return;
+    }
     if (!USERNAME_REGEX.test(username)) {
-      setFormError(
-        'Username must be 3–20 characters, start with a letter, and contain only letters, numbers, dots, or underscores.',
-      );
+      setFormError('Username can only contain letters, numbers, dots, and underscores.');
       return;
     }
 
