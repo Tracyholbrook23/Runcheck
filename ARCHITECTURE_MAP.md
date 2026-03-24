@@ -107,10 +107,11 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Screen Layer
 | File | Role |
 |------|------|
-| `screens/ProfileScreen.js` | Full profile dashboard: reliability score card, session stats grid, courts list, friends, settings, sign-out |
-| `screens/UserProfileScreen.js` | View another user's profile (read-only) |
+| `screens/ProfileScreen.js` | Full profile dashboard: reliability score card, session stats grid, courts list, friends, settings, sign-out. Admin Tools badge (Zone 7 overlap). My Clips + Tagged In + Featured In (Zone 8 overlap). |
+| `screens/UserProfileScreen.js` | View another user's profile (read-only). "Message" button → DMConversationScreen. |
+| `screens/EditProfileScreen.js` | Edit Display Name + Skill Level. Read-only: Email, Username. In ProfileStack. Added 2026-03-22. |
 | `screens/LoginScreen.js` | Auth: email/password sign-in |
-| `screens/SignupScreen.js` | Auth: new account registration |
+| `screens/SignupScreen.js` | Auth: new account registration. Collects username, firstName, lastName. Firestore write deferred to VerifyEmailScreen. |
 
 ### Test Layer
 | File | Role |
@@ -131,10 +132,18 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `utils/locationUtils.js` | GPS utility module: `isLocationGranted`, `requestLocationPermission`, `getCurrentLocation`, `calculateDistanceMeters`. Dev mode returns Cowboys Fit coords. Used by `useProximityCheckIn`. |
 | `utils/haptics.js` | Haptic feedback helpers with no-op fallbacks: `hapticSuccess`, `hapticLight`, `hapticMedium`, `hapticHeavy`. Used in CheckInScreen, RunDetailsScreen, RecordClipScreen, TrimClipScreen. |
 
+### Service Layer
+| File | Role |
+|------|------|
+| `services/dmService.js` | DM service: `openOrCreateConversation` (idempotent, deterministic `conversationId`), `subscribeToConversations`, `sendDMMessage`, `markConversationSeen`. |
+
 ### Key Firestore Collections
 - `users/{uid}` — profile, reliability sub-object, activePresence (denormalized)
+- `usernames/{usernameLower}` — username reservation docs `{ uid, createdAt }`. Uniqueness enforced; written atomically with `users/{uid}` in Firestore transaction. Added 2026-03-22.
 - `schedules/{scheduleId}` — individual schedule records
 - `friendRequests/{autoId}` — incoming/outgoing friend requests
+- `conversations/{conversationId}` — DM conversation docs (deterministic ID: `[uid_a, uid_b].sort().join('_')`). ⚠️ Firestore rules not yet deployed.
+- `conversations/{conversationId}/messages/{autoId}` — DM message subcollection. ⚠️ Firestore rules not yet deployed.
 
 ### Known Issues (see DEV_TASKS.md)
 - **RC-003**: Reliability score card may not reflect latest Cloud Function writes
@@ -161,13 +170,17 @@ Zone assignments are based on file content, service dependencies, and the data m
 |------|------|
 | `screens/HomeScreen.js` | Main dashboard: hero section, Presence Card, Quick Actions, LIVE indicator, Live Runs scroll, Recent Activity feed |
 | `screens/SplashScreen.jsx` | Animated intro/loading screen |
+| `screens/OnboardingRegionScreen.js` | First-time onboarding step 0: Austin TX geographic focus notice. Added 2026-03-21. |
 | `screens/OnboardingWelcomeScreen.js` | First-time onboarding step 1: branded welcome |
 | `screens/OnboardingHomeCourtScreen.js` | First-time onboarding step 2: gym/home court picker |
 | `screens/OnboardingFinishScreen.js` | First-time onboarding step 3: location permission + finish |
-| `screens/VerifyEmailScreen.js` | Email verification gate (post-signup / post-login) |
-| `screens/ClaimUsernameScreen.js` | Username migration gate for existing users |
-| `screens/SettingsScreen.js` | Account settings: sign out, delete account, preferences |
+| `screens/VerifyEmailScreen.js` | Email verification gate (post-signup / post-login). On new-user path: writes Firestore profile + reserves `usernames/{usernameLower}` in a single transaction. |
+| `screens/ClaimUsernameScreen.js` | Username migration gate for existing users without a `username` field. Validates via `USERNAME_REGEX`, reserves via Firestore transaction. Routes to Main if `onboardingCompleted`, else OnboardingWelcome. Added 2026-03-22. |
+| `screens/SettingsScreen.js` | Account settings: sign out, delete account, preferences, "Account Info" row → EditProfileScreen |
+| `screens/EditProfileScreen.js` | Edit Display Name (Firestore + Firebase Auth `displayName`) and Skill Level. Username shown read-only. Accessible via ProfileStack → Settings → Account Info. Added 2026-03-22. |
 | `screens/SearchUsersScreen.js` | User search by username prefix (live suggestions) |
+| `screens/MessagesScreen.js` | Unified Messages inbox. `SectionList` with two sections: (1) Direct Messages ordered by `lastActivityAt`; (2) Run Chats for active run group chats. Search bar debounces Firestore `usernameLower` prefix query for new conversation starters. Entry point: HomeScreen header icon + ProfileScreen "Messages" row. Added 2026-03-21. |
+| `screens/DMConversationScreen.js` | 1:1 DM chat screen. Calls `markConversationSeen` on mount. Real-time message subscription. FlatList + text input. Tapping other user's name/avatar → UserProfileScreen. Added 2026-03-21. |
 | `screens/PremiumScreen.js` | Premium features screen |
 | `screens/CreatePrivateRunScreen.js` | **UI-only Premium teaser** for Private Run and Paid Run features. Interactive form with payout calculator. CTA shows "Coming Soon" modal → navigates to PremiumScreen. No Firestore writes. |
 | `screens/LeaderboardScreen.js` | Community leaderboard |
@@ -484,5 +497,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-22 (Run Level Phase 1: `runLevel` field added to `runs/{autoId}` schema. Picker in RunDetailsScreen Start-a-Run modal, badge on run cards. Filter (Any/Casual/Mixed/Competitive) in ViewRunsScreen filter sheet using `subscribeToAllUpcomingRuns`. Client-side only, backwards compatible.)_
+_Last updated: 2026-03-23 (Weekly cleanup: added OnboardingRegionScreen, ClaimUsernameScreen, EditProfileScreen, MessagesScreen, DMConversationScreen to zone listings. Added `usernames/` collection and `conversations/` collection to Zone 3. Added `dmService.js` to Zone 3 service layer. Updated VerifyEmailScreen and SignupScreen role descriptions to reflect username system. Previous: 2026-03-22 — Run Level Phase 1: `runLevel` field added to `runs/{autoId}` schema.)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

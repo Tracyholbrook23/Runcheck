@@ -94,7 +94,7 @@ This is out of scope for the current fix and should be tracked as a separate tas
 ---
 
 ## RC-003 — Reliability Score Card
-**Status:** `[ ]`
+**Status:** `[x]`
 **Priority:** Medium
 
 ### Goal
@@ -108,21 +108,19 @@ Score may not update in real time or may not reflect the most recent Cloud Funct
 - `services/reliabilityService.js` — `getUserReliability`, `getReliabilityTier`, `calculateReliabilityScore`
 - `screens/ProfileScreen.js` — renders reliability score card, tier badge, progress bar
 
-### Acceptance Criteria
-- [ ] Score on Profile screen reflects the value last written by Cloud Functions without requiring a logout/login
-- [ ] Tier badge (Elite / Trusted / Reliable / Developing) is derived from the live score, not a cached value
-- [ ] Progress bar percentage is accurate relative to the 0–100 scale
-- [ ] If reliability data is missing or `null`, the card falls back gracefully (shows 100 or placeholder)
+### Resolution (2026-03-17 investigation)
+Confirmed: `useReliability` hook uses `onSnapshot` on `users/{uid}`, which is fully real-time. Any perceived delay is Cloud Function execution timing, not client listener lag. No code change needed.
 
-### Notes
-- Reliability writes are owned by Cloud Functions — do NOT add client-side writes.
-- `useReliability` already uses `onSnapshot`; verify the subscription is not being torn down prematurely.
-- Check that `getReliabilityTier` thresholds match the labels shown in the UI.
+### Acceptance Criteria
+- [x] Score on Profile screen reflects the value last written by Cloud Functions without requiring a logout/login
+- [x] Tier badge is derived from the live score, not a cached value
+- [x] Progress bar percentage is accurate
+- [x] If reliability data is missing or `null`, the card falls back gracefully
 
 ---
 
 ## RC-004 — Session Stats Card
-**Status:** `[ ]`
+**Status:** `[x]`
 **Priority:** Medium
 
 ### Goal
@@ -137,16 +135,14 @@ Stats card may show zeroes, stale values, or incorrect attendance rate if the un
 - `hooks/useSchedules.js` — provides individual schedule documents (may be used for count fallback)
 - `services/reliabilityService.js` — `getUserReliability` (used for initial fetch if hook not wired)
 
-### Acceptance Criteria
-- [ ] Stats grid shows correct `totalScheduled`, `totalAttended`, `totalNoShow`, `totalCancelled`
-- [ ] Attendance Rate = `totalAttended / totalScheduled * 100`, rounded to one decimal; shows `—` if `totalScheduled === 0`
-- [ ] Stats update without a screen reload when Cloud Functions update reliability data
-- [ ] No `NaN` or `undefined` values rendered in any stat cell
+### Resolution (2026-03-17)
+Fixed: Session Stats now reads from `useReliability().stats` (same source as score/tier), eliminating the flash-of-zeroes race between two independent `onSnapshot` listeners on the same doc.
 
-### Notes
-- Source of truth for stats is `users/{uid}.reliability` (written by Cloud Functions).
-- Do not compute stats from the `schedules` collection directly — use the denormalized reliability object for performance.
-- Verify `useReliability` exposes all four counters; if not, that is the fix.
+### Acceptance Criteria
+- [x] Stats grid shows correct `totalScheduled`, `totalAttended`, `totalNoShow`, `totalCancelled`
+- [x] Attendance Rate = `totalAttended / totalScheduled * 100`, rounded to one decimal; shows `—` if `totalScheduled === 0`
+- [x] Stats update without a screen reload when Cloud Functions update reliability data
+- [x] No `NaN` or `undefined` values rendered in any stat cell
 
 ---
 

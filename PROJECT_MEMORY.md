@@ -1,5 +1,5 @@
 # RunCheck — Project Memory Snapshot
-_Last updated: 2026-03-22 (nightly-memory — no code changes; status carried forward)_
+_Last updated: 2026-03-23 (weekly-cleanup — compressed pre-2026-03-22 session history; removed stale Debug Logs section; updated Known Issues to reflect current security gaps)_
 
 ## Goal
 A React Native mobile app where basketball players check into gyms in real time, see who's playing, earn rank points, and follow gyms.
@@ -140,7 +140,7 @@ const getRunEnergyLabel = (count) => {
 - **Gym request system (2026-03-15)**: Users can submit gym requests via Cloud Function with server-enforced 1-per-7-day rate limit. "My Gym Requests" screen in Profile tab shows real-time status with pending-only badge. Entry point in ViewRunsScreen ("Don't see your gym?"). Admin workflow: review in Firebase Console → add gym via `seedProductionGyms.js` → update request doc.
 - **Gym image migration to Firebase Storage (2026-03-15)**: Storage path convention `gymImages/{gymId}.jpg`. Public read, admin-only write. Seed script warns on external image URLs. Fitness Connection is the first gym migrated to Firebase Storage.
 - **Reporting system (2026-03-15)**: Users can report clips, players, runs, and gyms via `ReportModal` component. Reports submitted via `submitReport` Cloud Function with server-side duplicate prevention (one report per user per item). Reports stored in `reports` Firestore collection with `targetOwnerId` resolved per type (player→targetId, clip→uploaderUid, run→creatorId, gym→null). Admin Tools has a live "Reports / Moderation" screen (`AdminReportsScreen`) with real-time `onSnapshot` listener, type/status badges, and pending count. Admins can mark reports as "reviewed" or "resolved" and attach optional notes via the `moderateReport` Cloud Function. No user bans or content deletion yet.
-- **Moderation system (2026-03-16)**: Full auto-moderation + admin moderation pipeline. `moderationHelpers.ts` is the single source of truth for all enforcement logic (hide clip, remove run, suspend user, unsuspend user, unhide clip, resolve report). Auto-moderation thresholds: clip→3 reports, run→3 reports, player→5 reports — triggered inside `submitReport` when pending report count reaches the threshold. Timed suspension escalation: `ESCALATION_DAYS = [1, 3, 7, 30, 365]` based on `suspensionLevel` on the user doc. Admin callables: `hideClip`, `removeRun`, `suspendUser`, `unsuspendUser`, `unhideClip`, `moderateReport` — all require `users/{uid}.isAdmin === true`. Client calls via `callFunction('functionName', payload)` from `config/firebase.js`.
+- **Moderation system (2026-03-16, hardened 2026-03-24)**: Full auto-moderation + admin moderation pipeline. `moderationHelpers.ts` is the single source of truth for all enforcement logic (hide clip, remove run, suspend user, unsuspend user, unhide clip, resolve report). Auto-moderation thresholds: clip→3 reports, run→3 reports, player→5 reports — triggered inside `submitReport` when **pending** report count reaches the threshold (resolved/reviewed reports excluded from count). Timed suspension escalation: `ESCALATION_DAYS = [1, 3, 7, 30, 365]` based on `suspensionLevel` on the user doc. Admin callables: `hideClip`, `removeRun`, `suspendUser`, `unsuspendUser`, `unhideClip`, `moderateReport` — all require `users/{uid}.isAdmin === true`. Client calls via `callFunction('functionName', payload)` from `config/firebase.js`. Suspension enforced in: `presenceService.checkIn`, `runService.startOrJoinRun`, `dmService.sendDMMessage`, `createClipSession` Cloud Function.
 - **Admin dashboards (2026-03-16)**: Admin Tools hub screen (`AdminToolsScreen`) with live pending counts per tool. Sub-screens: `AdminGymRequestsScreen` (with detail view), `AdminReportsScreen` (type/status badges, resolve/review actions), `AdminSuspendedUsersScreen` (user avatar, suspendedBy resolved to display name, unsuspend action), `AdminHiddenClipsScreen` (clip thumbnail preview, play icon overlay, hiddenBy resolved to display name, uploader avatar, unhide action, tappable thumbnails to view video in ClipPlayerScreen). All admin screens gated by `useIsAdmin` hook. Admin badge on Profile → Admin Tools row counts total workload: pending gym requests + pending reports + currently suspended users + hidden clips.
 - **Profile badges (2026-03-16)**: "My Gym Requests" badge on Profile now counts only `status === 'pending'` requests (was total count). Uses `pendingCount` from `useMyGymRequests` hook. Badge disappears when all requests are approved/rejected/duplicate.
 - **Clip tagging V1 (2026-03-17)**: Users can tag up to 5 friends when posting a clip. Backend validates tags in `finalizeClipUpload` (dedupe, verify uid exists, trim displayName). Tags displayed as tappable `@Name` chips on ClipPlayerScreen. TrimClipScreen has a collapsible friend picker.
@@ -154,13 +154,18 @@ const getRunEnergyLabel = (count) => {
 - **Gradient avatar ring (2026-03-19)**: Orange/red/dark LinearGradient ring (`#FF4500 → #CC1100 → #1A0000 → #FF6B00`) on own profile (`ProfileScreen`) and other users' profiles (`UserProfileScreen`).
 - **Rank card redesign (2026-03-19)**: Unified rank card on ProfileScreen — rank icon + name + skill badge + points + progress bar + "X pts to next rank" + leaderboard button all in one bordered card. Previous multi-card layout replaced.
 - **Premium plan toggle (2026-03-19)**: Monthly/Annual pricing cards on PremiumScreen are `TouchableOpacity`. `selectedPlan` state defaults to `'annual'`. Selected card gets orange border; CTA button updates to reflect selected price.
-- **Direct Messaging (DM) System (2026-03-21)**: 1:1 private chat between any two users. `conversations/{conversationId}` (deterministic ID: `[uid_a, uid_b].sort().join('_')`) + `conversations/{id}/messages/{autoId}` subcollection. `dmService.js` is the full service. Unread count derived client-side from `lastActivityAt > lastSeenAt[uid]` (no extra reads). `MessagesScreen` is unified inbox for DMs + Run Chats with user search and new-conversation discovery. `DMConversationScreen` is the 1:1 chat view. "Message" button on `UserProfileScreen` opens or creates conversation. Unread badge on HomeScreen header icon and ProfileScreen "Messages" row. DM notification taps (data.type === 'dm') navigate to DMConversationScreen from any stack. ⚠️ Firestore rules for `conversations` collection and `onDmMessageCreated` Cloud Function (for push notifications) not yet implemented.
+- **Direct Messaging (DM) System (2026-03-21, hardened 2026-03-24)**: 1:1 private chat between any two users. `conversations/{conversationId}` (deterministic ID: `[uid_a, uid_b].sort().join('_')`) + `conversations/{id}/messages/{autoId}` subcollection. `dmService.js` is the full service. Unread count derived client-side from `lastActivityAt > lastSeenAt[uid]` (no extra reads). `MessagesScreen` is unified inbox for DMs + Run Chats with user search and new-conversation discovery. `DMConversationScreen` is the 1:1 chat view with a flag button in the header that opens `ReportModal` (type="player", targetId=otherUserId). `dmService.sendDMMessage` blocks suspended users (same pattern as presenceService). "Message" button on `UserProfileScreen` opens or creates conversation. Unread badge on HomeScreen header icon and ProfileScreen "Messages" row. DM notification taps (data.type === 'dm') navigate to DMConversationScreen from any stack. ⚠️ Firestore rules for `conversations` collection and `onDmMessageCreated` Cloud Function (for push notifications) not yet implemented.
 - **OnboardingRegionScreen (2026-03-21)**: New step 0 in the onboarding flow. Shows 4 bullets about Austin TX geographic focus and gym request option. `VerifyEmailScreen` now routes to `OnboardingRegion` → `OnboardingWelcome` → `OnboardingHomeCourt` → `OnboardingFinish` after profile write. Navigation gate order updated: step 3b now goes to `OnboardingRegion` first.
 - **Run Chat MVP (2026-03-20, simulator testing pending)**: Participants-only group chat on every run. `runs/{runId}/messages` subcollection with `serverTimestamp()` ordering. Access gated by `runParticipants/{runId}_{userId}` doc existence (Firestore rules + client-side). Chat button on RunDetailsScreen only visible to joined participants. Non-participants and Firestore errors both render clean gated states (no spinner hang, no red screen). React Strict Mode double-invocation handled by guarding the subscription on `participantLoading`. ⚠️ Firestore rules not yet deployed — deploy before testing on device.
 - **ViewRunsScreen immediate render (2026-03-20)**: Header gradient, title, search bar, and filter pills now render immediately on tab open. Loading spinner is inline within the gym list instead of a full-screen early return.
 - **Phase 1 Push Notifications (2026-03-20, deployed)**: Permission prompt fires on first launch; Expo push token saved to `users/{uid}.pushToken` via `registerPushToken()` in `utils/notifications.js` (called on `MainTabs` mount in `App.js`). Foreground notification display wired via `Notifications.setNotificationHandler`. Three Cloud Functions deployed: `notifyRunStartingSoon` (scheduled every 5 min — reminds participants 25–35 min before run start), `onRunParticipantJoined` (Firestore onCreate trigger — notifies creator when someone joins, 5-min cooldown), `onParticipantCountMilestone` (onUpdate trigger — notifies creator at 5/10/20 player milestones). Cooldown deduplication via `users/{uid}.notifCooldowns` map. ⚠️ `notifCooldowns` will grow unboundedly — migrate to subcollection before ~500 active users (BACKEND Known Issue #9).
 - **Open Run flow improvement (2026-03-20)**: HomeScreen "Open Run" quick-action now passes `openStartRun: true` param through ViewRunsScreen directly to RunDetailsScreen, which auto-opens the run creation modal (skipping the intermediate run-type picker). Reduces taps for the most common run creation path. "Start a Run" outlined button added at top of RunDetailsScreen next to "Check In Here". Upcoming Runs section moved above Now Playing in RunDetailsScreen.
 - **OTA channel fix (2026-03-20, requires fresh build)**: `eas.json` production profile now has `"channel": "production"`. Current TestFlight binary is missing the channel header baked in; OTA updates do not apply until a fresh build is submitted (~April 1 when build quota resets). Simulator use recommended for frontend validation until then.
+- **Run Level Phase 1 (2026-03-22)**: Runs now have a `runLevel` field (`'casual'|'mixed'|'competitive'`) set by the creator at run creation. Picker in the Start-a-Run modal (3 pills). Badge on run cards in RunDetailsScreen (Casual = green, Competitive = red, Mixed = hidden). Filter in ViewRunsScreen filter sheet (Any/Casual/Mixed/Competitive, client-side). Backwards compatible: old runs without the field are treated as `'mixed'`. Client-side only — no Cloud Function or backend schema deploy needed.
+- **Run Chat expiry (2026-03-22)**: Each run's group chat is active for 4 hours after `startTime` (`chatExpiresAt = startTime + RUN_CHAT_EXPIRY_MS`). Written on run creation. `RunChatScreen` shows a read-only "This run chat has ended" banner replacing the input bar after expiry. `useMyRunChats` hides expired chats from the Messages inbox. Firestore `isChatActive()` rule hard-blocks new writes after expiry.
+- **Run Chat unread detection (2026-03-22)**: `sendRunMessage` stamps `lastMessageAt` on `runs/{runId}` (fire-and-forget). `markRunChatSeen` writes `lastReadAt` on `runParticipants/{runId}_{uid}` when the user opens the chat. `useMyRunChats` derives `isUnread = lastMessageAt > lastReadAt`, exposes `runChatUnreadCount`. HomeScreen Messages badge now shows total unread = `dmUnreadCount + runChatUnreadCount`.
+- **EditProfileScreen (2026-03-22)**: New screen for editing Display Name and Skill Level. Writes to Firestore `users/{uid}.name` and Firebase Auth `displayName`. Accessible via Settings → Account Info in ProfileStack.
+- **Username system (2026-03-22, late)**: Every RunCheck account now has a unique `username`. Chosen during signup (new users) or via `ClaimUsernameScreen` (migration gate for existing accounts). Uniqueness enforced by a `usernames/{usernameLower}` reservation doc written atomically with the user profile in a Firestore transaction. `SignupScreen` now collects first name, last name, and username (plus previous fields); Firestore profile write deferred to `VerifyEmailScreen` (post email-confirmation) to avoid storing unverified accounts. `ClaimUsernameScreen` handles existing users missing the field — routes to Main if `onboardingCompleted`, else OnboardingWelcome. `users/{uid}` now includes `username`, `usernameLower`, `firstName`, `lastName`, `phoneNumber: null` fields.
 
 ## Planned: Verified Run History (post-launch, not a launch blocker)
 
@@ -172,281 +177,140 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 
 ---
 
-## Files Modified Recently (2026-03-21 session — DM System, Messages Inbox, OnboardingRegion)
+## Files Modified Recently (2026-03-24 — AdminReportsScreen Message Report Polish)
 
 | File | What changed |
 |------|-------------|
-| `services/dmService.js` | **NEW** — Full DM service. `openOrCreateConversation({currentUid, currentUserName, currentUserAvatar, otherUid, otherUserName, otherUserAvatar})` — idempotent: deterministic `conversationId = [uid_a,uid_b].sort().join('_')`, checks existing doc before writing. `subscribeToConversations(uid, callback)` — real-time inbox ordered by `lastActivityAt` desc. `sendDMMessage({conversationId, senderId, text})` — two sequential writes: message subcollection + conversation metadata update (lastMessage, lastActivityAt). `markConversationSeen(conversationId, uid)` — dot-notation field path `lastSeenAt.${uid}` for unread clearing. |
-| `hooks/useConversations.js` | **NEW** — Wraps `dmService.subscribeToConversations`. Returns `{ conversations, loading, unreadCount }`. Unread detection: `lastActivityAt > lastSeenAt[uid]` (both on conversation doc — no extra Firestore reads). |
-| `hooks/useMyRunChats.js` | **NEW** — Subscribes to all `runParticipants` docs for the current user via `subscribeToAllUserRuns`, then enriches each with a `getDoc` on `runs/{runId}` for gymName + startTime. For the Messages inbox "Run Chats" section. Returns `{ runChats, loading }`. |
-| `screens/MessagesScreen.js` | **NEW** — Unified Messages inbox. Two sections via `SectionList`: (1) Direct Messages — DM conversations ordered by `lastActivityAt`; (2) Run Chats — user's active run group chats with gym name + startTime label. Search bar at top: instantly filters existing DMs/Run Chats client-side; after 400 ms debounce (≥ 2 chars) queries Firestore `usernameLower` prefix for new conversation starters ("Players" section). Entry points: HomeScreen header icon + ProfileScreen "Messages" row. Registered in HomeStack and ProfileStack. |
-| `screens/DMConversationScreen.js` | **NEW** — 1:1 DM chat screen. Custom header (headerShown: false). On mount: calls `markConversationSeen`. Real-time message subscription via `subscribeToConversations` filtered to this conversationId. FlatList + text input. Tapping other user's name/avatar navigates to UserProfileScreen. No read receipts or typing indicators (MVP scope). |
-| `screens/OnboardingRegionScreen.js` | **NEW** — Service area notice, added as step 0 of onboarding (before OnboardingWelcome). 4 bullet points explaining Austin TX geographic focus, expansion plans, and gym request option. |
-| `screens/HomeScreen.js` | Added Messages icon to header (alongside Trophy + Profile icons). Shows `dmUnreadCount` badge from `useConversations`. Navigates to `MessagesScreen`. |
-| `screens/ProfileScreen.js` | Added "Messages" menu row with `dmUnreadCount` badge. Navigates to `MessagesScreen`. Uses `useConversations` for unread count. |
-| `screens/UserProfileScreen.js` | Added "Message" button below Follow button on other users' profiles. `handleMessage` calls `openOrCreateConversation`, then navigates to `DMConversationScreen` with conversationId + other user info. |
-| `screens/VerifyEmailScreen.js` | After profile write completes, now navigates to `OnboardingRegion` (was `OnboardingWelcome` directly). |
-| `services/runService.js` | **`subscribeToAllUserRuns(userId, callback)`** — NEW function. Real-time subscription to all `runParticipants` docs where `userId` field matches. Used by `useMyRunChats`. |
-| `hooks/index.js` | Exported `useConversations` and `useMyRunChats`. |
-| `App.js` | Imported + registered `MessagesScreen` and `DMConversationScreen` in HomeStack, RunsStack (DMConversation only), and ProfileStack. Imported + registered `OnboardingRegionScreen` in auth flow. Added DM notification tap handler: `data.type === 'dm'` navigates to `HomeStack › DMConversation`. |
+| `screens/AdminReportsScreen.js` | (1) `formatRelativeTime` now handles plain `{ seconds, nanoseconds }` objects (Firestore Timestamps serialized through callable functions) in addition to proper Timestamp instances and numeric values. Falls back to `'Unknown'` for any value that still produces an invalid Date — fixes "Sent: Invalid Date" on message report cards. (2) Target info row (`link-outline`) is now skipped for `type === 'message'` — the blue quoted excerpt already shows the message text, so the `Message: "..."` label was a duplicate. (3) `messageExcerpt.marginBottom` bumped from `6` → `SPACING.sm` for a small breathing room improvement before the Sender/Received by/Sent meta rows. |
 
 ---
 
-## Files Modified Recently (2026-03-20 session — Run Chat MVP, ViewRunsScreen Loading Fix)
+## Files Modified Recently (2026-03-24 — Report + Block in One Flow + More Admin Context)
 
 | File | What changed |
 |------|-------------|
-| `services/runChatService.js` | **NEW** — `subscribeToRunMessages(runId, callback)` + `sendRunMessage({...})`. Error callback calls `callback([], error)` (not just `console.error`) so the component can surface a clean error state instead of hanging on a spinner. |
-| `screens/RunChatScreen.js` | **NEW** — Participants-only group chat screen. Five render states: participant loading → non-participant gate → Firestore error gate → messages loading → live chat with FlatList + input bar. Subscription effect guards on `participantLoading` in deps to prevent React Strict Mode double-invocation from opening a premature Firestore subscription. |
-| `App.js` | Added `RunChatScreen` import + `<Stack.Screen name="RunChat" ...>` inside RunsStack. |
-| `screens/RunDetailsScreen.js` | Chat button added (`<Ionicons name="chatbubble-outline">`), wrapped in `{isJoined && (...)}` so non-participants never see it. Navigates to `RunChat` with `{ runId, gymId, gymName }`. |
-| `runcheck-backend/firestore.rules` | Added `match /messages/{messageId}` subcollection block inside `match /runs/{runId}`. Both read and create require `exists(runParticipants/{runId}_{uid})` participation proof. `senderId` must match `request.auth.uid` on create. Update/delete always denied. **⚠️ Must be deployed: `firebase deploy --only firestore:rules` from `~/Desktop/runcheck-backend`.** |
-| `screens/ViewRunsScreen.js` | Removed full-screen `if (loading) return <SafeAreaView>...` early return. Replaced with inline spinner inside ScrollView so header, search bar, and filter pills render immediately on tab open. |
+| `components/ReportModal.js` | Added `blockSenderId` optional prop. Added `alsoBlock` boolean state (default false), reset in `resetForm`. Imported `auth` from firebase config and `blockUser` from dmService. After successful `submitReport`, if `alsoBlock && blockSenderId`, calls `blockUser(currentUid, blockSenderId)` best-effort (errors swallowed). Success alert text varies: mentions block if block was performed. Added "Also block this user" toggle row (shown only for `type === 'message' && blockSenderId`) with sub-label "They won't be able to message you". Styles: `alsoBlockRow`, `alsoBlockLabel`, `alsoBlockSub`. |
+| `screens/DMConversationScreen.js` | Message-level `<ReportModal>` now passes `blockSenderId={reportTarget?.senderId}`. |
+| `screens/AdminReportsScreen.js` | "Owner:" label now shows "Sender:" for `type === 'message'` reports. Added two new meta rows for message reports only: "Received by:" showing `report.reporterName` (already on doc — zero extra reads), "Sent:" showing `formatRelativeTime(report.messageContext.messageSentAt)` (already on doc — zero extra reads). |
+
+**User flow (Report + Block):** Long-press message → Report modal opens with message preview → choose reason → optionally toggle "Also block this user" → Submit → report created → block applied if toggled → single success alert.
+
+**Admin additions (zero extra Firestore reads):** Message report cards now show Sender name (via existing ownerNames lookup, relabelled), Received by (reporterName already on doc), Sent time (messageSentAt already in messageContext on doc).
+
+**V1 limitations:** `blockUser` is idempotent (`arrayUnion`), so toggling "Also block" when already blocked is a no-op. Toggle is always shown for message reports regardless of current block state. No undo from inside the report modal (user can unblock from UserProfileScreen).
 
 ---
 
-## Files Modified Recently (2026-03-20 session — Phase 1 Push Notifications, Open Run Flow, OTA Diagnosis)
+## Files Modified Recently (2026-03-24 — V1 Message-Level DM Reporting)
 
 | File | What changed |
 |------|-------------|
-| `screens/HomeScreen.js` | Open Run quick-action now navigates directly to ViewRunsMain with `openStartRun: true` param (skips redundant type picker on gym screen). OTA debug label + `RunCheck ✓` header marker added and removed same session. |
-| `screens/ViewRunsScreen.js` | Reads `route.params?.openStartRun` and passes it through to RunDetailsScreen via navigation params. |
-| `screens/RunDetailsScreen.js` | Auto-opens run creation modal (not type sheet) when `openStartRun` param is true. Moved Upcoming Runs section above Now Playing. Added "Start a Run" outlined button at top of screen next to "Check In Here". Removed Private Run and Paid Run from gym-level type sheet (those are user-provided-venue only). `startRunButton` onPress now opens run modal directly, skipping type picker. |
-| `screens/CreatePrivateRunScreen.js` | Platform fee changed from 10% to 5% — label, disclaimer, and payout math all updated. |
-| `App.js` | Added module-level `Notifications.setNotificationHandler` for foreground notification display. Added `useEffect` with `addNotificationReceivedListener` + `addNotificationResponseReceivedListener`. Wired `registerPushToken()` from `utils/notifications.js` into `MainTabs` mount. |
-| `app.json` | `ios.runtimeVersion` changed from `{ "policy": "appVersion" }` to `"1.0.0"` (bare workflow requirement). `expo-notifications` plugin added. |
-| `eas.json` | Added `"channel": "production"` to production build profile. Fixes OTA — channel header now baked into binary on next build. |
-| `LAUNCH_CHECKLIST.md` | TestFlight build marked complete. Added pending item for fresh iOS build (quota resets ~April 1). |
-| `runcheck-backend/functions/src/notificationHelpers.ts` | **NEW** — shared `sendExpoPush()` (Expo Push API via Node https) + `checkAndSetCooldown()` (Firestore transaction deduplication) helpers. |
-| `runcheck-backend/functions/src/notifyRunStartingSoon.ts` | **NEW** — scheduled Cloud Function (every 5 min). Finds runs starting in 25–35 min window, sends reminder push to all participants. Cooldown key `runReminder_{runId}`, 24h TTL. |
-| `runcheck-backend/functions/src/onRunParticipantJoined.ts` | **NEW** — Firestore onCreate trigger on `runParticipants/{docId}`. Notifies run creator when someone joins. Skips self-join. Cooldown key `participantJoined_{runId}`, 5-min TTL (batches rapid joins). |
-| `runcheck-backend/functions/src/onParticipantCountMilestone.ts` | **NEW** — Firestore onUpdate trigger on `runs/{runId}`. Notifies creator when `participantCount` crosses 5, 10, or 20. Cooldown key `runMilestone_{runId}_{threshold}`, 24h TTL. |
-| `runcheck-backend/functions/src/index.ts` | Exported `notifyRunStartingSoon`, `onRunParticipantJoined`, `onParticipantCountMilestone`. Deployed to Firebase. |
+| `runcheck-backend/functions/src/submitReport.ts` | Added `'message'` to `VALID_TYPES`. Added `MessageContext` interface `{ conversationId, messageId, senderId, messageText, messageSentAt? }`. Extended `SubmitReportData` with optional `messageContext?`. Extended `ReportDocument` with optional `messageContext?`. Added section 2e to validate and sanitize messageContext (required for type='message'). Added 'message' case to targetOwnerId resolution using `messageContext.senderId`. Stored validated messageContext on the report doc via spread. |
+| `components/ReportModal.js` | Added optional `messageContext` prop. Forwarded `messageContext` in `submitReport` payload when present. Added `type === 'message'` to `typeLabel` switch. Added italicised message preview box between subtitle and reason selector when `messageContext.messageText` is present. Added `messagePreview` and `messagePreviewText` styles. |
+| `screens/DMConversationScreen.js` | `MessageBubble` now accepts `onLongPress` prop — wraps the bubble `View` in a `TouchableOpacity` with `delayLongPress={400}`, disabled when no handler. `renderMessage` passes `onLongPress` for non-own messages that sets `reportTarget` state. Added `reportTarget` state `{ messageId, senderId, messageText, messageSentAt }`. Added second `<ReportModal>` bound to `reportTarget` with `type="message"` and full `messageContext` object. |
+| `screens/AdminReportsScreen.js` | Added `message: { label: 'Message', icon: 'chatbubble-outline', color: '#0EA5E9' }` to `TYPE_CONFIG`. `resolveLabels` now handles `type === 'message'` by deriving label from `messageContext.messageText` (no extra Firestore reads). Report cards show a blue "quoted message" excerpt block for message-type reports. Added `messageExcerpt` and `messageExcerptText` styles. |
+
+**Schema addition**: `reports/{id}` now has optional `messageContext: { conversationId, messageId, senderId, messageText, messageSentAt }` — only present for `type === 'message'` reports. Existing reports are unaffected.
+
+**UX flow**: Long-press other user's message → `ReportModal` opens with message preview → user picks reason → submits → report lands in admin queue with full message context.
+
+**Admin flow**: Message reports appear with cyan "Message" type badge + quoted message text visible in the card.
+
+**V1 limitations**: No auto-moderation threshold for messages. No delete-message action from admin (out of scope). Dedup is per-user per-message (by messageId as targetId), so the same message can only be reported once per user.
 
 ---
 
-## Files Modified Recently (2026-03-19 session — Feature Drop: Start a Run Prominence, Gym Hours/Website, Filter Sheet, Premium UI)
+## Files Modified Recently (2026-03-24 — V1 User Blocking for DMs)
 
 | File | What changed |
 |------|-------------|
-| `screens/HomeScreen.js` | Added prominent "Start a Group Run" card (frosted-glass, orange accent). Made "Check Into a Run" card contextual: shows scheduled gym name + time when user has a visit planned today; taps navigate directly to that gym's RunDetails. Subtitle updated from "Find courts near you" to accurate GPS copy. |
-| `screens/RunDetailsScreen.js` | Added collapsible gym hours block (today's hours + full week on expand). Added "Visit Gym Website" button (gated on `gym.websiteUrl`). "Start a Run" button opens run type picker sheet (Open / Private / Paid). Removed verbose [RunDetails] debug log block. |
-| `screens/ViewRunsScreen.js` | Replaced horizontal pill filter strip with single "Filter" button + bottom sheet. Sheet has Court Type, Access (All/Free/Membership), Sort by Nearest filters. Active filters shown as dismissible chips below button. Light/dark theme aware. |
-| `screens/PremiumScreen.js` | Redesigned: Free/Premium tab toggle. Free tab shows feature list with checkmarks and limit chips. Premium tab shows side-by-side comparison table, pricing, and feature cards. |
-| `screens/CreatePrivateRunScreen.js` | Completed as full interactive form for Private (skill filter) and Paid (entry fee + payout preview) run types. Live payout math: `entryFee × maxPlayers × 0.9`. Submit CTA triggers "Coming Soon / Premium Only" gate modal → routes to PremiumScreen. No Firestore writes. |
-| `App.js` | Added `Premium` route to RunsStack for correct nested navigation from CreatePrivateRunScreen. |
-| `hooks/useProximityCheckIn.js` | Removed verbose [PROXIMITY] debug logs (GPS, cooldown, foreground events). Behavior unchanged. |
-| `utils/locationUtils.js` | Removed [DISTANCE] debug log from `calculateDistanceMeters`. Behavior unchanged. |
+| `services/dmService.js` | Added `arrayUnion`, `arrayRemove` to Firestore imports. `sendDMMessage` now accepts optional `recipientId` param and has a block guard: reads `users/{recipientId}.blockedUsers` and throws if sender is listed (generic error — no "you're blocked" signal). Added `blockUser(currentUid, targetUid)` and `unblockUser(currentUid, targetUid)` exports using `arrayUnion`/`arrayRemove` on `users/{currentUid}.blockedUsers`. |
+| `screens/DMConversationScreen.js` | `handleSend` now passes `recipientId: otherUserId` to `sendDMMessage`. |
+| `screens/UserProfileScreen.js` | Imported `blockUser`, `unblockUser` from dmService. Added `isBlocked` and `blocking` state. `currentUserSnap` read now also sets `isBlocked` from `blockedUsers` array. Added `handleBlock` (Alert confirm → `blockUser`) and `handleUnblock` (Alert confirm → `unblockUser`). Friend and Message buttons hidden when `isBlocked`. Added Block/Unblock button with `ban-outline` icon below Message button. Added `blockButton`, `blockButtonActive`, `blockButtonText`, `blockButtonTextActive` styles. |
+
+**Data model**: `blockedUsers: string[]` on `users/{uid}` written by the blocking user. Matches the `friends`/`followedGyms` array pattern. Firestore rules need `blockedUsers` array write access for `users/{uid}` where `request.auth.uid == uid` (already covered by the existing "write own doc" rule).
 
 ---
 
-## Files Modified Recently (2026-03-19 session — Proximity Check-In, AdminAllClips, Premium Teaser, Haptics, Location Utils)
+## Files Modified Recently (2026-03-24 — Repeat-Offender Badge in AdminReportsScreen)
 
 | File | What changed |
 |------|-------------|
-| `screens/CreatePrivateRunScreen.js` | **New file** — UI-only Premium teaser for Private Run and Paid Run features. Interactive form with payout calculator. CTA opens "Coming Soon" modal → routes to PremiumScreen. No Firestore writes. |
-| `screens/AdminAllClipsScreen.js` | **New file** — Admin clip browser. Filter modes: All / By Gym / Hidden / Featured. Real-time snapshot (limit 25). Feature/Unfeature/Hide/Unhide actions via `callFunction`. Gated by `useIsAdmin`. |
-| `hooks/useProximityCheckIn.js` | **New file** — Smart proximity hook. Polls GPS every 30s, re-checks on foreground. Surfaces `nearbyGym` when user is inside a gym's `checkInRadiusMeters`. 30-min dismiss cooldown per gym. Accuracy gate (>100m ignored). Dev bypass respected. |
-| `utils/locationUtils.js` | **New file** — GPS utility module: `isLocationGranted`, `requestLocationPermission`, `getCurrentLocation`, `calculateDistanceMeters`. Uses geofire-common. Dev mode returns Cowboys Fit coords. |
-| `utils/haptics.js` | **New file** — Haptic feedback helpers with no-op fallbacks: `hapticSuccess`, `hapticLight`, `hapticMedium`, `hapticHeavy`. |
-| `App.js` | Added `CreatePrivateRun` to RunsStack; added `AdminAllClips` to ProfileStack. |
-| `hooks/index.js` | Added `useProximityCheckIn` to barrel export. |
-| `screens/CheckInScreen.js` | Integrated `useProximityCheckIn` + haptic feedback. |
-| `screens/RunDetailsScreen.js` | Integrated `useProximityCheckIn` + haptic feedback. |
-| `screens/RecordClipScreen.js` | Added `hapticMedium` on record start. |
-| `screens/TrimClipScreen.js` | Added `hapticSuccess` on successful clip post. |
+| `screens/AdminReportsScreen.js` | Added `suspensionLevels` state map `{ [uid]: { level, active } }`. `resolveLabels` now extracts `suspensionLevel` and `isSuspended` from the user docs it already reads (no extra Firestore reads). Report cards show a small inline badge: red "Currently Suspended · Lvl N" if active, amber "Repeat Offender · Lvl N" for prior history. Hidden for first-time subjects. |
 
 ---
 
-## Files Modified Recently (2026-03-17 session — Suspension Enforcement, Debug Log Cleanup, Launch Checklist Hardening, Run Activation)
+## Files Modified Recently (2026-03-24 — Phase 1 Moderation Safety Fixes)
 
-### Code changes
-
-- **`services/presenceService.js`** — Added suspension guard to `checkIn()`. Reads `users/{uid}`, checks `isSuspended` + `suspensionEndsAt`, throws clear error. Matches `runService.js` pattern.
-- **`runcheck-backend/functions/src/checkIn.ts`** — Added backend suspension guard after auth check, before any branching. Same pattern as `clipFunctions.ts`. **Deployed 2026-03-18.**
-- **`runcheck-backend/functions/src/createRun.ts`** — Added backend suspension guard after auth check, before input validation. Moved `const db` up to support the early read. **Deployed 2026-03-18.**
-- **`screens/HomeScreen.js`** — Gated 5 `console.error`/`console.warn` calls behind `__DEV__`. No behavior change.
-- **`screens/RunDetailsScreen.js`** — Removed 3 ungated temporary debug `console.log` calls (clips effect tracing). Gated 12 remaining `console.error`/`console.warn`/`console.log` calls behind `__DEV__`. No behavior change.
-- **`screens/ProfileScreen.js`** — Gated 1 stray `console.log` (photoURL sync) behind `__DEV__`. No behavior change.
-
-### Additional code changes (same session, later tasks)
-
-- **`screens/RunDetailsScreen.js`** — Run activation: added `runHereCountMap` (useMemo, ~8 lines) cross-referencing run participants with active presences. Added `sortedRuns` (useMemo, ~10 lines) sorting live runs above planned. Updated `renderRunParticipantAvatars` to show "N here · M going" with green LIVE dot when hereCount > 0. Added 3 new styles (`runLiveRow`, `runLiveDot`, `runLiveText`). ~45 lines total. No backend changes.
-- **`utils/locationUtils.js`** — Fixed dev GPS bypass coordinates: old `(30.4692, -97.5963)` was 595m from Cowboys Fit (outside 100m check-in radius). Updated to `(30.4673, -97.6021)` matching `seedProductionGyms.js`.
-- **`eas.json`** — Added `"appVersionSource": "remote"` to `cli` block. Resolves EAS warning.
-
-### Investigations (no code changes needed)
-
-- **Admin badge counts on ProfileScreen** — Confirmed correct: 4 real-time `onSnapshot` queries match AdminToolsScreen exactly.
-- **Full moderation cycle (report → auto-mod → enforce → resolve)** — Confirmed complete pipeline with no missing links.
-- **ProfileScreen empty/error states** — Confirmed all fields have safe fallbacks, all error callbacks resolve loading, no blank-screen scenarios.
-
-### Launch checklist items closed this session
-
-1. ✅ Verify suspended users are actually blocked from app actions (check-in, posting, joining runs)
-2. ✅ Confirm admin badge counts on ProfileScreen reflect real pending items
-3. ✅ Test full report → auto-moderate → enforce → resolve cycle end-to-end
-4. ✅ Remove or gate `__DEV__` debug logs in HomeScreen.js and RunDetailsScreen.js
-5. ✅ Empty/error states on ProfileScreen if Firestore data is missing or loading fails
-
-### ✅ Deploy completed 2026-03-18
-
-`checkIn` and `createRun` suspension guards deployed successfully.
+| File | What changed |
+|------|-------------|
+| `screens/DMConversationScreen.js` | Added `ReportModal` import and `showReport` state. Replaced header right spacer with a flag `TouchableOpacity` that opens `ReportModal` (type="player", targetId=otherUserId). Added `<ReportModal>` at bottom of render. |
+| `services/dmService.js` | `sendDMMessage` now reads the sender's user doc before writing and throws if `isSuspended === true` and suspension hasn't expired. Same pattern as `presenceService.checkIn`. |
+| `functions/src/submitReport.ts` *(backend)* | Auto-mod threshold query now adds `.where('status', '==', 'pending')` — only pending reports count toward the threshold. Resolved/reviewed reports no longer re-trigger enforcement. |
+| `functions/src/clipFunctions.ts` *(backend)* | Suspension check in `createClipSession` confirmed already implemented (lines 454–466). No change required. |
 
 ---
 
-## Files Modified Recently (2026-03-17 session — Clip Tagging, Awareness, Approval, Posting Audit)
+## Files Modified Recently (2026-03-22 late / 2026-03-23 — Username system)
 
-### Backend files changed (in runcheck-backend)
 | File | What changed |
-|---|---|
-| `functions/src/clipFunctions.ts` | Added `TaggedPlayer` interface, `MAX_TAGGED_PLAYERS = 5`, `taggedPlayers` + `taggedUserIds` fields to `ProcessingClipDocument`, tagging validation in `finalizeClipUpload` (dedupe, verify uid, trim name). Phase 8A: hardened per-session guard to block soft-deleted clips. Phase 8B: `pointsAwarded: boolean` scaffold. Weekly cap now excludes `isDeletedByUser === true` clips. |
-| `functions/src/addClipToProfile.ts` | **New file** — Callable Cloud Function: validates auth, verifies caller is in `taggedPlayers`, sets `addedToProfile: true` on caller's entry only. Idempotent. |
-| `functions/src/index.ts` | Added `addClipToProfile` export. |
-| `firestore.rules` | Removed `isValidTaggedProfileUpdate` (was temporary). gymClips update rule is back to like/unlike only. Comment documents that taggedPlayers writes go through Cloud Function. |
+|------|-------------|
+| `screens/SignupScreen.js` | Added `username` field (collected alongside first/last name). Added `USERNAME_REGEX`, `EMAIL_REGEX`, and `DOMAIN_TYPOS` typo detection. Firestore profile write moved out of this screen entirely — SignupScreen now only creates the Auth account and sends the verification email, then passes `signupData` to VerifyEmailScreen as route params. Password requirement checklist UI added. |
+| `screens/VerifyEmailScreen.js` | On "I Verified, Continue": if `signupData` is present (new signup), writes the Firestore profile + reserves `usernames/{usernameLower}` atomically in a transaction. Idempotent: skips reservation if the doc already belongs to this uid. If returning user without `username` field, routes to `ClaimUsername`. |
+| `screens/ClaimUsernameScreen.js` | **NEW** — Migration gate for existing accounts that pre-date the username system. Validates format via `USERNAME_REGEX`. Firestore transaction: reserve `usernames/{usernameLower}` + set-merge `users/{uid}` with username fields. Routes to Main if `onboardingCompleted`, else OnboardingWelcome. Uses `set({ merge: true })` to handle edge case where the user doc was never fully written. |
 
-### Frontend files changed
+---
+
+## Files Modified Recently (2026-03-22 session — Run Level Phase 1, Run Chat expiry + unread, EditProfileScreen)
+
 | File | What changed |
-|---|---|
-| `screens/ClipPlayerScreen.js` | Delete button fix (useAuth hook). Tagged players display as tappable `@Name` chips. "Add to my profile" button calls `addClipToProfile` Cloud Function (was `updateDoc`, now backend-controlled). "On your profile" badge. Removed `updateDoc` import. |
-| `screens/TrimClipScreen.js` | Player tagging UI: friends fetch, collapsible tag picker with horizontal ScrollView, `toggleTagPlayer` with max-5 enforcement, passes `taggedPlayers` in `finalizeClipUpload` payload. |
-| `hooks/useTaggedClips.js` | **New file** — Queries 100 recent clips, client-side filters for tagged user. Returns `allTagged`, `featuredIn`, `videoUrls`, `thumbnails`, `loading`, `refetch`. Refetch via `fetchKey` counter. |
-| `hooks/index.js` | Added `useTaggedClips` export. |
-| `screens/ProfileScreen.js` | Added "Tagged In" section (own profile only, horizontal FlatList). Added "Featured In" section (approved clips). Added `useFocusEffect` + `refetch` on screen focus. |
-| `screens/UserProfileScreen.js` | Added public "Featured In" section (horizontal FlatList, same tile pattern). Added `useFocusEffect` + `refetch` on screen focus. |
-| `screens/RunDetailsScreen.js` | Fixed back navigation: changed 5 cross-stack `navigation.navigate('Home', { screen: 'UserProfile' })` calls to same-stack `navigation.navigate('UserProfile', { userId })`. |
-| `App.js` | Added `UserProfile` to RunsStack for same-stack navigation fix. |
+|------|-------------|
+| `screens/RunDetailsScreen.js` | Run level picker (Casual / Mixed / Competitive) added to Start-a-Run modal. `runLevel` state defaults to `'mixed'`, reset on modal close. Badge shown on run cards: Casual = green, Competitive = red, Mixed = hidden (neutral/default). Passes `runLevel` to `startOrJoinRun`. |
+| `screens/ViewRunsScreen.js` | Run level filter added to the filter bottom sheet (Any / Casual / Mixed / Competitive). `runLevelFilter` state. Client-side filter treats absent `runLevel` as `'mixed'`. Active filter chip shown below the Filter button. `activeFilterCount` includes `runLevelFilter`. |
+| `services/runService.js` | `startOrJoinRun` now accepts `runLevel = 'mixed'` parameter. Writes `runLevel` field on new run doc creation only (existing runs keep their level). Imports `RUN_CHAT_EXPIRY_MS` from `runChatService.js` and writes `chatExpiresAt = startTime + 4h` on run creation. |
+| `services/runChatService.js` | Added `markRunChatSeen(runId, uid)` — writes `lastReadAt: serverTimestamp()` to `runParticipants/{runId}_{uid}`. `sendRunMessage` now also stamps `lastMessageAt: serverTimestamp()` on `runs/{runId}` (fire-and-forget). Exported `RUN_CHAT_EXPIRY_MS = 4 * 60 * 60 * 1000`. |
+| `screens/RunChatScreen.js` | Chat expiry support: computes `isChatExpired` from `startTime + RUN_CHAT_EXPIRY_MS`. Expired chat shows a read-only "This run chat has ended" banner replacing the input bar. Calls `markRunChatSeen(runId, uid)` on mount to clear unread badge. |
+| `hooks/useMyRunChats.js` | Fetches `chatExpiresAt` and `lastMessageAt` from run docs + `lastReadAt` from participant docs. Computes `isUnread = lastMessageAt > lastReadAt`. Filters out expired chats. Returns `runChatUnreadCount` (count of chats where `isUnread === true`). |
+| `screens/HomeScreen.js` | `totalUnreadCount = dmUnreadCount + runChatUnreadCount` — Messages header badge now reflects both DM and Run Chat unreads. |
+| `screens/EditProfileScreen.js` | **NEW** — Account Info screen. Editable fields: Display Name (Firestore + Firebase Auth `displayName`) and Skill Level (`'Casual' \| 'Competitive' \| 'Either'`). Read-only: Email (contact support note), Username (not changeable). Accessible via ProfileStack → Settings → Account Info. |
+| `screens/SettingsScreen.js` | Added "Account Info" settings row that navigates to `EditProfile`. |
+| `App.js` | Registered `EditProfileScreen` as `EditProfile` in ProfileStack. |
 
-## Files Modified Recently (2026-03-16 session — Moderation System, Admin Dashboards, UX Polish)
+---
 
-### Backend files changed (in runcheck-backend)
-| File | What changed |
-|---|---|
-| `functions/src/moderationHelpers.ts` | **New file** — Shared enforcement logic: `enforceHideClip`, `enforceRemoveRun`, `enforceSuspendUser`, `enforceUnsuspendUser`, `enforceUnhideClip`, `resolveRelatedReport`. Single source of truth for all moderation actions. Escalation table: `ESCALATION_DAYS = [1, 3, 7, 30, 365]`. |
-| `functions/src/hideClip.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceHideClip`. |
-| `functions/src/removeRun.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceRemoveRun`. |
-| `functions/src/suspendUser.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceSuspendUser`. Returns suspension level + duration. |
-| `functions/src/unsuspendUser.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceUnsuspendUser`. |
-| `functions/src/unhideClip.ts` | **New file** — Admin callable: validates auth + admin, calls `enforceUnhideClip`. |
-| `functions/src/moderateReport.ts` | **New file** — Admin callable: mark reports as reviewed/resolved with optional admin notes. |
-| `functions/src/submitReport.ts` | Updated — auto-moderation: after writing report, checks pending count against thresholds (clip→3, run→3, player→5) and triggers enforcement helpers + resolves all related reports. |
-| `functions/src/index.ts` | Added exports: `hideClip`, `removeRun`, `suspendUser`, `unsuspendUser`, `unhideClip`, `moderateReport`. |
+## Session History Summary (pre-2026-03-22)
 
-### Frontend files changed
-| File | What changed |
-|---|---|
-| `screens/AdminToolsScreen.js` | **New file** — Admin hub with live pending counts per tool category. Navigation to all admin sub-screens. |
-| `screens/AdminGymRequestsScreen.js` | **New file** — Admin gym request review list. |
-| `screens/AdminGymRequestDetailScreen.js` | **New file** — Detail view for individual gym requests. |
-| `screens/AdminReportsScreen.js` | **New file** — Reports moderation list with type/status badges, resolve/review actions via `moderateReport` callable. |
-| `screens/AdminSuspendedUsersScreen.js` | **New file** — Suspended users list with avatar, resolved names, unsuspend action. |
-| `screens/AdminHiddenClipsScreen.js` | **New file** — Hidden clips list with thumbnails, video playback, unhide action. |
-| `screens/ProfileScreen.js` | Admin Tools badge counts all 4 categories. My Gym Requests badge uses `pendingCount`. |
-| `screens/RunDetailsScreen.js` | +N bubble on Upcoming Runs opens participant list bottom-sheet modal. |
-| `hooks/useMyGymRequests.js` | Added `pendingCount` to return value. |
-| `hooks/useIsAdmin.js` | **New file** — Admin gate hook. |
-| `App.js` | Added all admin screen routes + ClipPlayer in ProfileStack. |
+Compressed for brevity. Full per-file tables live in the `docs/session-handoffs/` folder. All features below are reflected in "Currently Working" above.
 
-## Files Modified Recently (2026-03-15 session — Gym Requests, Image Migration, Fitness Connection)
-| File | What changed |
-|---|---|
-| `screens/RequestGymScreen.js` | **New file** — Gym request submission form. Calls `submitGymRequest` Cloud Function. Fixed bottom bar for submit button. Handles rate-limit errors. |
-| `screens/MyGymRequestsScreen.js` | **New file** — Displays user's gym requests with status badges (pending/approved/duplicate/rejected), admin notes, contextual hints. Dark mode support. Empty state. |
-| `hooks/useMyGymRequests.js` | **New file** — Real-time Firestore listener on `gymRequests` where `submittedBy == uid`, ordered newest-first. Returns `{ requests, loading, count, pendingCount }`. |
-| `hooks/index.js` | Added `useMyGymRequests` export. |
-| `App.js` | Added RequestGymScreen to RunsStack. Added MyGymRequestsScreen to ProfileStack with themed header. |
-| `screens/ViewRunsScreen.js` | Added "Don't see your gym? Request it" entry point at bottom of gym list. |
-| `screens/ProfileScreen.js` | Added "My Gym Requests" row with orange count badge (uses `useMyGymRequests` hook). |
-| `seedProductionGyms.js` | Added Fitness Connection gym (`fitness-connection-austin-north`). Image URL now points to Firebase Storage. Added validation warning for non-Firebase-Storage image URLs. Total: 6 gyms. |
-| `services/gymService.js` | `subscribeToGyms` and `getAllGyms` now filter client-side by `status === 'active'`. |
-| `services/models.js` | Added `GYM_STATUS` and `GYM_ACCESS_TYPE` constants. Updated gym schema documentation. |
+**2026-03-21** — DM System, Messages Inbox, OnboardingRegion. New: `dmService.js`, `useConversations`, `useMyRunChats`, `MessagesScreen`, `DMConversationScreen`, `OnboardingRegionScreen`. Unread badge on HomeScreen + ProfileScreen. `subscribeToAllUserRuns` added to `runService.js`. DM notification tap handler wired in `App.js`. VerifyEmailScreen now routes to `OnboardingRegion` first.
 
-## Files Modified Recently (2026-03-15 session — Reporting System + Veterans Park)
-| File | What changed |
-|---|---|
-| `components/ReportModal.js` | **New file** — Reusable bottom-sheet modal for reporting content. Radio-button reason selector (5 options), optional description, `submitReport` Cloud Function call. Keyboard avoidance with scroll-to-input, iOS InputAccessoryView "Done" button. |
-| `screens/AdminReportsScreen.js` | **New file** — Admin reports list with real-time `onSnapshot` on `reports` collection. Cards with type/status badges, reason, description, targetId, targetOwnerId, reporter name, relative time. Summary bar with pending pill. Admin-gated. |
-| `screens/ClipPlayerScreen.js` | Added flag button + ReportModal for type="clip". |
-| `screens/UserProfileScreen.js` | Added flag icon button (other users only) + ReportModal for type="player". |
-| `screens/RunDetailsScreen.js` | Added "Report" pill for gym reports + flag icon on run cards + shared ReportModal. |
-| `screens/AdminToolsScreen.js` | Activated reports-moderation tool, added navigation to AdminReports. |
-| `components/index.js` | Added `ReportModal` export. |
-| `App.js` | Added AdminReportsScreen route in stack navigator. |
-| `screens/RequestGymScreen.js` | Updated Notes placeholder text. |
-| `seedProductionGyms.js` | Added Veterans Park (8th gym). Updated coordinates. Total: 8 gyms. |
+**2026-03-20 (session 2)** — Run Chat MVP + ViewRunsScreen loading fix. New: `runChatService.js`, `RunChatScreen`. Chat button on RunDetailsScreen gated to joined participants. Full-screen loading spinner removed from ViewRunsScreen (now inline). `runcheck-backend/firestore.rules` updated with Run Chat rules (⚠️ not yet deployed).
 
-### Backend files changed (in runcheck-backend)
-| File | What changed |
-|---|---|
-| `functions/src/submitReport.ts` | **New file** — Cloud Function: auth, validation, duplicate prevention (`reportedBy+type+targetId`), `targetOwnerId` resolution, writes to `reports` collection with status "pending". |
-| `functions/src/submitGymRequest.ts` | Admin cooldown bypass — admins skip 7-day rate limit. |
-| `functions/src/index.ts` | Added `submitReport` export. |
-| `firestore.rules` | Added `reports` collection rules: admin can read all + update; users can read own reports; create/delete blocked (Cloud Function only). |
-| `firestore.indexes.json` | Added composite index for reports duplicate check: `reportedBy+type+targetId`. |
+**2026-03-20 (session 1)** — Phase 1 Push Notifications + Open Run flow + OTA diagnosis. New: `notificationHelpers.ts`, `notifyRunStartingSoon`, `onRunParticipantJoined`, `onParticipantCountMilestone` (all deployed). `registerPushToken()` wired in `App.js`. `eas.json` production profile got `"channel": "production"` (takes effect on next build). Open Run quick-action streamlined to skip intermediate picker.
 
-## Files Modified Recently (2026-03-15 session — Gym System Refactor: Firestore as Source of Truth)
-| File | What changed |
-|---|---|
-| `services/gymService.js` | `seedGyms()` converted to deprecated no-op — no longer writes to Firestore or deletes gym docs. Hardcoded gym array removed. Unused imports removed (`setDoc`, `deleteDoc`, `GYM_TYPE`, `DEFAULT_EXPIRE_MINUTES`). All read functions unchanged. |
-| `hooks/useGyms.js` | Removed `seedGyms()` import and mount call. Removed `ensureGymsExist` from hook return. Hook is now a pure Firestore reader. |
-| `screens/ViewRunsScreen.js` | Removed `ensureGymsExist` from destructured `useGyms()`. `onRefresh` simplified to a visual-only spinner (data is live via listener). |
-| `seedProductionGyms.js` | Promoted to single canonical admin seed script. Now contains all 5 gyms with complete, aligned fields. `autoExpireMinutes` aligned to 120. Added `state`, `accessType`, `notes`, `scheduleCounts` to all entries. |
-| `__tests__/screens/ViewRunsScreen.test.js` | Removed `ensureGymsExist` from mock `useGyms` return values. |
-| `__tests__/screens/CheckInScreen.test.js` | Removed `ensureGymsExist` from mock `useGyms` return values (3 occurrences). |
-| `__tests__/screens/GymMapScreen.test.js` | Removed `ensureGymsExist` from mock `useGyms` return value. |
-| `BACKEND_MEMORY.md` | Updated `gymService.js` docs to reflect deprecated `seedGyms` and new read-only architecture. Updated `useGyms` hook signature. |
+**2026-03-19 (session 2)** — Feature drop: Start a Run prominence, gym hours/website link, filter sheet, Premium UI. `HomeScreen` got "Start a Group Run" card and contextual check-in card. `ViewRunsScreen` filter upgraded to bottom sheet. `PremiumScreen` redesigned. `CreatePrivateRunScreen` completed as UI-only teaser (no Firestore writes, 5% platform fee).
 
-## Files Modified Recently (2026-03-15 session — Rank System Refactor)
-| File | What changed |
-|---|---|
-| `config/ranks.js` | **New file** — Single source of truth for 6 rank tiers (Bronze→Legend) with thresholds, icons, colors, glow, perks arrays |
-| `config/points.js` | **New file** — `POINT_VALUES` and `ACTION_LABELS` extracted from former `utils/badges.js` |
-| `config/perks.js` | **New file** — `PERK_DEFINITIONS` registry (8 perks) + `PREMIUM_OVERRIDES` (tool/convenience only, no prestige cosmetics) |
-| `utils/rankHelpers.js` | **New file** — `getUserRank`, `getProgressToNextRank`, `getNextRank`, `getRankById` |
-| `utils/perkHelpers.js` | **New file** — `getUserPerks`, `hasPerk`, `getFeatureQuota`, `getRankPerksForDisplay` (display/config groundwork only) |
-| `utils/badges.js` | Replaced 178-line monolith with 19-line deprecated re-export shim forwarding to `config/ranks`, `config/points`, `utils/rankHelpers` |
-| `services/pointsService.js` | Imports updated to `config/points` + `utils/rankHelpers`; stale comment fixed; zero logic changes |
-| `screens/LeaderboardScreen.js` | Imports updated; `RANK_PERKS` → `RANK_DESCRIPTIONS` with Diamond/Legend entries; `RankBadgePill` extended for 6 tiers; "Why Rank Matters" shows perk labels via `getRankPerksForDisplay` |
-| `screens/ProfileScreen.js` | Imports updated; Platinum-only pulse glow extended to Diamond/Legend via `HIGH_GLOW_TIERS`; max rank emoji → 👑 |
-| `screens/UserProfileScreen.js` | Import updated to `utils/rankHelpers` |
+**2026-03-19 (session 1)** — Proximity check-in, AdminAllClips, haptics, location utils. New: `useProximityCheckIn`, `locationUtils.js`, `haptics.js`, `AdminAllClipsScreen`, `CreatePrivateRunScreen`. Haptic feedback integrated in CheckIn, RecordClip, TrimClip. `addGym` Cloud Function deprecated.
 
-## Files Modified Recently (2026-03-14 session — Weekly Winners + Automation)
-| File | What changed |
-|---|---|
-| `scripts/weeklyReset.js` | Saves top 3 winners (was 1st only); `winners` array + `firstPlace` convenience field; podium logging with tie warnings |
-| `services/weeklyWinnersService.js` | **New file** — `getLatestWeeklyWinners()` reads most recent `weeklyWinners` doc |
-| `hooks/useWeeklyWinners.js` | **New file** — React hook wrapping `getLatestWeeklyWinners`, one-shot fetch on mount; now also exposes `recordedAt` for 24-hour celebration card |
-| `screens/LeaderboardScreen.js` | "Last Week's Winners" card: trophy icons, avatars, names, weekly points; tappable rows navigate to UserProfile; card hidden when no data |
-| `screens/HomeScreen.js` | Added 24-hour winners celebration card between Quick Actions and Live Runs; uses `useWeeklyWinners` hook with `recordedAt` visibility window; "View Leaderboard →" link |
-| `runcheck-backend/functions/src/weeklyReset.ts` | **New file** (backend repo) — Scheduled Cloud Function: runs every Monday 00:05 CT; saves top 3 winners + batch-resets `weeklyPoints` |
-| `runcheck-backend/functions/src/index.ts` | Added `export { weeklyReset }` |
+**2026-03-18** — Backend deploy: `checkIn.ts` + `createRun.ts` suspension guards deployed. `utils/notifications.js` added (`registerPushToken`). Dev GPS bypass coordinates corrected.
 
-## Files Modified Recently (2026-03-13 session — UI polish + Runs Being Planned)
-| File | What changed |
-|---|---|
-| `screens/CheckInScreen.js` | UI polish: LinearGradient header, Logo component (medium), "Your Gyms" → "Your Courts", GymThumbnail pattern matching ProfileScreen |
-| `screens/ViewRunsScreen.js` | UI polish: LinearGradient header wrapping title + search bar, white title/subtitle text |
-| `screens/PlanVisitScreen.js` | UI polish: LinearGradient on all 3 wizard steps, GymThumbnail on intent cards, improved empty state. **New feature**: "Runs Being Planned" section showing community runs across all gyms via `subscribeToAllUpcomingRuns`; run cards with gym thumbnail, time, creator, participant count, "View" button → RunDetailsScreen |
-| `services/runService.js` | Added `subscribeToAllUpcomingRuns(callback)` — real-time subscription to all upcoming runs across all gyms (no gymId filter), 30-min grace window, filters out runs with 0 participants |
+**2026-03-17 (session 2)** — Suspension enforcement client-side + debug log cleanup + Run Activation. `presenceService.checkIn` gained suspension guard. `__DEV__` gating applied to all production-visible logs in HomeScreen + RunDetailsScreen + ProfileScreen. Run Activation: `runHereCountMap` + `sortedRuns` useMemos in RunDetailsScreen (live runs sort above planned, "N here · M going" display).
 
-## Files Modified Recently (2026-03-13 session — Reviews)
-| File | What changed |
-|---|---|
-| `services/reviewService.js` | **New file** — `checkReviewEligibility(uid, gymId)` → `{ canReview, hasVerifiedRun }`; `submitReview(...)` with one-active-review guard, review doc write to `gyms/{gymId}/reviews`, awaited `awardPoints` call |
-| `services/pointsService.js` | Added transactional `'review'` case guarded by `pointsAwarded.reviewedGyms`; `runComplete` transaction now writes `pointsAwarded.runGyms: arrayUnion(gymId)`; `checkin`/`checkinWithPlan` transactions now write `pointsAwarded.gymVisits: arrayUnion(gymId)`; added `penalizePoints` export |
-| `services/runService.js` | `evaluateRunReward` passes `gymId` as 4th arg to `awardPoints` so `runComplete` transaction can write `runGyms` |
-| `screens/RunDetailsScreen.js` | Full review section: `reviewerStatsMap` lazy-cache for `totalAttended`; review sort (verifiedAttendee→rating→date); "Verified Run" badge (`checkmark-circle`); rating summary above CTA; eligibility split into `hasRunAttended` (gate) + `hasVerifiedRun` (badge); reviewer avatar + name tappable to UserProfile |
-| `screens/PlanVisitScreen.js` | Fixed stale "X here" badge: `gym.currentPresenceCount` → `countMap[gym.id]` from `useLivePresenceMap` (RC-008) |
+**2026-03-17 (session 1)** — Clip Tagging V1 + approval flow + posting audit hardening. `finalizeClipUpload` validates up to 5 tagged players. `addClipToProfile.ts` Cloud Function owns taggedPlayers writes (Firestore rules block client writes). `useTaggedClips` hook, "Tagged In" + "Featured In" on ProfileScreen + UserProfileScreen. Per-session duplicate guard hardened for soft-deleted clips.
 
-## Files Modified Recently (2026-03-12 session)
-| File | What changed |
-|---|---|
-| `screens/HomeScreen.js` | Planned visit filter now enforces upper bound: only shows plan items where `plannedTime > now AND plannedTime <= now + 60 min` |
-| `services/runService.js` | **New file** — full runs MVP: `startOrJoinRun`, `joinExistingRun`, `leaveRun`, `subscribeToGymRuns`, `subscribeToUserRunsAtGym`, `subscribeToRunParticipants` |
-| `hooks/useGymRuns.js` | **New file** — composes two Firestore subscriptions; exposes `{ runs, loading, joinedRunIds, userParticipants }` |
-| `screens/RunDetailsScreen.js` | Added runs section (run cards, Start a Run modal with day/time picker, Join/Leave handlers); new styles block |
+**2026-03-16** — Full moderation system + admin dashboards. `moderationHelpers.ts` (single source of truth), 6 admin Cloud Functions deployed, 5 admin screens built. Auto-moderation thresholds: clip→3 reports, run→3 reports, player→5 reports. Escalating suspension (1/3/7/30/365 days).
 
-> **Note:** `firestore.rules` and `firebase.json` were originally added to this repo on 2026-03-12 but have since been **removed**. Firestore security rules and Firebase CLI config live exclusively in the backend repo (`~/Desktop/runcheck-backend`). See BACKEND_MEMORY.md § Config & Environment.
+**2026-03-15 (sessions)** — Reporting system, gym requests, gym image migration, rank system refactor, gym system Firestore-as-source-of-truth. `submitReport` Cloud Function + `ReportModal`. `submitGymRequest` Cloud Function + `RequestGymScreen` + `MyGymRequestsScreen`. `config/ranks.js`, `config/points.js`, `config/perks.js` extracted. Fitness Connection migrated to Firebase Storage. Veterans Park + Cowboys Fit added.
+
+**2026-03-14** — Weekly Winners (top 3) + automated `weeklyReset` Cloud Function (Monday 00:05 CT). `weeklyWinnersService.js`, `useWeeklyWinners`, LeaderboardScreen "Last Week's Winners" card, HomeScreen 24h celebration card.
+
+**2026-03-13** — UI polish pass (LinearGradient headers), "Runs Being Planned" section on PlanVisitScreen, Community Activity filter (allowlist: `started a run at`, `clip_posted`), RC-008 stale presence count fix in PlanVisitScreen. Review system (RC-007): `reviewService.js`, eligibility two-signal model, "Verified Run" badge, run completion signals (`runGyms`, `gymVisits` arrays on user doc).
+
+**2026-03-12** — Start a Run / Join a Run MVP. `runService.js` and `useGymRuns.js` created. ±60-min merge rule, compound `runParticipants/{runId}_{userId}` key.
+
+**Pre-2026-03-12** — Core presence/check-in flow, activity feed, points/rank system, clip recording/upload pipeline, on-device video trimming module, weekly leaderboard, proximity check-in hook, profile photo upload, and app navigation structure. See `docs/session-handoffs/` for full file-level details.
+
+---
 
 ## Start a Run / Join a Run — Architecture Notes
 - **Collections**: `runs/{autoId}` and `runParticipants/{runId}_{userId}` (compound key)
@@ -543,14 +407,6 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 | `screens/LeaderboardScreen.js` | Leaderboard rows now tappable (`TouchableOpacity`, `disabled` on own row, chevron affordance for others); added `RANK_PERKS` display-only copy object; added "Why Rank Matters" card (tier list with icon, color, description, "You" badge on current tier; later expanded to 6 tiers in rank refactor); Rank Tiers section now shows `rank.icon` emoji instead of small colored dot; new styles: `tierIcon`, `perksRow`, `perksInfo`, `perksDesc`, `currentBadge`, `currentBadgeText` |
 | `App.js` | Added `UserProfile` screen to `ProfileStack` so leaderboard row taps navigate correctly from the Profile tab entry point |
 
-## Debug Logs (intentionally left in, remove after confirming)
-Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console logs:
-- `[LiveRun:{gym.name}] activeUniqueCount=N userIds=[...]`
-- `[LiveRun:{gym.name}] startedAt=... startedAgo="..."`
-- `[RunDetails] raw presences: N ids: [...]`
-- `[RunDetails] unique presences: N ids: [...]`
-- `[RunDetails] missing profiles (will show placeholder): [...]`
-
 ## iOS Build & OTA Status (updated 2026-03-20)
 
 ### Current situation
@@ -569,6 +425,13 @@ Both `HomeScreen.js` and `RunDetailsScreen.js` have `__DEV__`-guarded console lo
 ---
 
 ## Known Issues / Risks
+
+### 🔴 Security Gaps (must close before real user traffic)
+- **`usernames/` Firestore rules not written** — Any authenticated user can overwrite another user's username reservation. Write rules: only the owning uid can write, only on create (no overwrite), any authenticated user can read for availability checks.
+- **`conversations/` Firestore rules not written** — Any authenticated user can read/write any DM conversation. Write rules: scope reads/writes to `participantIds` field. Do NOT publicize or invite external users to test DMs until this is deployed.
+- **Run Chat Firestore rules not deployed** — Rules are written in `runcheck-backend/firestore.rules` but not deployed. Participants on device get `permission-denied`. Deploy: `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`.
+
+### Other Known Issues
 - **Firestore rules live in the backend repo only** — `~/Desktop/runcheck-backend/firestore.rules` is the single source of truth. This frontend repo no longer contains `firestore.rules` or `firebase.json`. All rule changes must be made in the backend repo and deployed with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`.
 - ~~GPS distance enforcement is commented out~~ — **Resolved.** Re-enabled in both `usePresence.js` (client-side gate) and `presenceService.js` (service-layer gate). Both throw user-facing errors when distance exceeds `checkInRadiusMeters`.
 - Auto-expiry is client-side only; a Cloud Function is needed to expire presences server-side without deducting points

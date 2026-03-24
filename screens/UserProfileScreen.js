@@ -49,7 +49,7 @@ import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getUserRank } from '../utils/rankHelpers';
-import { openOrCreateConversation } from '../services/dmService';
+import { openOrCreateConversation, blockUser, unblockUser } from '../services/dmService';
 
 /**
  * UserProfileScreen — Public view of another player's profile.
@@ -81,6 +81,10 @@ export default function UserProfileScreen({ route, navigation }) {
   // Request state — true if currentUid already appears in target user's
   // receivedRequests (meaning we already sent a request via addFriend)
   const [requestSent, setRequestSent] = useState(false);
+
+  // Block state — true if the current user has blocked this profile
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blocking, setBlocking] = useState(false);
 
   if (__DEV__) console.log('[UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
 
@@ -127,7 +131,9 @@ export default function UserProfileScreen({ route, navigation }) {
           const currentUserSnap = await getDoc(doc(db, 'users', currentUid));
           if (__DEV__) console.log('[UserProfileScreen] fetching sentRequests for currentUid:', currentUid);
           if (!cancelled && currentUserSnap.exists()) {
-            setRequestSent((currentUserSnap.data().sentRequests || []).includes(userId));
+            const currentData = currentUserSnap.data();
+            setRequestSent((currentData.sentRequests || []).includes(userId));
+            setIsBlocked((currentData.blockedUsers || []).includes(userId));
           }
         } catch (reqErr) {
           if (__DEV__) console.warn('[UserProfileScreen] sentRequests check failed:', reqErr.message);
@@ -266,6 +272,60 @@ export default function UserProfileScreen({ route, navigation }) {
       if (__DEV__) console.error('[UserProfileScreen] handleMessage error:', err);
       Alert.alert('Error', 'Could not open conversation. Please try again.');
     }
+  };
+
+  // ── Block / Unblock ──────────────────────────────────────────────────────
+  const handleBlock = () => {
+    if (!currentUid || !userId) return;
+    Alert.alert(
+      'Block User',
+      `Block ${profile?.name || 'this user'}? They won't be able to send you messages.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            setBlocking(true);
+            try {
+              await blockUser(currentUid, userId);
+              setIsBlocked(true);
+            } catch (err) {
+              if (__DEV__) console.error('[UserProfileScreen] blockUser error:', err);
+              Alert.alert('Error', 'Could not block user. Please try again.');
+            } finally {
+              setBlocking(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleUnblock = () => {
+    if (!currentUid || !userId) return;
+    Alert.alert(
+      'Unblock User',
+      `Unblock ${profile?.name || 'this user'}? They will be able to send you messages again.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Unblock',
+          onPress: async () => {
+            setBlocking(true);
+            try {
+              await unblockUser(currentUid, userId);
+              setIsBlocked(false);
+            } catch (err) {
+              if (__DEV__) console.error('[UserProfileScreen] unblockUser error:', err);
+              Alert.alert('Error', 'Could not unblock user. Please try again.');
+            } finally {
+              setBlocking(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   // ── Loading state — skeleton screen ─────────────────────────────────────
@@ -490,7 +550,7 @@ export default function UserProfileScreen({ route, navigation }) {
         </View>
 
         {/* ── Add Friend / Request Sent / Friends ✓ + Remove Friend buttons ── */}
-        {!isOwnProfile && (
+        {!isOwnProfile && !isBlocked && (
           isFriend ? (
             <View style={{ width: '100%', marginBottom: SPACING.lg }}>
               {/* Status-only Friends ✓ button */}
@@ -546,8 +606,8 @@ export default function UserProfileScreen({ route, navigation }) {
           )
         )}
 
-        {/* Message button — shown to non-own profiles */}
-        {!isOwnProfile && (
+        {/* Message button — shown to non-own profiles unless blocked */}
+        {!isOwnProfile && !isBlocked && (
           <TouchableOpacity
             style={[styles.messageButton, { borderColor: colors.primary }]}
             onPress={handleMessage}
@@ -555,6 +615,31 @@ export default function UserProfileScreen({ route, navigation }) {
           >
             <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
             <Text style={[styles.messageButtonText, { color: colors.primary }]}>Message</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Block / Unblock button — shown to non-own profiles */}
+        {!isOwnProfile && (
+          <TouchableOpacity
+            style={[styles.blockButton, isBlocked && styles.blockButtonActive]}
+            onPress={isBlocked ? handleUnblock : handleBlock}
+            disabled={blocking}
+            activeOpacity={0.7}
+          >
+            {blocking ? (
+              <ActivityIndicator size="small" color={colors.textSecondary} />
+            ) : (
+              <>
+                <Ionicons
+                  name={isBlocked ? 'ban-outline' : 'ban-outline'}
+                  size={14}
+                  color={isBlocked ? colors.textSecondary : colors.error ?? '#d9534f'}
+                />
+                <Text style={[styles.blockButtonText, isBlocked && styles.blockButtonTextActive]}>
+                  {isBlocked ? 'Unblock' : 'Block'}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         )}
 
@@ -1155,6 +1240,30 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   messageButtonText: {
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+
+  // ── Block button ──────────────────────────────────────────────────────────
+  blockButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.full,
+  },
+  blockButtonActive: {
+    // No extra style needed — color changes handled inline
+  },
+  blockButtonText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: colors.error ?? '#d9534f',
+  },
+  blockButtonTextActive: {
+    color: colors.textSecondary,
   },
 
   // ── Followed Gyms ────────────────────────────────────────────────────────

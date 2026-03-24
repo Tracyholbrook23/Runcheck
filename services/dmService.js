@@ -35,6 +35,8 @@ import {
   setDoc,
   updateDoc,
   addDoc,
+  arrayUnion,
+  arrayRemove,
   query,
   where,
   orderBy,
@@ -200,12 +202,13 @@ export function subscribeToConversationMessages(conversationId, callback) {
  *
  * @param {object} params
  * @param {string} params.conversationId
- * @param {string} params.senderId — Firebase Auth UID of the sender
- * @param {string} params.text     — Raw message text from the input
+ * @param {string} params.senderId    — Firebase Auth UID of the sender
+ * @param {string} [params.recipientId] — Firebase Auth UID of the recipient (used for block check)
+ * @param {string} params.text        — Raw message text from the input
  * @returns {Promise<void>}
  * @throws {Error} If text is empty after trimming, or required params are missing
  */
-export async function sendDMMessage({ conversationId, senderId, text }) {
+export async function sendDMMessage({ conversationId, senderId, recipientId, text }) {
   if (!conversationId) throw new Error('conversationId is required');
   if (!senderId) throw new Error('senderId is required');
 
@@ -213,6 +216,34 @@ export async function sendDMMessage({ conversationId, senderId, text }) {
   if (!trimmed) throw new Error('Message cannot be empty');
 
   const safeText = trimmed.slice(0, MAX_MESSAGE_LENGTH);
+
+  // ── Suspension guard ────────────────────────────────────────────────────────
+  // Mirrors the same pattern used in presenceService.checkIn and runService.
+  // Supports timed suspensions: if suspensionEndsAt has passed, allow through.
+  const senderSnap = await getDoc(doc(db, 'users', senderId));
+  if (senderSnap.exists()) {
+    const senderData = senderSnap.data();
+    if (senderData?.isSuspended === true) {
+      const endsAt = senderData?.suspensionEndsAt?.toDate?.();
+      if (!endsAt || endsAt > new Date()) {
+        throw new Error('Your account is suspended. You cannot send messages.');
+      }
+    }
+  }
+
+  // ── Block guard ─────────────────────────────────────────────────────────────
+  // Check if the recipient has blocked the sender. We read the recipient's doc
+  // (not the sender's) so the blocked user gets no explicit signal — the send
+  // just silently fails on the client (text is restored in the input).
+  if (recipientId) {
+    const recipientSnap = await getDoc(doc(db, 'users', recipientId));
+    if (recipientSnap.exists()) {
+      const blockedUsers = recipientSnap.data()?.blockedUsers || [];
+      if (blockedUsers.includes(senderId)) {
+        throw new Error('Message could not be sent.');
+      }
+    }
+  }
 
   // Write the message doc first — this is the authoritative record.
   const messagesRef = collection(db, 'conversations', conversationId, 'messages');
@@ -255,5 +286,45 @@ export async function markConversationSeen(conversationId, uid) {
   }).catch((err) => {
     // Non-critical — user just sees the unread dot a bit longer. Don't crash.
     if (__DEV__) console.warn('[dmService] markConversationSeen error:', err.code);
+  });
+}
+
+/**
+ * blockUser — Adds `targetUid` to the current user's `blockedUsers` array.
+ *
+ * Written to `users/{currentUid}` using arrayUnion so the operation is
+ * idempotent — blocking the same user twice has no effect. The blocked user
+ * receives no notification.
+ *
+ * @param {string} currentUid — Firebase Auth UID of the user doing the blocking
+ * @param {string} targetUid  — Firebase Auth UID of the user being blocked
+ * @returns {Promise<void>}
+ */
+export async function blockUser(currentUid, targetUid) {
+  if (!currentUid || !targetUid) throw new Error('Both UIDs are required');
+  if (currentUid === targetUid) throw new Error('Cannot block yourself');
+
+  const userRef = doc(db, 'users', currentUid);
+  await updateDoc(userRef, {
+    blockedUsers: arrayUnion(targetUid),
+  });
+}
+
+/**
+ * unblockUser — Removes `targetUid` from the current user's `blockedUsers` array.
+ *
+ * Written to `users/{currentUid}` using arrayRemove. Idempotent — unblocking
+ * a user who is not blocked has no effect.
+ *
+ * @param {string} currentUid — Firebase Auth UID of the user doing the unblocking
+ * @param {string} targetUid  — Firebase Auth UID of the user being unblocked
+ * @returns {Promise<void>}
+ */
+export async function unblockUser(currentUid, targetUid) {
+  if (!currentUid || !targetUid) throw new Error('Both UIDs are required');
+
+  const userRef = doc(db, 'users', currentUid);
+  await updateDoc(userRef, {
+    blockedUsers: arrayRemove(targetUid),
   });
 }

@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-21_
+_Last updated: 2026-03-23 (added noShowProcessedAt to runs schema; introduced detectRunNoShows Cloud Function for run participant no-show penalty)_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -15,11 +15,25 @@ Firebase-only backend. No custom server. Logic lives in:
 
 ## Firestore Collections
 
+### `usernames/{usernameLower}`
+```js
+{
+  uid: string,               // Firebase Auth UID of the owner
+  createdAt: Date,           // client-side Date (not serverTimestamp)
+}
+```
+> Written atomically with `users/{uid}` in a Firestore transaction during signup (VerifyEmailScreen) or username migration (ClaimUsernameScreen). Uniqueness enforced by checking existence before writing. `usernameLower` is the doc ID — always lowercase. Display-case `username` is stored on the user doc.
+
 ### `users/{uid}`
 ```js
 {
   odId: string,              // Firebase Auth UID
   email, name, age,
+  firstName: string,         // added 2026-03-22; split from `name`
+  lastName: string,          // added 2026-03-22; split from `name`
+  username: string,          // display-case username (e.g. "HoopKing23")
+  usernameLower: string,     // lowercase mirror for case-insensitive lookups
+  phoneNumber: null,         // always null for now; reserved for future SMS auth
   skillLevel: 'Casual' | 'Competitive' | 'Either',
   photoURL: string | null,
   totalPoints: number,
@@ -141,6 +155,18 @@ Firebase-only backend. No custom server. Logic lives in:
                              // Default: 'mixed'. Absent on runs created before 2026-03-22;
                              // treat as 'mixed' in all UI reads (use `run.runLevel ?? 'mixed'`).
                              // Added 2026-03-22. Client-side only — no Cloud Function involvement.
+  lastMessageAt: Timestamp | null,
+                             // Stamped by sendRunMessage() (fire-and-forget) each time a message
+                             // is sent to the run chat. Used by useMyRunChats to detect unread chats.
+                             // Absent on runs with no messages yet; treated as read (no phantom badge).
+                             // Added 2026-03-22.
+  noShowProcessedAt: Timestamp | null,
+                             // Stamped by detectRunNoShows Cloud Function after all committed
+                             // participants have been evaluated for this run. Absent on runs that
+                             // have not yet been processed (created before this field was introduced,
+                             // or not yet overdue). detectRunNoShows skips runs where this field is
+                             // present (idempotency guard). Never written by the client.
+                             // Added 2026-03-23.
   createdAt: Timestamp,      // serverTimestamp()
 }
 ```
@@ -153,6 +179,10 @@ Firebase-only backend. No custom server. Logic lives in:
   joinedAt: Timestamp,       // Timestamp.now()
   status: 'going',
   gymId,                     // denormalized for userId+gymId query in subscribeToUserRunsAtGym
+  lastReadAt: Timestamp | null,
+                             // Written by markRunChatSeen() when the user opens the run chat.
+                             // Compared against runs/{runId}.lastMessageAt by useMyRunChats to
+                             // compute isUnread / runChatUnreadCount. Added 2026-03-22.
 }
 ```
 > Compound key `{runId}_{userId}` makes joins idempotent (setDoc overwrites) and leaveRun O(1) (delete by ID, no query). Ownership enforced via the `userId` field since Firestore rules cannot split the doc ID string.
@@ -388,19 +418,26 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 - `findMatchingSchedule(odId, gymId)` — finds a `SCHEDULED` session within grace period (60 min)
 
 ### `runService.js`
-- **`startOrJoinRun(gymId, gymName, startTime)`** — merge rule: queries `upcoming` runs at this gym, joins an existing one if `|existingStartTime - requestedStartTime| <= 60 min`, otherwise creates a new run. Validates `startTime > now` and `<= now + 7 days`. Returns `{ runId, created: boolean }`.
+- **`startOrJoinRun(gymId, gymName, startTime, runLevel = 'mixed')`** — merge rule: queries `upcoming` runs at this gym, joins an existing one if `|existingStartTime - requestedStartTime| <= 60 min`, otherwise creates a new run. Validates `startTime > now` and `<= now + 7 days`. `runLevel` is set only on new run creation (joined runs keep their existing level). Returns `{ runId, created: boolean }`.
 - **`joinExistingRun(runId, gymId, gymName)`** — joins a known run by ID; skips time validation. Use this (not `startOrJoinRun`) for run cards shown in the grace window whose `startTime` is already in the past.
 - **`leaveRun(runId)`** — transaction: deletes `runParticipants/{runId}_{uid}`, decrements `participantCount` (guarded: skips decrement if count already `<= 0`). No-op if user isn't in the run.
 - **`subscribeToGymRuns(gymId, callback)`** — real-time; filters `status == 'upcoming'`, grace window `startTime >= now - 30 min`.
 - **`subscribeToUserRunsAtGym(userId, gymId, callback)`** — real-time; user's own participant docs at a specific gym (`userId + gymId + status == 'going'`).
 - **`subscribeToRunParticipants(runId, callback)`** — real-time; all participants in a run (for future "who's going" list).
 - **`subscribeToAllUpcomingRuns(callback)`** — real-time; all upcoming runs across all gyms (no `gymId` filter). Filters `status == 'upcoming'`, grace window `startTime >= now - 30 min`, `participantCount > 0`. Used by PlanVisitScreen "Runs Being Planned" section.
+- **`subscribeToAllUserRuns(userId, callback)`** — real-time; all `runParticipants` docs where `userId` field matches. Used by `useMyRunChats` to build the Messages inbox Run Chats section.
 - Internal `joinRun` uses `runTransaction`: reads participant doc first; `increment(1)` only fires if `!alreadyJoined`.
 
 ### `reviewService.js`
 - **`checkReviewEligibility(uid, gymId)`** → `Promise<{ canReview, hasVerifiedRun }>`: single `getDoc` on `users/{uid}`; checks `pointsAwarded.runGyms` and `pointsAwarded.gymVisits` independently.
   - `canReview` = `runGyms.includes(gymId) || gymVisits.includes(gymId)` — gates the review submission form
   - `hasVerifiedRun` = `runGyms.includes(gymId)` — controls whether `verifiedAttendee: true` is written on the review doc
+- **`submitReview(uid, gymId, userName, userAvatar, rating, text, isVerified)`** → one-active-review guard (getDocs query), writes to `gyms/{gymId}/reviews`, awaits `awardPoints(uid, 'review', null, gymId)`. Returns `{ success, alreadyReviewed, pointsResult }`.
+
+### `reviewService.js`
+- **`checkReviewEligibility(uid, gymId)`** → `Promise<{ canReview, hasVerifiedRun }>`: single `getDoc` on `users/{uid}`; checks `pointsAwarded.runGyms` (run-completion path) and `pointsAwarded.gymVisits` (check-in path) independently.
+  - `canReview = runGyms.includes(gymId) || gymVisits.includes(gymId)` — gates the review submission form
+  - `hasVerifiedRun = runGyms.includes(gymId)` — controls whether `verifiedAttendee: true` is written on the review doc
 - **`submitReview(uid, gymId, userName, userAvatar, rating, text, isVerified)`** → one-active-review guard (getDocs query), writes to `gyms/{gymId}/reviews`, awaits `awardPoints(uid, 'review', null, gymId)`. Returns `{ success, alreadyReviewed, pointsResult }`.
 
 ### `reliabilityService.js` — READ-ONLY on client
@@ -436,7 +473,7 @@ Single source of truth for all point writes. Never write `totalPoints` anywhere 
 | `useTaggedClips(uid)` | `{ allTagged, featuredIn, videoUrls, thumbnails, loading, refetch }` | Clips user is tagged in. V1: queries 100 recent clips, client-side filters by `taggedPlayers[].uid`. `allTagged` = all tagged clips. `featuredIn` = clips where `addedToProfile === true`. `refetch` bumps internal counter to re-query. Called with `useFocusEffect` on ProfileScreen and UserProfileScreen. |
 
 | `useConversations()` | `{ conversations, loading, unreadCount }` | `dmService.subscribeToConversations`. Unread = `lastActivityAt > lastSeenAt[uid]`. |
-| `useMyRunChats()` | `{ runChats, loading }` | `runService.subscribeToAllUserRuns` + `getDoc` per run for gymName/startTime. For Messages inbox Run Chats section. |
+| `useMyRunChats()` | `{ runChats, loading, runChatUnreadCount }` | `runService.subscribeToAllUserRuns` + `getDoc` per run for gymName/startTime/chatExpiresAt/lastMessageAt. `runChatUnreadCount` = count of chats where `lastMessageAt > lastReadAt` on the participant doc. Expired chats (past `chatExpiresAt`) are hidden from the inbox. For Messages inbox Run Chats section. |
 ---
 
 ## Cloud Functions (in runcheck-backend)

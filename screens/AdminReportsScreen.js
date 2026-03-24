@@ -68,6 +68,7 @@ const TYPE_CONFIG = {
   player: { label: 'Player', icon: 'person-outline', color: '#3B82F6' },
   run: { label: 'Run', icon: 'walk-outline', color: '#F59E0B' },
   gym: { label: 'Gym', icon: 'basketball-outline', color: '#EF4444' },
+  message: { label: 'Message', icon: 'chatbubble-outline', color: '#0EA5E9' },
 };
 
 // ---------------------------------------------------------------------------
@@ -83,7 +84,17 @@ function capitalize(str) {
 /** Returns a relative time string like "2h ago", "3d ago", or a short date. */
 function formatRelativeTime(ts) {
   if (!ts) return '';
-  const date = ts.toDate ? ts.toDate() : new Date(ts);
+  // Firestore Timestamps have .toDate(). Plain objects stored via Cloud Function
+  // callables arrive as { seconds, nanoseconds } — convert via seconds * 1000.
+  let date;
+  if (ts.toDate) {
+    date = ts.toDate();
+  } else if (ts.seconds != null && typeof ts.seconds === 'number') {
+    date = new Date(ts.seconds * 1000);
+  } else {
+    date = new Date(ts);
+  }
+  if (isNaN(date.getTime())) return 'Unknown';
   const now = new Date();
   const diffMs = now - date;
   const diffMins = Math.floor(diffMs / 60000);
@@ -150,6 +161,10 @@ export default function AdminReportsScreen() {
   // Maps: targetId → display string, targetOwnerId → display name
   const [targetLabels, setTargetLabels] = useState({});
   const [ownerNames, setOwnerNames] = useState({});
+  // Maps uid → { level: number, active: boolean } for repeat-offender badge.
+  // Populated from the same user doc reads already performed in resolveLabels —
+  // no extra Firestore reads.
+  const [suspensionLevels, setSuspensionLevels] = useState({});
 
   useEffect(() => {
     if (reports.length === 0) return;
@@ -159,6 +174,7 @@ export default function AdminReportsScreen() {
     async function resolveLabels() {
       const newTargetLabels = {};
       const newOwnerNames = {};
+      const newSuspensionLevels = {};
 
       // Collect unique IDs to fetch, grouped by type
       const gymIds = new Set();
@@ -173,6 +189,11 @@ export default function AdminReportsScreen() {
         else if (r.type === 'player') userIds.add(r.targetId);
         else if (r.type === 'run') runIds.add(r.targetId);
         else if (r.type === 'clip') clipIds.add(r.targetId);
+        else if (r.type === 'message') {
+          // No Firestore read needed — label derived from messageContext stored on the doc
+          const preview = r.messageContext?.messageText?.slice(0, 50) || '[DM Message]';
+          newTargetLabels[r.targetId] = `Message: "${preview}${preview.length >= 50 ? '…' : ''}"`;
+        }
       }
       for (const r of reports) {
         if (r.targetOwnerId && !ownerNames[r.targetOwnerId]) {
@@ -188,13 +209,19 @@ export default function AdminReportsScreen() {
         } catch (_) { /* fallback to raw ID */ }
       }
 
-      // Fetch player display names
+      // Fetch player display names + suspension history (no extra reads)
       for (const id of userIds) {
         try {
           const snap = await getDoc(doc(db, 'users', id));
           if (snap.exists()) {
             const d = snap.data();
             newTargetLabels[id] = `Player: ${d.displayName || d.name || id}`;
+            // Capture suspension history while we have the doc
+            if ((d.suspensionLevel ?? 0) >= 1) {
+              const endsAt = d.suspensionEndsAt?.toDate?.();
+              const active = d.isSuspended === true && (!endsAt || endsAt > new Date());
+              newSuspensionLevels[id] = { level: d.suspensionLevel, active };
+            }
           }
         } catch (_) { /* fallback */ }
       }
@@ -241,13 +268,19 @@ export default function AdminReportsScreen() {
         } catch (_) { /* fallback */ }
       }
 
-      // Fetch owner display names
+      // Fetch owner display names + suspension history (no extra reads)
       for (const id of ownerUserIds) {
         try {
           const snap = await getDoc(doc(db, 'users', id));
           if (snap.exists()) {
             const d = snap.data();
             newOwnerNames[id] = d.displayName || d.name || id;
+            // Capture suspension history while we have the doc
+            if ((d.suspensionLevel ?? 0) >= 1) {
+              const endsAt = d.suspensionEndsAt?.toDate?.();
+              const active = d.isSuspended === true && (!endsAt || endsAt > new Date());
+              newSuspensionLevels[id] = { level: d.suspensionLevel, active };
+            }
           }
         } catch (_) { /* fallback */ }
       }
@@ -259,6 +292,9 @@ export default function AdminReportsScreen() {
       }
       if (Object.keys(newOwnerNames).length > 0) {
         setOwnerNames((prev) => ({ ...prev, ...newOwnerNames }));
+      }
+      if (Object.keys(newSuspensionLevels).length > 0) {
+        setSuspensionLevels((prev) => ({ ...prev, ...newSuspensionLevels }));
       }
     }
 
@@ -561,24 +597,89 @@ export default function AdminReportsScreen() {
                 </Text>
               ) : null}
 
-              {/* Target info row — resolved to human-readable label */}
-              <View style={styles.metaRow}>
-                <Ionicons name="link-outline" size={13} color={colors.textMuted} />
-                <Text style={styles.metaText} numberOfLines={1}>
-                  {targetLabels[report.targetId] || report.targetId}
-                </Text>
-              </View>
+              {/* Reported message text — shown for message-type reports */}
+              {report.type === 'message' && report.messageContext?.messageText ? (
+                <View style={[styles.messageExcerpt, { borderColor: isDark ? 'rgba(14,165,233,0.3)' : '#BAE6FD', backgroundColor: isDark ? 'rgba(14,165,233,0.08)' : '#F0F9FF' }]}>
+                  <Ionicons name="chatbubble-outline" size={12} color="#0EA5E9" style={{ marginRight: 4, marginTop: 1 }} />
+                  <Text style={[styles.messageExcerptText, { color: isDark ? '#7DD3FC' : '#0369A1' }]} numberOfLines={4}>
+                    "{report.messageContext.messageText}"
+                  </Text>
+                </View>
+              ) : null}
 
-              {/* Target owner (if known) — resolved to display name */}
+              {/* Target info row — resolved to human-readable label.
+                  Skipped for message reports: the blue excerpt above already
+                  shows the message text; the targetId label would duplicate it. */}
+              {report.type !== 'message' && (
+                <View style={styles.metaRow}>
+                  <Ionicons name="link-outline" size={13} color={colors.textMuted} />
+                  <Text style={styles.metaText} numberOfLines={1}>
+                    {targetLabels[report.targetId] || report.targetId}
+                  </Text>
+                </View>
+              )}
+
+              {/* Target owner (if known) — resolved to display name.
+                  For message reports: labelled "Sender" (targetOwnerId === senderId). */}
               {report.targetOwnerId && (
                 <View style={styles.metaRow}>
                   <Ionicons name="person-circle-outline" size={13} color={colors.textMuted} />
-                  <Text style={styles.metaLabel}>Owner: </Text>
+                  <Text style={styles.metaLabel}>
+                    {report.type === 'message' ? 'Sender: ' : 'Owner: '}
+                  </Text>
                   <Text style={styles.metaText} numberOfLines={1}>
                     {ownerNames[report.targetOwnerId] || report.targetOwnerId}
                   </Text>
                 </View>
               )}
+
+              {/* Message report extras — received by + sent time (no extra reads) */}
+              {report.type === 'message' && (
+                <>
+                  {report.reporterName ? (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="person-outline" size={13} color={colors.textMuted} />
+                      <Text style={styles.metaLabel}>Received by: </Text>
+                      <Text style={styles.metaText} numberOfLines={1}>
+                        {report.reporterName}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {report.messageContext?.messageSentAt ? (
+                    <View style={styles.metaRow}>
+                      <Ionicons name="time-outline" size={13} color={colors.textMuted} />
+                      <Text style={styles.metaLabel}>Sent: </Text>
+                      <Text style={styles.metaText} numberOfLines={1}>
+                        {formatRelativeTime(report.messageContext.messageSentAt)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </>
+              )}
+
+              {/* Repeat-offender badge — shown when the subject has a suspension history.
+                  Uses the uid of the direct subject: targetId for player reports,
+                  targetOwnerId for clip/run reports. No extra Firestore reads —
+                  data comes from user docs already fetched in resolveLabels. */}
+              {(() => {
+                const offenderUid =
+                  report.type === 'player' ? report.targetId : report.targetOwnerId;
+                const offense = offenderUid ? suspensionLevels[offenderUid] : null;
+                if (!offense) return null;
+                const badgeColor = offense.active ? '#DC2626' : '#D97706';
+                const badgeBg   = isDark
+                  ? (offense.active ? '#450A0A' : '#451A03')
+                  : (offense.active ? '#FEF2F2' : '#FFFBEB');
+                const label = offense.active
+                  ? `Currently Suspended · Lvl ${offense.level}`
+                  : `Repeat Offender · Lvl ${offense.level}`;
+                return (
+                  <View style={[styles.offenderBadge, { backgroundColor: badgeBg, borderColor: badgeColor + '50' }]}>
+                    <Ionicons name="warning-outline" size={11} color={badgeColor} />
+                    <Text style={[styles.offenderBadgeText, { color: badgeColor }]}>{label}</Text>
+                  </View>
+                );
+              })()}
 
               {/* Admin notes (if previously set) */}
               {report.adminNotes ? (
@@ -871,6 +972,21 @@ const getStyles = (colors, isDark) =>
     },
 
     // Meta rows
+    messageExcerpt: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      borderWidth: 1,
+      borderRadius: RADIUS.sm,
+      paddingHorizontal: SPACING.sm,
+      paddingVertical: 6,
+      marginBottom: SPACING.sm,
+    },
+    messageExcerptText: {
+      fontSize: FONT_SIZES.xs,
+      fontStyle: 'italic',
+      flex: 1,
+      lineHeight: 16,
+    },
     metaRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1024,5 +1140,23 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.semibold,
       color: '#DC2626',
+    },
+
+    // Repeat-offender badge — inline pill shown on cards where the subject
+    // has a prior suspension (suspensionLevel >= 1 on their user doc).
+    offenderBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      alignSelf: 'flex-start',
+      borderWidth: 1,
+      borderRadius: RADIUS.sm,
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      marginBottom: SPACING.xs,
+    },
+    offenderBadgeText: {
+      fontSize: 11,
+      fontWeight: FONT_WEIGHTS.semibold,
     },
   });

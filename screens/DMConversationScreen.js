@@ -54,6 +54,7 @@ import {
   sendDMMessage,
   markConversationSeen,
 } from '../services/dmService';
+import ReportModal from '../components/ReportModal';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -119,7 +120,7 @@ function AvatarBubble({ uri, name, size = 32, colors }) {
  * Other messages: left-aligned with avatar and optional sender label.
  * In a 1:1 DM, sender name is omitted (only one other person).
  */
-function MessageBubble({ message, isOwn, otherUserAvatar, otherUserName, colors }) {
+function MessageBubble({ message, isOwn, otherUserAvatar, otherUserName, onLongPress, colors }) {
   return (
     <View
       style={[
@@ -140,7 +141,11 @@ function MessageBubble({ message, isOwn, otherUserAvatar, otherUserName, colors 
       )}
 
       <View style={[dmStyles.bubbleWrapper, isOwn && dmStyles.bubbleWrapperOwn]}>
-        <View
+        <TouchableOpacity
+          onLongPress={onLongPress}
+          delayLongPress={400}
+          activeOpacity={1}
+          disabled={!onLongPress}
           style={[
             dmStyles.bubble,
             isOwn
@@ -156,7 +161,7 @@ function MessageBubble({ message, isOwn, otherUserAvatar, otherUserName, colors 
           >
             {message.text}
           </Text>
-        </View>
+        </TouchableOpacity>
 
         <Text style={[dmStyles.messageTime, { color: colors.textMuted }]}>
           {formatMessageTime(message.createdAt)}
@@ -183,6 +188,11 @@ export default function DMConversationScreen({ route, navigation }) {
   // Input state
   const [inputText, setInputText] = useState('');
   const [sending, setSending] = useState(false);
+
+  // Report modal state — player report from header
+  const [showReport, setShowReport] = useState(false);
+  // Message-level report state — set when user long-presses a message
+  const [reportTarget, setReportTarget] = useState(null); // { messageId, senderId, messageText, messageSentAt }
 
   const flatListRef = useRef(null);
 
@@ -240,6 +250,7 @@ export default function DMConversationScreen({ route, navigation }) {
       await sendDMMessage({
         conversationId,
         senderId: uid,
+        recipientId: otherUserId,
         text: textToSend,
       });
     } catch (err) {
@@ -259,15 +270,30 @@ export default function DMConversationScreen({ route, navigation }) {
 
   // ── Render message ─────────────────────────────────────────────────────────
   const renderMessage = useCallback(
-    ({ item }) => (
-      <MessageBubble
-        message={item}
-        isOwn={item.senderId === uid}
-        otherUserAvatar={otherUserAvatar}
-        otherUserName={otherUserName}
-        colors={colors}
-      />
-    ),
+    ({ item }) => {
+      const isOwn = item.senderId === uid;
+      return (
+        <MessageBubble
+          message={item}
+          isOwn={isOwn}
+          otherUserAvatar={otherUserAvatar}
+          otherUserName={otherUserName}
+          colors={colors}
+          // Long-press to report — only available on the other user's messages
+          onLongPress={
+            !isOwn
+              ? () =>
+                  setReportTarget({
+                    messageId: item.id,
+                    senderId: item.senderId,
+                    messageText: item.text || '',
+                    messageSentAt: item.createdAt || null,
+                  })
+              : undefined
+          }
+        />
+      );
+    },
     [uid, otherUserAvatar, otherUserName, colors],
   );
 
@@ -306,8 +332,14 @@ export default function DMConversationScreen({ route, navigation }) {
           </Text>
         </TouchableOpacity>
 
-        {/* Right spacer to keep header centered */}
-        <View style={dmStyles.headerRight} />
+        {/* Report button — opens ReportModal for the other user */}
+        <TouchableOpacity
+          onPress={() => setShowReport(true)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={dmStyles.headerRight}
+        >
+          <Ionicons name="flag-outline" size={20} color={colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView
@@ -413,6 +445,34 @@ export default function DMConversationScreen({ route, navigation }) {
           </>
         )}
       </KeyboardAvoidingView>
+
+      {/* Report modal — reports the other user (type="player") */}
+      <ReportModal
+        visible={showReport}
+        onClose={() => setShowReport(false)}
+        type="player"
+        targetId={otherUserId}
+      />
+
+      {/* Message-level report modal — long-press on a message bubble */}
+      <ReportModal
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        type="message"
+        targetId={reportTarget?.messageId ?? ''}
+        messageContext={
+          reportTarget
+            ? {
+                conversationId,
+                messageId: reportTarget.messageId,
+                senderId: reportTarget.senderId,
+                messageText: reportTarget.messageText,
+                messageSentAt: reportTarget.messageSentAt,
+              }
+            : undefined
+        }
+        blockSenderId={reportTarget?.senderId}
+      />
     </SafeAreaView>
   );
 }
@@ -447,6 +507,9 @@ const dmStyles = StyleSheet.create({
   },
   headerRight: {
     width: 44, // mirrors back button width for visual centering
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    padding: SPACING.xs,
   },
 
   // States

@@ -22,7 +22,7 @@ Nothing in this file should be worked on during a session unless the user explic
 ## Social Features
 
 - ~~**Run Chat**~~ — **Done 2026-03-20.** Per-run group chat fully implemented. `RunChatScreen` with real-time Firestore `onSnapshot`, access gated to run participants, Cloud Function push notifications to all participants, gym name + start time shown in Messages inbox, back button wired up in HomeStack and ProfileStack.
-- ~~In-app messaging / DMs~~ — **Done 2026-03-20.** Full DM system built: `openOrCreateConversation`, `DMConversationScreen`, `MessagesScreen` (SectionList with DMs + Run Chats), push notifications via `onDmMessageCreated` Cloud Function, unread count badge on home screen Messages icon.
+- ~~In-app messaging / DMs~~ — **Code complete 2026-03-21.** Full DM system built: `openOrCreateConversation`, `DMConversationScreen`, `MessagesScreen` (SectionList with DMs + Run Chats), unread count badge on home screen Messages icon. ⚠️ `onDmMessageCreated` Cloud Function (DM push notifications) is NOT yet built — App.js tap handler is wired and waiting. Firestore rules for `conversations` collection not yet deployed.
 - "Challenge" system (1v1 or crew vs crew invites)
 - Crew/team creation and management
 - Follow other players (not just gyms)
@@ -73,6 +73,8 @@ Nothing in this file should be worked on during a session unless the user explic
 ---
 
 ## Monetization & Growth
+
+- **Run creation limits (free vs. premium)** — Free users get a daily cap on how many runs they can *start* (exact number TBD — 1 or 3 per day is the working range). Premium users get unlimited run creation. Joining an existing run would not count against the limit — only starting a new one. Implementation notes when ready: daily counter on `users/{uid}` (e.g. `runsStartedToday: { count, date }`) checked client-side + enforced in `startOrJoinRun` service function or a Cloud Function. Reset daily via Cloud Scheduler or lazy reset (compare `date` to today on each check-in call).
 
 - Premium subscription tier (expanded clip limits, exclusive perks, priority support)
 - Gym partnership program (verified gym pages, promoted listings)

@@ -34,7 +34,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
-import { callFunction } from '../config/firebase';
+import { callFunction, auth } from '../config/firebase';
+import { blockUser } from '../services/dmService';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 
 // ---------------------------------------------------------------------------
@@ -55,11 +56,13 @@ const REASON_OPTIONS = [
 
 const INPUT_ACCESSORY_ID = 'reportDescriptionDone';
 
-export default function ReportModal({ visible, onClose, type, targetId }) {
+export default function ReportModal({ visible, onClose, type, targetId, messageContext, blockSenderId }) {
   const { colors, isDark } = useTheme();
   const [reason, setReason] = useState(null);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // "Also block" toggle — only shown for message reports when blockSenderId is provided
+  const [alsoBlock, setAlsoBlock] = useState(false);
   const descriptionRef = useRef(null);
   const scrollRef = useRef(null);
   const descriptionYRef = useRef(0);
@@ -69,6 +72,7 @@ export default function ReportModal({ visible, onClose, type, targetId }) {
   const resetForm = () => {
     setReason(null);
     setDescription('');
+    setAlsoBlock(false);
   };
 
   const handleClose = () => {
@@ -89,12 +93,34 @@ export default function ReportModal({ visible, onClose, type, targetId }) {
       if (description.trim().length > 0) {
         payload.description = description.trim();
       }
+      if (messageContext) {
+        payload.messageContext = messageContext;
+      }
       await callFunction('submitReport', payload);
+
+      // Block the sender if the toggle was selected — best-effort, non-blocking
+      let blocked = false;
+      if (alsoBlock && blockSenderId) {
+        const currentUid = auth.currentUser?.uid;
+        if (currentUid) {
+          try {
+            await blockUser(currentUid, blockSenderId);
+            blocked = true;
+          } catch (blockErr) {
+            // Non-critical — arrayUnion is idempotent so this only fails on
+            // permission or network issues. Proceed without surfacing the error.
+            if (__DEV__) console.warn('[ReportModal] blockUser error:', blockErr.message);
+          }
+        }
+      }
+
       resetForm();
       onClose();
       Alert.alert(
         'Report Submitted',
-        'Thanks for letting us know. We\'ll review this report shortly.',
+        blocked
+          ? 'Your report has been submitted and the user has been blocked. They will no longer be able to message you.'
+          : 'Thanks for letting us know. We\'ll review this report shortly.',
         [{ text: 'OK' }]
       );
     } catch (err) {
@@ -119,7 +145,8 @@ export default function ReportModal({ visible, onClose, type, targetId }) {
     type === 'clip' ? 'clip' :
     type === 'player' ? 'player' :
     type === 'run' ? 'run' :
-    type === 'gym' ? 'gym' : 'item';
+    type === 'gym' ? 'gym' :
+    type === 'message' ? 'message' : 'item';
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
@@ -151,6 +178,15 @@ export default function ReportModal({ visible, onClose, type, targetId }) {
                 <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
                   Why are you reporting this {typeLabel}?
                 </Text>
+
+                {/* Message preview — shown for message reports */}
+                {messageContext?.messageText ? (
+                  <View style={[styles.messagePreview, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : '#F3F4F6', borderColor: isDark ? 'rgba(255,255,255,0.1)' : colors.border }]}>
+                    <Text style={[styles.messagePreviewText, { color: colors.textSecondary }]} numberOfLines={3}>
+                      "{messageContext.messageText}"
+                    </Text>
+                  </View>
+                ) : null}
 
                 {/* Reason selector */}
                 <View style={styles.reasonList}>
@@ -227,6 +263,39 @@ export default function ReportModal({ visible, onClose, type, targetId }) {
                     }}
                   />
                 </View>
+
+                {/* "Also block this user" toggle — message reports only */}
+                {type === 'message' && blockSenderId ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.alsoBlockRow,
+                      {
+                        backgroundColor: alsoBlock
+                          ? (isDark ? 'rgba(239,68,68,0.1)' : '#FEF2F2')
+                          : (isDark ? 'rgba(255,255,255,0.06)' : '#F3F4F6'),
+                        borderColor: alsoBlock
+                          ? (isDark ? 'rgba(239,68,68,0.4)' : '#FECACA')
+                          : (isDark ? 'rgba(255,255,255,0.1)' : colors.border),
+                      },
+                    ]}
+                    onPress={() => setAlsoBlock((v) => !v)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name={alsoBlock ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={20}
+                      color={alsoBlock ? '#EF4444' : colors.textMuted}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.alsoBlockLabel, { color: alsoBlock ? '#EF4444' : colors.textSecondary }]}>
+                        Also block this user
+                      </Text>
+                      <Text style={[styles.alsoBlockSub, { color: colors.textMuted }]}>
+                        They won't be able to message you
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
 
                 {/* Buttons */}
                 <View style={styles.buttonRow}>
@@ -308,6 +377,18 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     lineHeight: 20,
   },
+  messagePreview: {
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  messagePreviewText: {
+    fontSize: FONT_SIZES.body,
+    fontStyle: 'italic',
+    lineHeight: 20,
+  },
   reasonList: {
     gap: SPACING.xs,
     marginBottom: SPACING.md,
@@ -352,6 +433,23 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.body,
     minHeight: 70,
     marginBottom: SPACING.md,
+  },
+  alsoBlockRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    padding: SPACING.sm + 2,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    marginBottom: SPACING.md,
+  },
+  alsoBlockLabel: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  alsoBlockSub: {
+    fontSize: FONT_SIZES.caption,
+    marginTop: 2,
   },
   buttonRow: {
     flexDirection: 'row',
