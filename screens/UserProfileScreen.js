@@ -43,6 +43,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts';
 import { useGyms, useUserClips, useTaggedClips } from '../hooks';
 import { ReportModal } from '../components';
+import { getReliabilityTier } from '../services/reliabilityService';
 import { auth, db } from '../config/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
@@ -146,6 +147,8 @@ export default function UserProfileScreen({ route, navigation }) {
   const rank = getUserRank(totalPoints);
   const sessionsAttended = profile?.reliability?.totalAttended ?? 0;
   const runsStarted = profile?.runsStarted ?? 0;
+  const reliabilityScore = profile?.reliability?.score ?? 100;
+  const reliabilityTier = getReliabilityTier(reliabilityScore);
 
   // Resolve Home Court from the profile — independent of followedGyms.
   // Name is resolved from the gyms list, not cached on the user doc.
@@ -434,6 +437,40 @@ export default function UserProfileScreen({ route, navigation }) {
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>{totalPoints}</Text>
             <Text style={styles.statLabel}>Total{'\n'}Points</Text>
+          </View>
+        </View>
+
+        {/* ── Reliability Score ──────────────────────────────────────────── */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Reliability Score</Text>
+          <View style={styles.scoreRow}>
+            <View style={styles.scoreCircle}>
+              <Text style={[styles.scoreNumber, { color: reliabilityTier.color }]}>{reliabilityScore}</Text>
+              <Text style={styles.scoreMax}>/100</Text>
+            </View>
+            <View style={styles.tierInfo}>
+              <View style={[styles.tierBadge, { backgroundColor: reliabilityTier.color + '20' }]}>
+                <View style={[styles.tierDot, { backgroundColor: reliabilityTier.color }]} />
+                <Text style={[styles.tierLabel, { color: reliabilityTier.color }]}>{reliabilityTier.label}</Text>
+              </View>
+              <Text style={styles.tierHint}>
+                {reliabilityScore >= 90
+                  ? 'Players trust them to show up!'
+                  : reliabilityScore >= 75
+                  ? 'Solid track record.'
+                  : reliabilityScore >= 50
+                  ? 'Room for improvement.'
+                  : 'Attendance needs work.'}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.scoreBarTrack}>
+            <View
+              style={[
+                styles.scoreBarFill,
+                { width: `${reliabilityScore}%`, backgroundColor: reliabilityTier.color },
+              ]}
+            />
           </View>
         </View>
 
@@ -880,6 +917,83 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: colors.border,
     marginHorizontal: SPACING.md,
+  },
+
+  // ── Reliability card ─────────────────────────────────────────────────────
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.lg,
+    width: '100%',
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  cardTitle: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+  },
+  scoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  scoreCircle: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginRight: SPACING.lg,
+  },
+  scoreNumber: {
+    fontSize: 48,
+    fontWeight: FONT_WEIGHTS.bold,
+    lineHeight: 52,
+  },
+  scoreMax: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    marginBottom: 8,
+    marginLeft: 2,
+  },
+  tierInfo: {
+    flex: 1,
+  },
+  tierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+    marginBottom: SPACING.xs,
+  },
+  tierDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 6,
+  },
+  tierLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  tierHint: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textSecondary,
+    lineHeight: 16,
+  },
+  scoreBarTrack: {
+    height: 6,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: RADIUS.full,
+    overflow: 'hidden',
+    marginTop: SPACING.xs,
+  },
+  scoreBarFill: {
+    height: '100%',
+    borderRadius: RADIUS.full,
   },
 
   // ── Friend button ────────────────────────────────────────────────────────
