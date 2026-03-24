@@ -752,33 +752,27 @@ export default function ProfileScreen({ navigation }) {
         </LinearGradient>
 
         {/* ── Reliability Score ──────────────────────────────────────────── */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Reliability Score</Text>
-          <View style={styles.scoreRow}>
-            {/* Large numeric score on the left */}
-            <View style={styles.scoreCircle}>
-              <Text style={[styles.scoreNumber, { color: displayTier.color }]}>{displayScore}</Text>
-              <Text style={styles.scoreMax}>/100</Text>
+        <View style={[styles.card, { borderWidth: 1, borderColor: displayTier.color + '40' }]}>
+          {/* Header: tier badge left, info icon right */}
+          <View style={styles.reliabilityHeaderRow}>
+            <View style={[styles.tierBadge, { backgroundColor: displayTier.color + '20' }]}>
+              <View style={[styles.tierDot, { backgroundColor: displayTier.color }]} />
+              <Text style={[styles.tierLabel, { color: displayTier.color }]}>{displayTier.label}</Text>
             </View>
-            {/* Tier badge + contextual hint on the right */}
-            <View style={styles.tierInfo}>
-              <View style={[styles.tierBadge, { backgroundColor: displayTier.color + '20' }]}>
-                <View style={[styles.tierDot, { backgroundColor: displayTier.color }]} />
-                <Text style={[styles.tierLabel, { color: displayTier.color }]}>{displayTier.label}</Text>
-              </View>
-              {/* Hint text changes based on score range */}
-              <Text style={styles.tierHint}>
-                {displayScore >= 90
-                  ? 'Players trust you to show up!'
-                  : displayScore >= 75
-                  ? 'Solid track record. Keep it up!'
-                  : displayScore >= 50
-                  ? 'Room for improvement.'
-                  : 'Attend more sessions to rebuild trust.'}
-              </Text>
-            </View>
+            <TouchableOpacity
+              onPress={() => setShowReliabilityInfo(true)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="information-circle-outline" size={18} color={colors.textMuted} />
+            </TouchableOpacity>
           </View>
-          {/* Progress bar — width is percentage of score out of 100 */}
+          {/* Score number */}
+          <Text style={styles.reliabilityScoreLabel}>Reliability Score</Text>
+          <View style={styles.scoreRow}>
+            <Text style={[styles.scoreNumber, { color: displayTier.color }]}>{displayScore}</Text>
+            <Text style={[styles.scoreMax, { color: displayTier.color + '70' }]}>/100</Text>
+          </View>
+          {/* Progress bar */}
           <View style={styles.scoreBarTrack}>
             <View
               style={[
@@ -787,14 +781,16 @@ export default function ProfileScreen({ navigation }) {
               ]}
             />
           </View>
-          {/* Info link */}
-          <TouchableOpacity
-            onPress={() => setShowReliabilityInfo(true)}
-            style={styles.reliabilityInfoLink}
-          >
-            <Ionicons name="information-circle-outline" size={13} color={colors.primary} />
-            <Text style={styles.reliabilityInfoLinkText}>How reliability works</Text>
-          </TouchableOpacity>
+          {/* Hint text */}
+          <Text style={styles.tierHint}>
+            {displayScore >= 90
+              ? 'Players trust you to show up!'
+              : displayScore >= 75
+              ? 'Solid track record. Keep it up.'
+              : displayScore >= 50
+              ? 'Room for improvement.'
+              : 'Attend more sessions to rebuild trust.'}
+          </Text>
         </View>
 
         {/* ── Session Stats Grid ─────────────────────────────────────────── */}
@@ -1454,22 +1450,22 @@ export default function ProfileScreen({ navigation }) {
               How Reliability Works
             </Text>
             <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary }]}>
-              Your score starts at 100 and is locked in until you've completed 3 runs. After that, it reflects your actual attendance.
+              Your score starts at 100 and is locked in until you've attended 3 runs. After that, it reflects how consistently you show up when you commit.
             </Text>
             <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
-              {'• Attending a run protects your score'}
+              {'• Showing up keeps your score intact'}
             </Text>
             <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
-              {'• Cancelling 2+ hours before start has no penalty'}
+              {'• Cancelling 1+ hour before start has no penalty'}
             </Text>
             <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
-              {'• Cancelling within 2 hours of start counts as a late cancel (\u22128)'}
+              {'• Cancelling within 1 hour of start counts as a late cancel (\u22128)'}
             </Text>
             <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
               {'• No-shows lower your score the most (\u221220)'}
             </Text>
             <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary, marginTop: SPACING.sm }]}>
-              The more you play and show up, the more stable your score becomes.
+              The more you show up, the more players will want to run with you.
             </Text>
             <TouchableOpacity
               style={[styles.reliabilityModalClose, { backgroundColor: colors.primary }]}
@@ -1646,28 +1642,34 @@ const getStyles = (colors, isDark) =>
       color: '#FF6B35',
       marginRight: 3,
     },
-    // Reliability score
-    scoreRow: {
+    // Reliability score card
+    reliabilityHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       marginBottom: SPACING.sm,
     },
-    scoreCircle: {
+    reliabilityScoreLabel: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: 2,
+    },
+    scoreRow: {
       flexDirection: 'row',
       alignItems: 'baseline',
-      marginRight: SPACING.md,
+      marginBottom: SPACING.sm,
     },
     scoreNumber: {
       fontSize: 52,
       fontWeight: FONT_WEIGHTS.extraBold,
+      marginRight: 3,
     },
     scoreMax: {
-      fontSize: FONT_SIZES.body,
-      color: colors.textMuted,
-      fontWeight: FONT_WEIGHTS.medium,
-    },
-    tierInfo: {
-      flex: 1,
+      fontSize: 20,
+      fontWeight: FONT_WEIGHTS.semibold,
     },
     tierBadge: {
       flexDirection: 'row',
@@ -1676,7 +1678,6 @@ const getStyles = (colors, isDark) =>
       paddingHorizontal: SPACING.sm,
       paddingVertical: 4,
       borderRadius: RADIUS.md,
-      marginBottom: 4,
     },
     tierDot: {
       width: 8,
@@ -1691,18 +1692,18 @@ const getStyles = (colors, isDark) =>
       letterSpacing: 0.3,
     },
     tierHint: {
-      fontSize: FONT_SIZES.xs,
-      color: colors.textMuted,
-      marginTop: 2,
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      marginTop: SPACING.sm,
     },
     scoreBarTrack: {
-      height: 6,
+      height: 8,
       backgroundColor: colors.border,
       borderRadius: RADIUS.sm,
       overflow: 'hidden',
     },
     scoreBarFill: {
-      height: 6,
+      height: 8,
       borderRadius: RADIUS.sm,
     },
     // Stats grid
@@ -2153,19 +2154,7 @@ const getStyles = (colors, isDark) =>
       fontWeight: FONT_WEIGHTS.bold,
       letterSpacing: 0.3,
     },
-    // Reliability info link
-    reliabilityInfoLink: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
-      marginTop: SPACING.sm,
-      alignSelf: 'flex-start',
-    },
-    reliabilityInfoLinkText: {
-      fontSize: FONT_SIZES.xs,
-      color: colors.primary,
-      fontWeight: FONT_WEIGHTS.medium,
-    },
+    // (reliabilityInfoLink removed — info icon now lives in reliabilityHeaderRow)
     // Reliability info modal
     reliabilityModalBackdrop: {
       flex: 1,

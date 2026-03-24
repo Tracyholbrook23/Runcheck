@@ -31,13 +31,13 @@ import { getReliabilityTier } from '../services/reliabilityService';
 const INITIAL_SCORE = 100;
 
 /**
- * Minimum number of processed reliability events (terminal run outcomes) before
- * a user's real score is shown. Below this threshold the displayed score is
- * pinned to INITIAL_SCORE (100) so new users aren't penalised before they've
- * had a fair chance to build a track record.
+ * Minimum number of attended runs before a user's real score is shown.
+ * Below this threshold the displayed score is pinned to INITIAL_SCORE (100)
+ * so new users aren't penalised before they've had a fair chance to build
+ * a track record.
  *
- * "Processed" means the run has passed the grace period and been evaluated by
- * the reliability Cloud Functions — i.e. totalScheduled has been incremented.
+ * Must stay in sync with the backend lock in onScheduleWrite.ts and
+ * detectRunNoShows.ts:  if (r.totalAttended < 3) return 100;
  */
 const RELIABILITY_THRESHOLD = 3;
 
@@ -115,10 +115,12 @@ export const useReliability = (userId = null) => {
   const score = reliability?.score ?? INITIAL_SCORE;
   const tier = getReliabilityTier(score);
 
-  // Display score: pinned to 100 until the user has RELIABILITY_THRESHOLD
-  // processed runs. The real score continues to be tracked in the backend —
-  // only the value shown in the UI is affected.
-  const meetsThreshold = (reliability?.totalScheduled ?? 0) >= RELIABILITY_THRESHOLD;
+  // Display score: pinned to 100 until the user has attended RELIABILITY_THRESHOLD
+  // runs. Checked against totalAttended (not totalScheduled) so the lock lifts
+  // based on actual attendance, matching the backend computeScore guard.
+  // The real score continues to be tracked in the backend — only the displayed
+  // value is affected.
+  const meetsThreshold = (reliability?.totalAttended ?? 0) >= RELIABILITY_THRESHOLD;
   const displayScore = meetsThreshold ? score : INITIAL_SCORE;
   const displayTier = getReliabilityTier(displayScore);
 

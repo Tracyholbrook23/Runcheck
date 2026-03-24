@@ -32,9 +32,11 @@ import {
 } from 'firebase/firestore';
 
 // Scoring constants (used by calculateReliabilityScore display fallback)
+// Must stay in sync with the backend formula in onScheduleWrite.ts and
+// detectRunNoShows.ts:  score = clamp(100 − 20·noShows − 8·lateCancels, 0, 100)
 const INITIAL_SCORE = 100;
-const NO_SHOW_PENALTY = 10;
-const ATTENDANCE_BONUS = 2;
+const NO_SHOW_PENALTY = 20;       // was 10 — updated to match backend
+const LATE_CANCEL_PENALTY = 8;    // matches backend totalLateCancelled penalty
 const MIN_SCORE = 0;
 const MAX_SCORE = 100;
 
@@ -109,18 +111,17 @@ export const incrementScheduledCount = async (_odId) => {
  * @returns {number} Calculated score (0-100)
  */
 export const calculateReliabilityScore = (stats) => {
-  const { totalAttended, totalNoShow } = stats;
+  const { totalNoShow, totalLateCancelled, totalAttended } = stats;
 
-  // Start at 100
-  let score = INITIAL_SCORE;
+  // Mirrors backend formula exactly (onScheduleWrite.ts / detectRunNoShows.ts):
+  //   - Locked at 100 until the user has attended 3 or more runs.
+  //   - Once unlocked: score = clamp(100 − 20·noShows − 8·lateCancels, 0, 100)
+  if ((totalAttended ?? 0) < 3) return INITIAL_SCORE;
 
-  // Subtract penalties
-  score -= totalNoShow * NO_SHOW_PENALTY;
+  const score = INITIAL_SCORE
+    - (totalNoShow        ?? 0) * NO_SHOW_PENALTY
+    - (totalLateCancelled ?? 0) * LATE_CANCEL_PENALTY;
 
-  // Add bonuses
-  score += totalAttended * ATTENDANCE_BONUS;
-
-  // Clamp to valid range
   return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
 };
 
