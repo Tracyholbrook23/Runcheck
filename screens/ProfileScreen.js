@@ -181,7 +181,7 @@ export default function ProfileScreen({ navigation }) {
   }, []);
 
   const { user } = useAuth();
-  const { score, tier, stats, loading: reliabilityLoading } = useReliability();
+  const { score, tier, displayScore: hookDisplayScore, displayTier: hookDisplayTier, stats, loading: reliabilityLoading } = useReliability();
   const { count: upcomingCount } = useSchedules();
   const { isCheckedIn, presence } = usePresence();
   const { gyms } = useGyms();
@@ -560,9 +560,10 @@ export default function ProfileScreen({ navigation }) {
   const playStyleLabelMap = { Casual: 'Casual', Competitive: 'Competitive', Either: 'Casual / Competitive' };
   const displayPlayStyle = playStyleLabelMap[displaySkillLevel] ?? displaySkillLevel;
 
-  // Real reliability data from the hook — zero-state for brand new users
-  const displayScore = score || 0;
-  const displayTier = tier || { label: 'New', color: colors.textMuted };
+  // Display score/tier come from the hook with the visibility threshold applied:
+  // pinned to 100 until the user has 3 processed runs, then shows the real value.
+  const displayScore = hookDisplayScore ?? 0;
+  const displayTier = hookDisplayTier || { label: 'New', color: colors.textMuted };
 
   // Session stats from the same useReliability hook that provides score/tier.
   // Previously read from a separate inline onSnapshot `reliability` state, which
@@ -1453,7 +1454,7 @@ export default function ProfileScreen({ navigation }) {
               How Reliability Works
             </Text>
             <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary }]}>
-              Your reliability score reflects how consistently you show up to runs you commit to.
+              Your score starts at 100 and is locked in until you've completed 3 runs. After that, it reflects your actual attendance.
             </Text>
             <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
               {'• Attending a run protects your score'}

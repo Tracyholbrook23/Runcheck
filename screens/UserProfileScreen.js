@@ -34,6 +34,7 @@ import {
   Alert,
   Pressable,
   FlatList,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -63,6 +64,7 @@ export default function UserProfileScreen({ route, navigation }) {
   const currentUid = auth.currentUser?.uid;
   const isOwnProfile = currentUid === userId;
   const [showReport, setShowReport] = useState(false);
+  const [showReliabilityInfo, setShowReliabilityInfo] = useState(false);
 
   const { colors, isDark, skillColors } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -147,7 +149,13 @@ export default function UserProfileScreen({ route, navigation }) {
   const rank = getUserRank(totalPoints);
   const sessionsAttended = profile?.reliability?.totalAttended ?? 0;
   const runsStarted = profile?.runsStarted ?? 0;
-  const reliabilityScore = profile?.reliability?.score ?? 100;
+  // Apply the same 3-run visibility threshold used on the own-profile screen:
+  // show 100 until the user has at least 3 processed reliability events, then
+  // show the real score. totalScheduled counts terminal run outcomes (not joins).
+  const reliabilityTotalScheduled = profile?.reliability?.totalScheduled ?? 0;
+  const reliabilityScore = reliabilityTotalScheduled >= 3
+    ? (profile?.reliability?.score ?? 100)
+    : 100;
   const reliabilityTier = getReliabilityTier(reliabilityScore);
 
   // Resolve Home Court from the profile — independent of followedGyms.
@@ -472,6 +480,13 @@ export default function UserProfileScreen({ route, navigation }) {
               ]}
             />
           </View>
+          <TouchableOpacity
+            onPress={() => setShowReliabilityInfo(true)}
+            style={styles.reliabilityInfoLink}
+          >
+            <Ionicons name="information-circle-outline" size={13} color={colors.primary} />
+            <Text style={styles.reliabilityInfoLinkText}>How reliability works</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ── Add Friend / Request Sent / Friends ✓ + Remove Friend buttons ── */}
@@ -745,6 +760,50 @@ export default function UserProfileScreen({ route, navigation }) {
           targetId={userId}
         />
       )}
+
+      {/* ── Reliability Info Modal ─────────────────────────────────────── */}
+      <Modal
+        visible={showReliabilityInfo}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowReliabilityInfo(false)}
+      >
+        <TouchableOpacity
+          style={styles.reliabilityModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowReliabilityInfo(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={[styles.reliabilityModalSheet, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.reliabilityModalTitle, { color: colors.textPrimary }]}>
+              How Reliability Works
+            </Text>
+            <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary }]}>
+              Scores start at 100 and unlock after 3 completed runs. From there, the score reflects their actual attendance history.
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• Attending a run protects the score'}
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• Cancelling 2+ hours before start has no penalty'}
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• Cancelling within 2 hours of start counts as a late cancel (\u22128)'}
+            </Text>
+            <Text style={[styles.reliabilityModalBullet, { color: colors.textSecondary }]}>
+              {'• No-shows lower the score the most (\u221220)'}
+            </Text>
+            <Text style={[styles.reliabilityModalBody, { color: colors.textSecondary, marginTop: SPACING.sm }]}>
+              The more runs completed, the more accurate the score becomes.
+            </Text>
+            <TouchableOpacity
+              style={[styles.reliabilityModalClose, { backgroundColor: colors.primary }]}
+              onPress={() => setShowReliabilityInfo(false)}
+            >
+              <Text style={styles.reliabilityModalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -994,6 +1053,54 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   scoreBarFill: {
     height: '100%',
     borderRadius: RADIUS.full,
+  },
+  reliabilityInfoLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: SPACING.sm,
+    alignSelf: 'flex-start',
+  },
+  reliabilityInfoLinkText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  reliabilityModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  reliabilityModalSheet: {
+    borderTopLeftRadius: RADIUS.lg,
+    borderTopRightRadius: RADIUS.lg,
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
+  reliabilityModalTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    marginBottom: SPACING.md,
+  },
+  reliabilityModalBody: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: 22,
+  },
+  reliabilityModalBullet: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: 26,
+    marginTop: 2,
+  },
+  reliabilityModalClose: {
+    marginTop: SPACING.lg,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm + 2,
+    alignItems: 'center',
+  },
+  reliabilityModalCloseText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#fff',
   },
 
   // ── Friend button ────────────────────────────────────────────────────────

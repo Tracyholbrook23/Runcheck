@@ -31,6 +31,17 @@ import { getReliabilityTier } from '../services/reliabilityService';
 const INITIAL_SCORE = 100;
 
 /**
+ * Minimum number of processed reliability events (terminal run outcomes) before
+ * a user's real score is shown. Below this threshold the displayed score is
+ * pinned to INITIAL_SCORE (100) so new users aren't penalised before they've
+ * had a fair chance to build a track record.
+ *
+ * "Processed" means the run has passed the grace period and been evaluated by
+ * the reliability Cloud Functions — i.e. totalScheduled has been incremented.
+ */
+const RELIABILITY_THRESHOLD = 3;
+
+/**
  * useReliability — Real-time hook for a user's reliability data.
  *
  * @param {string | null} [userId=null] — UID of the user to look up.
@@ -104,10 +115,20 @@ export const useReliability = (userId = null) => {
   const score = reliability?.score ?? INITIAL_SCORE;
   const tier = getReliabilityTier(score);
 
+  // Display score: pinned to 100 until the user has RELIABILITY_THRESHOLD
+  // processed runs. The real score continues to be tracked in the backend —
+  // only the value shown in the UI is affected.
+  const meetsThreshold = (reliability?.totalScheduled ?? 0) >= RELIABILITY_THRESHOLD;
+  const displayScore = meetsThreshold ? score : INITIAL_SCORE;
+  const displayTier = getReliabilityTier(displayScore);
+
   return {
     reliability,
-    score,
-    tier,
+    score,          // real score — always reflects backend value
+    tier,           // tier based on real score
+    displayScore,   // score to show in UI (100 until threshold is met)
+    displayTier,    // tier based on displayScore
+    meetsThreshold, // true once the user has ≥ RELIABILITY_THRESHOLD processed runs
     loading,
     error,
     // refresh is a no-op — onSnapshot keeps data current automatically
