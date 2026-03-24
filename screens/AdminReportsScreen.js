@@ -350,6 +350,8 @@ export default function AdminReportsScreen() {
   const [hidingClip, setHidingClip] = useState(null); // reportId currently hiding
   // Remove a reported run (run reports only)
   const [removingRun, setRemovingRun] = useState(null); // reportId currently removing
+  // Remove a reported DM message (message reports only)
+  const [removingDmMessage, setRemovingDmMessage] = useState(null); // reportId currently removing
   // Suspend a user (player, clip, run reports)
   const [suspendingUser, setSuspendingUser] = useState(null); // reportId currently suspending
   const handleHideClip = useCallback((report) => {
@@ -420,6 +422,50 @@ export default function AdminReportsScreen() {
               );
             } finally {
               setRemovingRun(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [noteText]);
+
+  // Remove a reported DM message (message reports only)
+  const handleRemoveDmMessage = useCallback((report) => {
+    const { conversationId, messageId } = report.messageContext || {};
+    if (!conversationId || !messageId) {
+      Alert.alert('Error', 'Missing conversation or message ID. Cannot remove.');
+      return;
+    }
+    Alert.alert(
+      'Remove Message',
+      'This will hide the message from both participants. The message text is preserved for audit. The report will be marked as resolved. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove Message',
+          style: 'destructive',
+          onPress: async () => {
+            setRemovingDmMessage(report.id);
+            try {
+              const payload = {
+                conversationId,
+                messageId,
+                reportId: report.id,
+              };
+              if (noteText.trim().length > 0) {
+                payload.reason = noteText.trim();
+              }
+              await callFunction('removeDmMessage', payload);
+              setExpandedId(null);
+              setNoteText('');
+            } catch (err) {
+              if (__DEV__) console.error('removeDmMessage error:', err);
+              Alert.alert(
+                'Remove Failed',
+                err?.message || 'Could not remove message. Please try again.'
+              );
+            } finally {
+              setRemovingDmMessage(null);
             }
           },
         },
@@ -813,6 +859,25 @@ export default function AdminReportsScreen() {
                     </TouchableOpacity>
                   )}
 
+                  {/* Remove DM Message — enforcement action, message reports only */}
+                  {report.type === 'message' && (
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.removeDmMessageBtn, { marginTop: SPACING.sm }]}
+                      onPress={() => handleRemoveDmMessage(report)}
+                      disabled={removingDmMessage === report.id}
+                      activeOpacity={0.7}
+                    >
+                      {removingDmMessage === report.id ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <>
+                          <Ionicons name="trash-outline" size={14} color="#DC2626" />
+                          <Text style={styles.removeDmMessageBtnText}>Remove Message</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  )}
+
                   {/* Suspend User — enforcement action, player reports or clip/run with targetOwnerId */}
                   {(report.type === 'player' || report.targetOwnerId) && (
                     <TouchableOpacity
@@ -1128,6 +1193,15 @@ const getStyles = (colors, isDark) =>
       borderColor: isDark ? '#7F1D1D' : '#FECACA',
     },
     removeRunBtnText: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#DC2626',
+    },
+    removeDmMessageBtn: {
+      backgroundColor: isDark ? '#450A0A' : '#FEF2F2',
+      borderColor: isDark ? '#7F1D1D' : '#FECACA',
+    },
+    removeDmMessageBtnText: {
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.semibold,
       color: '#DC2626',

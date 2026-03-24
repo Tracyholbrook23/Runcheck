@@ -201,6 +201,42 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 
 ---
 
+## Files Modified Recently (2026-03-24 — V1 DM Conversation Mute)
+
+| File | What changed |
+|------|-------------|
+| `runcheck-backend/functions/src/onDmMessageCreated.ts` | Added mute guard after recipient is identified. Reads `conversationData.mutedBy?.[recipientUid]` — zero extra Firestore reads (conversation doc already loaded). Returns early (skips notification) if muted. |
+| `services/dmService.js` | Added `deleteField` to firebase/firestore imports. Added three new functions: `getConversationMuteState(conversationId, uid)` (one-shot getDoc, returns boolean), `muteConversation(conversationId, uid)` (dot-notation set `mutedBy.{uid}: true`), `unmuteConversation(conversationId, uid)` (dot-notation deleteField). |
+| `screens/DMConversationScreen.js` | Imported the three new mute functions. Added `isMuted` state (initialized via `getConversationMuteState` on mount) and `muteLoading` state. Added `handleToggleMute` callback (optimistic toggle with revert on error). Added mute bell icon to header alongside existing flag button. `headerRight` style changed from single-icon fixed-width to `flexDirection: row` with two icons. |
+
+**Data model**: New optional field `mutedBy: { [uid: string]: true }` on `conversations/{conversationId}`. Written with dot-notation `updateDoc` so each user's key is independent (same pattern as `lastSeenAt.{uid}`). Cleared with `deleteField()` on unmute. Field is absent on docs where nobody has muted.
+
+**User flow**: Open a conversation → tap the bell icon in the header → icon toggles to filled bell-off (primary color) = muted. Tap again to unmute (icon returns to outline). Mute persists indefinitely across app sessions. Messages still arrive and are visible. Only push notifications are suppressed.
+
+**Notification behavior after muting**: `onDmMessageCreated` checks `mutedBy[recipientUid]` before the cooldown check, before reading the push token. If `true`, the function logs and returns early — Expo Push API is never called. Cooldown is also not set, so the first message after unmuting is not penalized by the cooldown window.
+
+**V1 limitations**: No mute indicator in the MessagesScreen inbox (conversation list). No mute expiry (indefinite). No "you have muted this conversation" banner in the chat screen (icon state is the only signal). Inbox could show a muted bell in a future session — the `mutedBy` data is already present on every conversation doc surfaced by `subscribeToConversations`.
+
+---
+
+## Files Modified Recently (2026-03-24 — V1 Admin DM Message Enforcement)
+
+| File | What changed |
+|------|-------------|
+| `runcheck-backend/functions/src/moderationHelpers.ts` | Added `enforceRemoveDmMessage(db, conversationId, messageId, actor, reason)` helper. Sets `isRemoved: true` + `removedBy`, `removedAt`, `removedReason` on `conversations/{conversationId}/messages/{messageId}`. Idempotent — returns `{ alreadyDone: true }` if already removed. Message doc is NOT deleted (audit trail preserved). |
+| `runcheck-backend/functions/src/removeDmMessage.ts` | New admin-only `onCall` Cloud Function. Accepts `{ conversationId, messageId, reason?, reportId? }`. Auth check → admin check (`isAdmin === true`) → input validation → calls `enforceRemoveDmMessage` → calls `resolveRelatedReport` if `reportId` provided. Returns `{ conversationId, messageId, removed: true }` or `{ alreadyRemoved: true }`. |
+| `runcheck-backend/functions/src/index.ts` | Added `export { removeDmMessage } from './removeDmMessage'`. |
+| `screens/DMConversationScreen.js` | `MessageBubble` now has an early-return path for `message.isRemoved === true`. Removed messages render a pill-style placeholder: "This message was removed" (italic, muted, border). No long-press handler on removed messages. Avatar spacer preserved for layout. Added `removedBubble` and `removedBubbleText` to `dmStyles`. |
+| `screens/AdminReportsScreen.js` | Added `removingDmMessage` state. Added `handleRemoveDmMessage` callback — reads `conversationId` + `messageId` from `report.messageContext`, shows confirm Alert, calls `callFunction('removeDmMessage', payload)`. Added "Remove Message" action button in expanded panel for `report.type === 'message'` reports. Added `removeDmMessageBtn` and `removeDmMessageBtnText` styles (same red palette as other enforcement buttons). |
+
+**Enforcement approach**: Soft-delete only. `isRemoved: true` on the message subcollection doc. Real-time `onSnapshot` listener propagates the change instantly to both participants who see the placeholder immediately. Hard delete intentionally out of scope for V1 (audit trail needed).
+
+**Admin flow**: Open message report card → expand Actions → (optional) add note → tap "Remove Message" → confirm → both participants see placeholder within seconds. Report is auto-resolved.
+
+**Suspend User button** also appears on message reports because `submitReport.ts` sets `targetOwnerId` to the sender's UID. So admins can remove the message AND suspend the sender independently.
+
+---
+
 ## Files Modified Recently (2026-03-24 — V1 Message-Level DM Reporting)
 
 | File | What changed |

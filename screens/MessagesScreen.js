@@ -29,6 +29,7 @@ import {
   Image,
   SectionList,
   TextInput,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
@@ -44,7 +45,8 @@ import {
 } from 'firebase/firestore';
 import { useConversations } from '../hooks';
 import { useMyRunChats } from '../hooks/useMyRunChats';
-import { openOrCreateConversation } from '../services/dmService';
+import { openOrCreateConversation, muteConversation, unmuteConversation } from '../services/dmService';
+import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -175,57 +177,113 @@ function DMRow({ item, uid, colors, navigation }) {
   const lastSeen = item.lastSeenAt?.[uid]?.toMillis?.() ?? 0;
   const lastActivity = item.lastActivityAt?.toMillis?.() ?? 0;
   const isUnread = lastActivity > lastSeen;
+  const isMuted = item.mutedBy?.[uid] === true;
 
   const previewText = item.lastMessage?.text || 'No messages yet';
   const timeLabel = formatConversationTime(item.lastActivityAt);
+  const swipeableRef = useRef(null);
+
+  const handleMuteToggle = () => {
+    swipeableRef.current?.close();
+    if (isMuted) {
+      unmuteConversation(item.id, uid).catch(() => {});
+    } else {
+      muteConversation(item.id, uid).catch(() => {});
+    }
+  };
+
+  const handleLongPress = () => {
+    Alert.alert(
+      otherName,
+      isMuted
+        ? 'You won\'t receive notifications from this conversation.'
+        : 'You\'ll stop receiving notifications from this conversation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isMuted ? 'Unmute notifications' : 'Mute notifications',
+          onPress: handleMuteToggle,
+        },
+      ],
+    );
+  };
+
+  const renderRightActions = () => (
+    <TouchableOpacity
+      style={[styles.swipeAction, { backgroundColor: isMuted ? '#34C759' : '#636366' }]}
+      onPress={handleMuteToggle}
+      activeOpacity={0.85}
+    >
+      <Ionicons
+        name={isMuted ? 'notifications-outline' : 'notifications-off-outline'}
+        size={22}
+        color="#fff"
+      />
+      <Text style={styles.swipeActionText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+    </TouchableOpacity>
+  );
 
   return (
-    <TouchableOpacity
-      style={[styles.row, { borderBottomColor: colors.border }]}
-      activeOpacity={0.7}
-      onPress={() =>
-        navigation.navigate('DMConversation', {
-          conversationId: item.id,
-          otherUserId: otherUid,
-          otherUserName: otherName,
-          otherUserAvatar: otherAvatar,
-        })
-      }
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      rightThreshold={40}
+      overshootRight={false}
     >
-      <ConversationAvatar uri={otherAvatar} name={otherName} colors={colors} />
+      <TouchableOpacity
+        style={[styles.row, { borderBottomColor: colors.border, backgroundColor: colors.background }]}
+        activeOpacity={0.7}
+        onPress={() =>
+          navigation.navigate('DMConversation', {
+            conversationId: item.id,
+            otherUserId: otherUid,
+            otherUserName: otherName,
+            otherUserAvatar: otherAvatar,
+          })
+        }
+        onLongPress={handleLongPress}
+        delayLongPress={400}
+      >
+        <ConversationAvatar uri={otherAvatar} name={otherName} colors={colors} />
 
-      <View style={styles.rowContent}>
-        <View style={styles.rowTop}>
-          <Text
-            style={[
-              styles.rowName,
-              { color: colors.textPrimary },
-              isUnread && styles.rowNameUnread,
-            ]}
-            numberOfLines={1}
-          >
-            {otherName}
-          </Text>
-          <Text style={[styles.rowTime, { color: colors.textMuted }]}>{timeLabel}</Text>
-        </View>
+        <View style={styles.rowContent}>
+          <View style={styles.rowTop}>
+            <Text
+              style={[
+                styles.rowName,
+                { color: colors.textPrimary },
+                isUnread && styles.rowNameUnread,
+              ]}
+              numberOfLines={1}
+            >
+              {otherName}
+            </Text>
+            <View style={styles.rowTopRight}>
+              {isMuted && (
+                <Ionicons name="notifications-off" size={13} color={colors.textMuted} />
+              )}
+              <Text style={[styles.rowTime, { color: colors.textMuted }]}>{timeLabel}</Text>
+            </View>
+          </View>
 
-        <View style={styles.rowBottom}>
-          <Text
-            style={[
-              styles.rowPreview,
-              { color: isUnread ? colors.textPrimary : colors.textMuted },
-              isUnread && styles.rowPreviewUnread,
-            ]}
-            numberOfLines={1}
-          >
-            {previewText}
-          </Text>
-          {isUnread && (
-            <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-          )}
+          <View style={styles.rowBottom}>
+            <Text
+              style={[
+                styles.rowPreview,
+                { color: isUnread ? colors.textPrimary : colors.textMuted },
+                isUnread && styles.rowPreviewUnread,
+              ]}
+              numberOfLines={1}
+            >
+              {previewText}
+            </Text>
+            {isUnread && (
+              <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+            )}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Swipeable>
   );
 }
 
@@ -696,6 +754,12 @@ const styles = StyleSheet.create({
   rowNameUnread: {
     fontWeight: FONT_WEIGHTS.bold,
   },
+  rowTopRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 0,
+  },
   rowTime: {
     fontSize: FONT_SIZES.xs,
     flexShrink: 0,
@@ -713,5 +777,18 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginLeft: SPACING.xs,
     flexShrink: 0,
+  },
+
+  // Swipe-to-reveal mute action
+  swipeAction: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 80,
+    gap: 4,
+  },
+  swipeActionText: {
+    color: '#fff',
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });

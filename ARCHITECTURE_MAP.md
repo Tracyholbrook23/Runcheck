@@ -135,7 +135,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Service Layer
 | File | Role |
 |------|------|
-| `services/dmService.js` | DM service: `openOrCreateConversation` (idempotent, deterministic `conversationId`), `subscribeToConversations`, `sendDMMessage`, `markConversationSeen`. |
+| `services/dmService.js` | DM service: `openOrCreateConversation` (idempotent, deterministic `conversationId`), `subscribeToConversations`, `subscribeToConversationMessages`, `sendDMMessage`, `markConversationSeen`, `blockUser`, `unblockUser`, `muteConversation`, `unmuteConversation`, `getConversationMuteState`. |
 
 ### Key Firestore Collections
 - `users/{uid}` — profile, reliability sub-object, activePresence (denormalized)
@@ -497,5 +497,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-23 (Weekly cleanup: added OnboardingRegionScreen, ClaimUsernameScreen, EditProfileScreen, MessagesScreen, DMConversationScreen to zone listings. Added `usernames/` collection and `conversations/` collection to Zone 3. Added `dmService.js` to Zone 3 service layer. Updated VerifyEmailScreen and SignupScreen role descriptions to reflect username system. Previous: 2026-03-22 — Run Level Phase 1: `runLevel` field added to `runs/{autoId}` schema.)_
+_Last updated: 2026-03-24 (Added `muteConversation`, `unmuteConversation`, `getConversationMuteState` to dmService.js role description. Previous: 2026-03-23 — Weekly cleanup: added OnboardingRegionScreen, ClaimUsernameScreen, EditProfileScreen, MessagesScreen, DMConversationScreen to zone listings. Added `usernames/` and `conversations/` collections to Zone 3. Added `dmService.js` to Zone 3 service layer.)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

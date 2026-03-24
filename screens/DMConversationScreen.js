@@ -53,6 +53,9 @@ import {
   subscribeToConversationMessages,
   sendDMMessage,
   markConversationSeen,
+  getConversationMuteState,
+  muteConversation,
+  unmuteConversation,
 } from '../services/dmService';
 import ReportModal from '../components/ReportModal';
 
@@ -121,6 +124,32 @@ function AvatarBubble({ uri, name, size = 32, colors }) {
  * In a 1:1 DM, sender name is omitted (only one other person).
  */
 function MessageBubble({ message, isOwn, otherUserAvatar, otherUserName, onLongPress, colors }) {
+  // ── Removed message — show a small neutral placeholder ───────────────────
+  // When an admin removes a message the doc stays but isRemoved is set to true.
+  // Both participants see the placeholder instantly via the real-time listener.
+  if (message.isRemoved) {
+    return (
+      <View
+        style={[
+          dmStyles.messageRow,
+          isOwn ? dmStyles.messageRowOwn : dmStyles.messageRowOther,
+        ]}
+      >
+        {!isOwn && <View style={dmStyles.avatarWrapper} />}
+        <View style={[dmStyles.bubbleWrapper, isOwn && dmStyles.bubbleWrapperOwn]}>
+          <View style={[dmStyles.removedBubble, { borderColor: colors.border }]}>
+            <Text style={[dmStyles.removedBubbleText, { color: colors.textMuted }]}>
+              This message was removed
+            </Text>
+          </View>
+          <Text style={[dmStyles.messageTime, { color: colors.textMuted }]}>
+            {formatMessageTime(message.createdAt)}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View
       style={[
@@ -225,6 +254,36 @@ export default function DMConversationScreen({ route, navigation }) {
       markConversationSeen(conversationId, uid);
     }
   }, [conversationId, uid]);
+
+  // ── Mute state ─────────────────────────────────────────────────────────────
+  // One-shot read on mount — mute only changes via explicit user action.
+  const [isMuted, setIsMuted] = useState(false);
+  const [muteLoading, setMuteLoading] = useState(false);
+
+  useEffect(() => {
+    if (conversationId && uid) {
+      getConversationMuteState(conversationId, uid).then(setIsMuted);
+    }
+  }, [conversationId, uid]);
+
+  const handleToggleMute = useCallback(async () => {
+    if (muteLoading) return;
+    const newMuted = !isMuted;
+    setIsMuted(newMuted); // optimistic
+    setMuteLoading(true);
+    try {
+      if (newMuted) {
+        await muteConversation(conversationId, uid);
+      } else {
+        await unmuteConversation(conversationId, uid);
+      }
+    } catch (err) {
+      setIsMuted(!newMuted); // revert on error
+      if (__DEV__) console.error('[DMConversationScreen] mute toggle error:', err);
+    } finally {
+      setMuteLoading(false);
+    }
+  }, [muteLoading, isMuted, conversationId, uid]);
 
   // ── Auto-scroll to bottom on new messages ─────────────────────────────────
   const scrollToBottom = useCallback(() => {
@@ -332,14 +391,28 @@ export default function DMConversationScreen({ route, navigation }) {
           </Text>
         </TouchableOpacity>
 
-        {/* Report button — opens ReportModal for the other user */}
-        <TouchableOpacity
-          onPress={() => setShowReport(true)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          style={dmStyles.headerRight}
-        >
-          <Ionicons name="flag-outline" size={20} color={colors.textMuted} />
-        </TouchableOpacity>
+        {/* Header right — mute toggle + report */}
+        <View style={dmStyles.headerRight}>
+          <TouchableOpacity
+            onPress={handleToggleMute}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            disabled={muteLoading}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isMuted ? 'notifications-off' : 'notifications-outline'}
+              size={20}
+              color={isMuted ? colors.primary : colors.textMuted}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowReport(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="flag-outline" size={20} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -506,10 +579,10 @@ const dmStyles = StyleSheet.create({
     flexShrink: 1,
   },
   headerRight: {
-    width: 44, // mirrors back button width for visual centering
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    padding: SPACING.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.xs,
   },
 
   // States
@@ -605,6 +678,19 @@ const dmStyles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     marginTop: 2,
     marginHorizontal: 2,
+  },
+
+  // Removed message placeholder
+  removedBubble: {
+    borderRadius: RADIUS.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+  },
+  removedBubbleText: {
+    fontSize: FONT_SIZES.body,
+    fontStyle: 'italic',
+    opacity: 0.55,
   },
 
   // Input bar

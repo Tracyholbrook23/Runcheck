@@ -37,6 +37,7 @@ import {
   addDoc,
   arrayUnion,
   arrayRemove,
+  deleteField,
   query,
   where,
   orderBy,
@@ -326,5 +327,71 @@ export async function unblockUser(currentUid, targetUid) {
   const userRef = doc(db, 'users', currentUid);
   await updateDoc(userRef, {
     blockedUsers: arrayRemove(targetUid),
+  });
+}
+
+/**
+ * getConversationMuteState — One-shot read of whether the current user has muted
+ * a conversation.
+ *
+ * Reads `mutedBy.{uid}` from the conversation doc. Called on DMConversationScreen
+ * mount to initialize the mute toggle. Not a real-time subscription — mute state
+ * only changes via explicit user action (muteConversation / unmuteConversation).
+ *
+ * @param {string} conversationId
+ * @param {string} uid — Firebase Auth UID of the current user
+ * @returns {Promise<boolean>} true if the conversation is muted by this user
+ */
+export async function getConversationMuteState(conversationId, uid) {
+  if (!conversationId || !uid) return false;
+  try {
+    const snap = await getDoc(doc(db, 'conversations', conversationId));
+    if (!snap.exists()) return false;
+    return snap.data()?.mutedBy?.[uid] === true;
+  } catch (err) {
+    if (__DEV__) console.warn('[dmService] getConversationMuteState error:', err);
+    return false;
+  }
+}
+
+/**
+ * muteConversation — Mutes push notifications for a conversation for the current user.
+ *
+ * Writes `mutedBy.{uid}: true` to the conversation doc using dot-notation so only
+ * this user's mute entry is affected. The `onDmMessageCreated` Cloud Function
+ * checks this field and skips the notification when it is true.
+ *
+ * Mute is indefinite — unmute manually via unmuteConversation.
+ * Messages still arrive normally; only push notifications are suppressed.
+ *
+ * @param {string} conversationId
+ * @param {string} uid — Firebase Auth UID of the current user
+ * @returns {Promise<void>}
+ */
+export async function muteConversation(conversationId, uid) {
+  if (!conversationId || !uid) throw new Error('conversationId and uid are required');
+
+  const conversationRef = doc(db, 'conversations', conversationId);
+  await updateDoc(conversationRef, {
+    [`mutedBy.${uid}`]: true,
+  });
+}
+
+/**
+ * unmuteConversation — Re-enables push notifications for a conversation.
+ *
+ * Removes `mutedBy.{uid}` from the conversation doc using deleteField().
+ * The `onDmMessageCreated` Cloud Function will resume sending notifications.
+ *
+ * @param {string} conversationId
+ * @param {string} uid — Firebase Auth UID of the current user
+ * @returns {Promise<void>}
+ */
+export async function unmuteConversation(conversationId, uid) {
+  if (!conversationId || !uid) throw new Error('conversationId and uid are required');
+
+  const conversationRef = doc(db, 'conversations', conversationId);
+  await updateDoc(conversationRef, {
+    [`mutedBy.${uid}`]: deleteField(),
   });
 }
