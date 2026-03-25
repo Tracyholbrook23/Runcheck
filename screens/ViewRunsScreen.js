@@ -83,7 +83,7 @@ const TYPE_FILTERS = [
 // with the matching runLevel. Runs without runLevel are treated as 'mixed'.
 const RUN_LEVEL_FILTERS = [
   { key: 'casual',      label: '😊 Casual',       color: '#22C55E' },
-  { key: 'mixed',       label: '🤝 Mixed',         color: '#94A3B8' },
+  { key: 'mixed',       label: '🤝 Balanced',      color: '#94A3B8' },
   { key: 'competitive', label: '🔥 Competitive',   color: '#EF4444' },
 ];
 
@@ -94,6 +94,34 @@ const ACCESS_FILTERS = [
   { key: 'free',       label: 'Free' },
   { key: 'membership', label: 'Membership' },
 ];
+
+/**
+ * formatGymDistance — Builds the location string shown on gym cards.
+ *
+ * When the user's GPS location is available:
+ *   "0.8 mi · Pflugerville"   (distance in miles, 1 decimal place)
+ *   "<0.1 mi · Austin"        (when distance rounds to 0.0)
+ * When location is unavailable:
+ *   "Pflugerville"            (city-only fallback)
+ * When neither is available:
+ *   ""                        (empty — card still renders cleanly)
+ *
+ * @param {object|null} userLocation  — { latitude, longitude } from useLocation()
+ * @param {object|null} gymLocation   — { latitude, longitude } from gym doc
+ * @param {string|null} gymCity       — gym.city from Firestore
+ * @returns {string}
+ */
+function formatGymDistance(userLocation, gymLocation, gymCity) {
+  const city = gymCity || '';
+  if (userLocation && gymLocation) {
+    const meters = calculateDistanceMeters(userLocation, gymLocation);
+    const miles  = meters * 0.000621371;
+    const rounded = Math.round(miles * 10) / 10; // 1 decimal place
+    const miStr  = rounded < 0.1 ? '<0.1 mi' : `${rounded.toFixed(1)} mi`;
+    return city ? `${miStr} · ${city}` : miStr;
+  }
+  return city;
+}
 
 export default function ViewRunsScreen({ navigation, route }) {
   const { gyms, loading, error: fetchError } = useGyms();
@@ -107,6 +135,7 @@ export default function ViewRunsScreen({ navigation, route }) {
   const [allUpcomingRuns, setAllUpcomingRuns] = useState([]); // live runs across all gyms for level filter
   const [sortByNearest, setSortByNearest] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
+  const [runLevelInfoVisible, setRunLevelInfoVisible] = useState(false); // run style explainer sheet
 
   // Subscribe to all upcoming runs so the run level filter can match gym IDs.
   // Same subscription used by PlanVisitScreen — no new index needed.
@@ -155,7 +184,7 @@ export default function ViewRunsScreen({ navigation, route }) {
    * @returns {{ label: string, countText: string, color: string }}
    */
   const getRunStatusLabel = (count) => {
-    if (count === 0) return { label: 'Empty',     countText: '',                color: colors.activityEmpty };
+    if (count === 0) return { label: 'No one here', countText: '', color: colors.activityEmpty };
     if (count <= 3)  return { label: 'Light Run', countText: `· ${count} playing`, color: colors.activityLight };
     if (count <= 7)  return { label: 'Building',  countText: `· ${count} playing`, color: colors.activityActive };
     if (count <= 11) return { label: 'Good Run',  countText: `· ${count} playing`, color: colors.activityLight };
@@ -405,7 +434,7 @@ export default function ViewRunsScreen({ navigation, route }) {
                 >
                   <Ionicons name="basketball-outline" size={11} color="#fff" style={{ marginRight: 3 }} />
                   <Text style={styles.activeChipText}>
-                    {runLevelFilter.charAt(0).toUpperCase() + runLevelFilter.slice(1)}
+                    {runLevelFilter === 'mixed' ? 'Balanced' : runLevelFilter.charAt(0).toUpperCase() + runLevelFilter.slice(1)}
                   </Text>
                   <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
                 </TouchableOpacity>
@@ -478,6 +507,21 @@ export default function ViewRunsScreen({ navigation, route }) {
 
               const isFollowed = followedGyms.includes(gym.id);
               const isHomeCourt = homeCourtId === gym.id;
+
+              // Dominant run level for this gym's active runs.
+              // Priority: competitive > casual > mixed (highest-intensity wins).
+              // Badge is hidden when no upcoming runs exist at this gym.
+              const gymRuns = allUpcomingRuns.filter((r) => r.gymId === gym.id);
+              let gymRunLevel = null;
+              if (gymRuns.length > 0) {
+                if (gymRuns.some((r) => (r.runLevel ?? 'mixed') === 'competitive')) {
+                  gymRunLevel = 'competitive';
+                } else if (gymRuns.some((r) => (r.runLevel ?? 'mixed') === 'casual')) {
+                  gymRunLevel = 'casual';
+                } else {
+                  gymRunLevel = 'mixed';
+                }
+              }
 
               return (
                 <TouchableOpacity
@@ -558,9 +602,31 @@ export default function ViewRunsScreen({ navigation, route }) {
                       )}
                     </View>
 
-                    {/* Row 3 — Address + directions */}
+                    {/* Row 2b — Run level badge; tap to open style explainer */}
+                    {gymRunLevel !== null && (() => {
+                      const levelColor =
+                        gymRunLevel === 'competitive' ? '#EF4444' :
+                        gymRunLevel === 'casual'      ? '#22C55E' : '#94A3B8';
+                      return (
+                        <TouchableOpacity
+                          onPress={() => setRunLevelInfoVisible(true)}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
+                            <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
+                              {gymRunLevel === 'mixed' ? 'Balanced' : gymRunLevel.charAt(0).toUpperCase() + gymRunLevel.slice(1)}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })()}
+
+                    {/* Row 3 — Distance / city + directions */}
                     <View style={styles.addressRow}>
-                      <Text style={styles.gymAddress} numberOfLines={1}>{gym.address}</Text>
+                      <Text style={styles.gymAddress} numberOfLines={1}>
+                        {formatGymDistance(userLocation, gym.location, gym.city)}
+                      </Text>
                       {gym.location && (
                         // Directions button — only shown when the gym has GPS coords
                         <TouchableOpacity
@@ -595,6 +661,43 @@ export default function ViewRunsScreen({ navigation, route }) {
             <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
           </TouchableOpacity>
         </ScrollView>
+
+        {/* ── Run style info sheet ───────────────────────────────────────────
+            Opened by tapping any run level badge on a gym card.
+            Explains what Casual / Balanced / Competitive mean.
+        ──────────────────────────────────────────────────────────────────── */}
+        <Modal
+          visible={runLevelInfoVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setRunLevelInfoVisible(false)}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setRunLevelInfoVisible(false)} />
+          <View style={styles.infoSheetContainer}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.infoSheetTitle}>Run Style</Text>
+            {[
+              { emoji: '😊', label: 'Casual',      desc: 'More relaxed play — great for all skill levels.' },
+              { emoji: '🤝', label: 'Balanced',    desc: 'A mix of casual and competitive players.' },
+              { emoji: '🔥', label: 'Competitive', desc: 'Higher-level, more intense play.' },
+            ].map(({ emoji, label, desc }) => (
+              <View key={label} style={styles.infoSheetRow}>
+                <Text style={styles.infoSheetEmoji}>{emoji}</Text>
+                <View style={styles.infoSheetRowText}>
+                  <Text style={styles.infoSheetRowLabel}>{label}</Text>
+                  <Text style={styles.infoSheetRowDesc}>{desc}</Text>
+                </View>
+              </View>
+            ))}
+            <TouchableOpacity
+              style={styles.infoSheetClose}
+              onPress={() => setRunLevelInfoVisible(false)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.infoSheetCloseText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
 
         {/* ── Filter sheet modal ─────────────────────────────────────────────
             Slides up from the bottom. Tap backdrop or × to close.
@@ -975,6 +1078,70 @@ loadingText: {
     fontSize: FONT_SIZES.xs,
     color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  // ── Run level badge (on gym cards — mirrors RunDetailsScreen badge exactly) ─
+  runLevelBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  runLevelBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  // ── Run style info sheet (reuses sheetHandle and sheetBackdrop) ───────────
+  infoSheetContainer: {
+    backgroundColor: isDark ? '#2C2C2E' : '#FFFFFF',
+    borderTopLeftRadius: RADIUS.xl ?? 20,
+    borderTopRightRadius: RADIUS.xl ?? 20,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.sm,
+  },
+  infoSheetTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: isDark ? '#FFFFFF' : '#111111',
+    marginBottom: SPACING.md,
+  },
+  infoSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  infoSheetEmoji: {
+    fontSize: 20,
+    width: 28,
+  },
+  infoSheetRowText: {
+    flex: 1,
+  },
+  infoSheetRowLabel: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: isDark ? '#FFFFFF' : '#111111',
+  },
+  infoSheetRowDesc: {
+    fontSize: FONT_SIZES.small,
+    color: isDark ? '#8E8E93' : '#6B7280',
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  infoSheetClose: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: isDark ? '#3A3A3C' : '#E5E7EB',
+  },
+  infoSheetCloseText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: isDark ? '#FFFFFF' : '#111111',
   },
   errorBanner: {
     flexDirection: 'row',

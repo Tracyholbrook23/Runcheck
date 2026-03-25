@@ -396,6 +396,23 @@ export default function PlanVisitScreen({ navigation }) {
                         <View style={styles.runCardInfo}>
                           <Text style={styles.runCardGym} numberOfLines={1}>{run.gymName}</Text>
                           <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
+                          {/* Run level badge — Casual (green), Balanced (slate), Competitive (red) */}
+                          {(() => {
+                            const level = run.runLevel ?? 'mixed';
+                            const levelColor =
+                              level === 'competitive' ? '#EF4444' :
+                              level === 'casual'      ? '#22C55E' : '#94A3B8';
+                            const levelLabel =
+                              level === 'mixed' ? 'Balanced' :
+                              level.charAt(0).toUpperCase() + level.slice(1);
+                            return (
+                              <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
+                                <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
+                                  {levelLabel}
+                                </Text>
+                              </View>
+                            );
+                          })()}
                           <View style={styles.runCardMetaRow}>
                             {run.creatorName ? (
                               <Text style={styles.runCardMeta} numberOfLines={1}>
@@ -990,6 +1007,20 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textSecondary,
     fontWeight: FONT_WEIGHTS.medium,
     marginTop: 1,
+  },
+  // ── Run level badge (mirrors RunDetailsScreen + ViewRunsScreen exactly) ────
+  runLevelBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  runLevelBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
   runCardChatButton: {
     width: 34,

@@ -162,6 +162,9 @@ const getRunEnergyLabel = (count) => {
 - **Open Run flow improvement (2026-03-20)**: HomeScreen "Open Run" quick-action now passes `openStartRun: true` param through ViewRunsScreen directly to RunDetailsScreen, which auto-opens the run creation modal (skipping the intermediate run-type picker). Reduces taps for the most common run creation path. "Start a Run" outlined button added at top of RunDetailsScreen next to "Check In Here". Upcoming Runs section moved above Now Playing in RunDetailsScreen.
 - **OTA channel fix (2026-03-20, requires fresh build)**: `eas.json` production profile now has `"channel": "production"`. Current TestFlight binary is missing the channel header baked in; OTA updates do not apply until a fresh build is submitted (~April 1 when build quota resets). Simulator use recommended for frontend validation until then.
 - **Run Level Phase 1 (2026-03-22)**: Runs now have a `runLevel` field (`'casual'|'mixed'|'competitive'`) set by the creator at run creation. Picker in the Start-a-Run modal (3 pills). Badge on run cards in RunDetailsScreen (Casual = green, Competitive = red, Mixed = hidden). Filter in ViewRunsScreen filter sheet (Any/Casual/Mixed/Competitive, client-side). Backwards compatible: old runs without the field are treated as `'mixed'`. Client-side only — no Cloud Function or backend schema deploy needed.
+- **Run Level Phase 2 — Quality Indicators Expansion (2026-03-24)**: Two UI-only improvements, no backend changes. (1) `ViewRunsScreen` gym cards now show a run level badge ("Casual" / "Balanced" / "Competitive") when at least one upcoming run exists at that gym. Dominant level computed from `allUpcomingRuns` (already subscribed): competitive > casual > mixed priority. Badge reuses the `runLevelBadge` + `runLevelBadgeText` style pattern from RunDetailsScreen exactly (same hex colors, same `borderRadius`, same padding). (2) `RunDetailsScreen` run cards now show "Balanced" in neutral slate gray (`#94A3B8`) — all three labels always visible.
+- **Run Level Phase 4 — Badge & Meter Explainers (2026-03-24)**: UI-only, no backend changes. Both run style badges and the competitive meter are now tappable and open contextual info sheets. `RunDetailsScreen`: single `infoSheetType` state (`null|'runLevel'|'meter'`) drives one shared Modal bottom sheet. Tapping the run style badge opens "Run Style" (😊 Casual / 🤝 Balanced / 🔥 Competitive + one-line descriptions); tapping the meter bars opens "Competitive Meter" (three example bars + fallback note). Sheet reuses the `participantModalOverlay` / `participantModalSheet` bottom-sheet pattern exactly. `ViewRunsScreen`: `runLevelInfoVisible` state + a second Modal using existing `sheetBackdrop` + `sheetHandle` styles; new `infoSheetContainer` mirrors `sheetContainer`. "Got it" button closes both sheets. No new Firestore reads; no imports added.
+- **Run Level Phase 3 — Label Clarity + Competitive Meter (2026-03-24)**: Display-only pass, no schema changes. (A) Label "Mixed" renamed to "Balanced" everywhere in the UI: filter sheet pills, active filter chips, gym card badges, run card badges, start-run picker. Stored `runLevel` value in Firestore remains `'mixed'` — no migration needed. (B) Competitive meter added to run cards in `RunDetailsScreen`: 5 compact horizontal bars (12×5px each, 3px gap). Formula: cross-reference `runParticipantsMap` with `presences` (both already subscribed) to get `skillLevel` for checked-in participants; `Competitive→5`, `Either→3`, `Casual→1`; `Math.round(average)` → 1–5 filled bars. Fallback when <2 presences match: `competitive→5 bars`, `mixed→3 bars`, `casual→1 bar`. Color: red (bars≥4), slate (bars=3), green (bars≤2). Pure helper `getCompetitiveBars()` at module level in RunDetailsScreen. PlanVisitScreen: does not display runLevel (no change needed).
 - **Run Chat expiry (2026-03-22)**: Each run's group chat is active for 4 hours after `startTime` (`chatExpiresAt = startTime + RUN_CHAT_EXPIRY_MS`). Written on run creation. `RunChatScreen` shows a read-only "This run chat has ended" banner replacing the input bar after expiry. `useMyRunChats` hides expired chats from the Messages inbox. Firestore `isChatActive()` rule hard-blocks new writes after expiry.
 - **Run Chat unread detection (2026-03-22)**: `sendRunMessage` stamps `lastMessageAt` on `runs/{runId}` (fire-and-forget). `markRunChatSeen` writes `lastReadAt` on `runParticipants/{runId}_{uid}` when the user opens the chat. `useMyRunChats` derives `isUnread = lastMessageAt > lastReadAt`, exposes `runChatUnreadCount`. HomeScreen Messages badge now shows total unread = `dmUnreadCount + runChatUnreadCount`.
 - **EditProfileScreen (2026-03-22)**: New screen for editing Display Name and Skill Level. Writes to Firestore `users/{uid}.name` and Firebase Auth `displayName`. Accessible via Settings → Account Info in ProfileStack.
@@ -174,6 +177,20 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 - **Phase 1 (approved, post-TestFlight):** Add two new fields to `runs/{runId}` — `joinedCount` (total unique users who ever joined, never decremented) and `peakParticipantCount` (high-water mark of `participantCount`). Both written inside the existing `joinRun` transaction in `runService.js`, guarded by the same `!alreadyJoined` check that protects `participantCount`. ~5 lines, one file, no backend deploy, no UI changes. Silently accumulates data for future use.
 - **Phase 2 (deferred — post-launch, stable user base):** Formal run completion: `status: 'completed'`, `completedAt`, `actualAttendees[]`, `attendedCount`, `durationMinutes`. Triggered in `leaveRun` when `participantCount → 0`. Also needs a `completeStaleRuns` Cloud Function for abandoned runs. Medium risk — changes run lifecycle state irreversibly.
 - **Phase 3 (deferred — growth phase):** Analytics and aggregation. Per-user "Runs Attended" history, turnout estimates, `runHistory` collection, gym trust signals.
+
+---
+
+## Files Modified Recently (2026-03-24 — Competitive Meter Skill Snapshot Fix)
+
+| File | What changed |
+|------|-------------|
+| `services/runService.js` | `fetchUserDisplayInfo` now also reads `skillLevel` from `users/{uid}` and includes it in the returned object (falls back to `null`). `joinRun` (internal) now writes `skillLevel: userInfo.skillLevel \|\| null` onto the `runParticipants` doc at join time. No changes to function signatures — `startOrJoinRun` and `joinExistingRun` pass `userInfo` through as before. |
+| `screens/RunDetailsScreen.js` | `getCompetitiveBars()` updated: now prefers `participant.skillLevel` directly (V2 snapshot path) before falling back to presence cross-reference (V1 path for older docs), then to `runLevel`. The computation chain: `participant.skillLevel` → `presenceByUid[participant.userId]?.skillLevel` → excluded. The `contributions.length >= 2` threshold and `runLevel` final fallback are unchanged. |
+| `runcheck-backend/BACKEND_MEMORY.md` | `runParticipants` schema updated to document `skillLevel` and `gymName` fields. Added backward-compatibility note for older docs without the field. |
+
+**Root cause fixed:** Future runs showed "Balanced" because the meter only had skill data for checked-in players. For runs days away, nobody is checked in, so `contributions.length < 2` and the meter fell back to creator-set `runLevel`. The fix snapshots each player's `skillLevel` at RSVP time so the meter reflects actual player composition regardless of check-in state.
+
+**V1 limitation:** Existing participant docs written before this session have no `skillLevel` field. Those runs will continue to use the presence/runLevel fallback until those participants leave and rejoin. New joins from this point forward will snapshot correctly.
 
 ---
 
@@ -198,6 +215,27 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 **Admin additions (zero extra Firestore reads):** Message report cards now show Sender name (via existing ownerNames lookup, relabelled), Received by (reporterName already on doc), Sent time (messageSentAt already in messageContext on doc).
 
 **V1 limitations:** `blockUser` is idempotent (`arrayUnion`), so toggling "Also block" when already blocked is a no-op. Toggle is always shown for message reports regardless of current block state. No undo from inside the report modal (user can unblock from UserProfileScreen).
+
+---
+
+## Files Modified Recently (2026-03-24 — Messaging & Moderation Hardening Pass)
+
+| File | What changed |
+|------|-------------|
+| `runcheck-backend/firestore.rules` | Added `isNotSuspended()` helper function (reads `users/{uid}.isSuspended` + `suspensionEndsAt` vs `request.time`). Applied to `allow create` on DM messages (`conversations/{id}/messages`) and run chat messages (`runs/{id}/messages`). Server-enforced: suspended users cannot write messages even if they bypass the client. |
+| `services/dmService.js` | `openOrCreateConversation` slow path (new conversation creation) now reads both user docs in parallel (`Promise.all`). Added bidirectional block guard: throws `'Cannot start a conversation with this user.'` if either party has blocked the other. Existing conversations are unaffected (message send guard already handles that). |
+| `runcheck-backend/functions/src/removeDmMessage.ts` | Added `logger` import. Added fire-and-forget write to `adminActions/{autoId}` after successful message removal. Schema: `{ actionType: 'remove_message', adminId, targetId (messageId), conversationId, reason, reportId, timestamp }`. |
+| `runcheck-backend/functions/src/suspendUser.ts` | Added `logger` import. Added fire-and-forget write to `adminActions/{autoId}` after successful suspension. Schema: `{ actionType: 'suspend_user', adminId, targetId (userId), reason, reportId, suspensionLevel, durationDays, timestamp }`. |
+
+**Mute indicator in MessagesScreen (item 2)**: Already implemented in the prior session (swipe-to-mute). A small `notifications-off` icon (size 13, muted color) appears in `rowTopRight` next to the timestamp when `item.mutedBy[uid] === true`.
+
+**New Firestore collection**: `adminActions/{autoId}` — lightweight audit log. Written only by Cloud Functions (Admin SDK). No client read/write rules needed (no client access). Read via Firebase Console.
+
+**V1 limitations**:
+- `isNotSuspended()` adds 1 extra Firestore read per message create rule evaluation (acceptable — within 5-get rule limit).
+- Block guard in `openOrCreateConversation` is client-side only — a malicious client could bypass it by calling `setDoc` directly. The Firestore rules do not yet enforce block state on conversation creation (would require reading both users' docs in rules, expensive).
+- `adminActions` has no UI — read-only via Firebase Console for now.
+- `adminActions` does not cover `unsuspendUser` or `hideClip` yet.
 
 ---
 

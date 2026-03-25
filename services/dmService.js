@@ -101,10 +101,26 @@ export async function openOrCreateConversation({ currentUid, otherUid, otherName
     return conversationId;
   }
 
-  // Slow path: new conversation — read the current user's profile to get their
-  // display name and avatar for the denormalized `participants` map.
-  const currentUserSnap = await getDoc(doc(db, 'users', currentUid));
+  // Slow path: new conversation — read both user profiles in parallel.
+  // The current user's profile provides display name + avatar for the participants map.
+  // The other user's profile is checked for a mutual block before creating.
+  const [currentUserSnap, otherUserSnap] = await Promise.all([
+    getDoc(doc(db, 'users', currentUid)),
+    getDoc(doc(db, 'users', otherUid)),
+  ]);
   const currentUserData = currentUserSnap.exists() ? currentUserSnap.data() : {};
+  const otherUserData = otherUserSnap.exists() ? otherUserSnap.data() : {};
+
+  // ── Block guard ─────────────────────────────────────────────────────────────
+  // Check both directions: we may have blocked them, or they may have blocked us.
+  // This prevents creating a new conversation between blocked users without
+  // giving either party a signal about who blocked whom.
+  const myBlockedUsers = currentUserData.blockedUsers || [];
+  const theirBlockedUsers = otherUserData.blockedUsers || [];
+  if (myBlockedUsers.includes(otherUid) || theirBlockedUsers.includes(currentUid)) {
+    throw new Error('Cannot start a conversation with this user.');
+  }
+
   const currentName = currentUserData.name || auth.currentUser?.displayName || 'Player';
   const currentAvatar = currentUserData.photoURL || null;
 

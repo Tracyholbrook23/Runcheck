@@ -123,11 +123,16 @@ const fetchUserDisplayInfo = async () => {
     return {
       userName: data.name || auth.currentUser.displayName || 'Player',
       userAvatar: data.photoURL || null,
+      // Skill snapshot — written onto runParticipants docs so the competitive
+      // meter can reflect actual player composition for future runs, without
+      // depending on active check-in data. Null for users without a profile value.
+      skillLevel: data.skillLevel || null,
     };
   } catch {
     return {
       userName: auth.currentUser.displayName || 'Player',
       userAvatar: null,
+      skillLevel: null,
     };
   }
 };
@@ -168,6 +173,11 @@ const joinRun = async (runId, gymId, gymName, userInfo) => {
       status: 'going',
       gymId,
       gymName: gymName || '',
+      // Skill snapshot from the user's profile at join time.
+      // Used by getCompetitiveBars() so the competitive meter reflects actual
+      // player composition for future runs, not just live check-in presence.
+      // Null for users whose profile predates the skillLevel field.
+      skillLevel: userInfo.skillLevel || null,
     });
 
     // Only increment count for genuinely new joins

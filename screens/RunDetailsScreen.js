@@ -253,6 +253,63 @@ const formatHoursRange = (dayHours) => {
 };
 
 /**
+ * getCompetitiveBars — Compute a 1–5 competitive intensity score for a run.
+ *
+ * Strategy:
+ *   1. (V2) Prefer skillLevel stored directly on each runParticipants doc.
+ *      This snapshot is written at join time from the user's profile and works
+ *      for all runs — including future runs where nobody is checked in yet.
+ *   2. (V1 fallback) For older participant docs that pre-date the skillLevel
+ *      snapshot, cross-reference with active presences at the gym. This keeps
+ *      the meter working for participants who joined before the V2 write landed.
+ *   3. Map each resolved skillLevel to a 1–5 contribution:
+ *        Competitive → 5  |  Either → 3  |  Casual → 1
+ *   4. When ≥2 contributions are available, return Math.round(average).
+ *   5. Final fallback (too few participants or no skill data at all): map the
+ *      creator-set runLevel:  competitive → 5  |  mixed / default → 3  |  casual → 1
+ *
+ * @param {string}   runId              — The run's Firestore ID.
+ * @param {string}   runLevel           — Creator-set level ('casual'|'mixed'|'competitive').
+ * @param {object}   runParticipantsMap — Map of runId → participant[].
+ * @param {Array}    presences          — Active presences at this gym (V1 fallback only).
+ * @returns {number} Integer 1–5. Higher = more competitive.
+ */
+function getCompetitiveBars(runId, runLevel, runParticipantsMap, presences) {
+  const participants = runParticipantsMap[runId] || [];
+
+  // Build a uid→presence lookup — used only as V1 fallback for older docs
+  const presenceByUid = {};
+  presences.forEach((p) => { presenceByUid[p.odId] = p; });
+
+  // Resolve skill level for each participant:
+  //   V2 path: participant doc carries a skillLevel snapshot (join-time profile value)
+  //   V1 path: fall back to active presence data for older docs without the snapshot
+  const contributions = participants
+    .map((p) => {
+      if (p.skillLevel) return p.skillLevel;                  // V2: snapshot on doc
+      const presence = presenceByUid[p.userId];
+      return presence ? presence.skillLevel : null;           // V1: active presence fallback
+    })
+    .filter(Boolean)
+    .map((skillLevel) => {
+      if (skillLevel === 'Competitive') return 5;
+      if (skillLevel === 'Casual')      return 1;
+      return 3; // 'Either'
+    });
+
+  if (contributions.length >= 2) {
+    const avg = contributions.reduce((sum, v) => sum + v, 0) / contributions.length;
+    return Math.round(avg);
+  }
+
+  // Final fallback: use creator-set runLevel when skill data is insufficient
+  const level = runLevel ?? 'mixed';
+  if (level === 'competitive') return 5;
+  if (level === 'casual')      return 1;
+  return 3; // 'mixed' / default
+}
+
+/**
  * RunDetailsScreen — Full gym detail screen.
  *
  * @param {object} props
@@ -395,6 +452,8 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [runParticipantsMap, setRunParticipantsMap] = useState({});
   // Run ID whose full participant list modal is open (null = closed)
   const [participantModalRunId, setParticipantModalRunId] = useState(null);
+  // Info sheet: 'runLevel' | 'meter' | null — explains badges and meter to new users
+  const [infoSheetType, setInfoSheetType] = useState(null);
 
   useEffect(() => {
     if (runs.length === 0) {
@@ -1811,17 +1870,56 @@ export default function RunDetailsScreen({ route, navigation }) {
                 <View key={run.id} style={[styles.runCard, { alignItems: 'flex-start' }]}>
                   <View style={styles.runCardLeft}>
                     <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
-                    {/* Run level badge — hidden for 'mixed' (default/neutral) to reduce clutter */}
+                    {/* Run level badge — tap to explain what each level means */}
                     {(() => {
                       const level = run.runLevel ?? 'mixed';
-                      if (level === 'mixed') return null;
-                      const levelColor = level === 'competitive' ? '#EF4444' : '#22C55E';
+                      const levelColor =
+                        level === 'competitive' ? '#EF4444' :
+                        level === 'casual'      ? '#22C55E' : '#94A3B8';
+                      const levelLabel =
+                        level === 'mixed' ? 'Balanced' :
+                        level.charAt(0).toUpperCase() + level.slice(1);
                       return (
-                        <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
-                          <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
-                            {level.charAt(0).toUpperCase() + level.slice(1)}
-                          </Text>
-                        </View>
+                        <TouchableOpacity
+                          onPress={() => setInfoSheetType('runLevel')}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
+                            <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
+                              {levelLabel}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })()}
+                    {/* Competitive meter — labeled row so it reads as distinct from the badge above */}
+                    {(() => {
+                      const bars = getCompetitiveBars(run.id, run.runLevel, runParticipantsMap, presences);
+                      const barColor =
+                        bars >= 4 ? '#EF4444' :
+                        bars <= 2 ? '#22C55E' : '#94A3B8';
+                      return (
+                        <TouchableOpacity
+                          onPress={() => setInfoSheetType('meter')}
+                          activeOpacity={0.7}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <View style={styles.compMeterLabeledRow}>
+                            <Text style={styles.compMeterLabel}>Intensity</Text>
+                            <View style={styles.compMeterRow}>
+                              {[1, 2, 3, 4, 5].map((i) => (
+                                <View
+                                  key={i}
+                                  style={[
+                                    styles.compMeterBar,
+                                    { backgroundColor: i <= bars ? barColor : colors.border },
+                                  ]}
+                                />
+                              ))}
+                            </View>
+                          </View>
+                        </TouchableOpacity>
                       );
                     })()}
                     {renderRunParticipantAvatars(run.id)}
@@ -2306,12 +2404,15 @@ export default function RunDetailsScreen({ route, navigation }) {
               <Text style={styles.runModalSubtitle}>
                 Pick a time — others nearby will see it and can join.
               </Text>
+              <Text style={styles.runModalVibeHint}>
+                Set the vibe — actual intensity may vary based on who joins
+              </Text>
 
-              {/* Run level picker — Casual / Mixed / Competitive */}
+              {/* Run level picker — Casual / Balanced / Competitive */}
               <View style={styles.runLevelRow}>
                 {[
                   { value: 'casual',      label: 'Casual',      color: '#22C55E' },
-                  { value: 'mixed',       label: 'Mixed',       color: colors.textMuted },
+                  { value: 'mixed',       label: 'Balanced',    color: colors.textMuted },
                   { value: 'competitive', label: 'Competitive', color: '#EF4444' },
                 ].map(({ value, label, color }) => {
                   const active = runLevel === value;
@@ -2519,6 +2620,89 @@ export default function RunDetailsScreen({ route, navigation }) {
                 <Text style={clipSheetStyles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </Animated.View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Run level / meter info sheet ───────────────────────────────── */}
+      {/* Tap the run style badge or competitive meter to open this sheet.  */}
+      <Modal
+        visible={infoSheetType !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setInfoSheetType(null)}
+      >
+        <TouchableOpacity
+          style={styles.infoSheetOverlay}
+          activeOpacity={1}
+          onPress={() => setInfoSheetType(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.infoSheetCard}>
+            <View style={styles.infoSheetHandle} />
+
+            {/* ── Run Style content ── */}
+            {infoSheetType === 'runLevel' && (
+              <>
+                <Text style={styles.infoSheetTitle}>Run Style</Text>
+                {[
+                  { emoji: '😊', label: 'Casual',      desc: 'More relaxed play — great for all skill levels.' },
+                  { emoji: '🤝', label: 'Balanced',    desc: 'A mix of casual and competitive players.' },
+                  { emoji: '🔥', label: 'Competitive', desc: 'Higher-level, more intense play.' },
+                ].map(({ emoji, label, desc }) => (
+                  <View key={label} style={styles.infoSheetRow}>
+                    <Text style={styles.infoSheetEmoji}>{emoji}</Text>
+                    <View style={styles.infoSheetRowText}>
+                      <Text style={styles.infoSheetRowLabel}>{label}</Text>
+                      <Text style={styles.infoSheetRowDesc}>{desc}</Text>
+                    </View>
+                  </View>
+                ))}
+                <Text style={[styles.infoSheetBody, { marginTop: SPACING.md, opacity: 0.65 }]}>
+                  This is the vibe the run creator intended — actual intensity depends on who joins.
+                </Text>
+              </>
+            )}
+
+            {/* ── Competitive Meter content ── */}
+            {infoSheetType === 'meter' && (
+              <>
+                <Text style={styles.infoSheetTitle}>Competitive Meter</Text>
+                <Text style={styles.infoSheetBody}>
+                  The meter estimates how competitive this run is expected to feel.
+                </Text>
+                {[
+                  { bars: 5, desc: 'More competitive' },
+                  { bars: 3, desc: 'Balanced mix' },
+                  { bars: 1, desc: 'More casual' },
+                ].map(({ bars, desc }) => {
+                  const barColor = bars >= 4 ? '#EF4444' : bars <= 2 ? '#22C55E' : '#94A3B8';
+                  return (
+                    <View key={bars} style={styles.infoSheetMeterRow}>
+                      <View style={styles.infoSheetMeterBars}>
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <View
+                            key={i}
+                            style={[styles.compMeterBar, { backgroundColor: i <= bars ? barColor : colors.border }]}
+                          />
+                        ))}
+                      </View>
+                      <Text style={styles.infoSheetRowDesc}>{desc}</Text>
+                    </View>
+                  );
+                })}
+                <Text style={[styles.infoSheetBody, { marginTop: SPACING.md, opacity: 0.65 }]}>
+                  Based on the skill levels of players going — check the run style badge for the creator's intended vibe.
+                </Text>
+              </>
+            )}
+
+            <TouchableOpacity
+              style={styles.infoSheetClose}
+              onPress={() => setInfoSheetType(null)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.infoSheetCloseText}>Got it</Text>
+            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -4137,7 +4321,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderColor: colors.primary,
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs + 2,
+    paddingVertical: SPACING.xs + 4,  // increased from +2 — matches Going tap target
     alignItems: 'center',
   },
   runLeaveButtonText: {
@@ -4148,13 +4332,13 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   runJoinedActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.sm,  // increased from xs — more space between Going and Leave
   },
   runGoingBadge: {
     backgroundColor: 'rgba(52, 199, 89, 0.15)',
     borderRadius: RADIUS.full,
     paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs + 2,
+    paddingVertical: SPACING.xs + 4,  // increased from +2 — larger tap target
     alignItems: 'center',
   },
   runGoingBadgeText: {
@@ -4193,6 +4377,11 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   runModalSubtitle: {
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
+    marginBottom: SPACING.xxs,
+  },
+  runModalVibeHint: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
     marginBottom: SPACING.md,
   },
   // ── Run level picker (in modal) ───────────────────────────────────────────
@@ -4222,11 +4411,112 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderRadius: RADIUS.sm,
     borderWidth: 1,
     marginTop: 4,
-    marginBottom: 2,
+    marginBottom: SPACING.xs,  // increased from 2 — more breathing room before meter
   },
   runLevelBadgeText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  // ── Competitive meter (5-bar intensity indicator on run cards) ────────────
+  compMeterLabeledRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  compMeterLabel: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+  },
+  compMeterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  compMeterBar: {
+    width: 12,
+    height: 5,
+    borderRadius: 2,
+  },
+  // ── Info sheet (run style + competitive meter explainer) ──────────────────
+  infoSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  infoSheetCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: RADIUS.lg * 1.5,
+    borderTopRightRadius: RADIUS.lg * 1.5,
+    paddingTop: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.lg,
+  },
+  infoSheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+  },
+  infoSheetTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    marginBottom: SPACING.md,
+  },
+  infoSheetBody: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: SPACING.sm,
+  },
+  infoSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  infoSheetEmoji: {
+    fontSize: 20,
+    width: 28,
+  },
+  infoSheetRowText: {
+    flex: 1,
+  },
+  infoSheetRowLabel: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  infoSheetRowDesc: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  infoSheetMeterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  infoSheetMeterBars: {
+    flexDirection: 'row',
+    gap: 3,
+  },
+  infoSheetClose: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    alignItems: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: colors.border,
+  },
+  infoSheetCloseText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
   },
   runDayPickerRow: {
     marginBottom: SPACING.md,
