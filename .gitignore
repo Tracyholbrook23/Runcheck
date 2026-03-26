@@ -68,3 +68,4 @@ coverage/
 package.json.save      # npm temp file — never commit this
 *.bak
 *.tmp
+ios/.xcode.env
