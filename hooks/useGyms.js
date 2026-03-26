@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { InteractionManager } from 'react-native';
 import { subscribeToGyms } from '../services/gymService';
 
 /**
@@ -33,19 +34,29 @@ export const useGyms = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Open a real-time Firestore listener; unsubscribe on unmount
-    const unsubscribe = subscribeToGyms(
-      (gymData) => {
-        setGyms(gymData);
-        setLoading(false);
-      },
-      () => {
-        setError(true);
-        setLoading(false);
-      },
-    );
+    // Defer subscription until any in-progress navigation animations are done.
+    // Without this, the Firestore onSnapshot callback fires while the nav
+    // animation holds the JS thread, causing state updates to queue up and
+    // the loading skeleton to appear frozen until the user touches the screen.
+    let unsubscribe = () => {};
 
-    return unsubscribe;
+    const task = InteractionManager.runAfterInteractions(() => {
+      unsubscribe = subscribeToGyms(
+        (gymData) => {
+          setGyms(gymData);
+          setLoading(false);
+        },
+        () => {
+          setError(true);
+          setLoading(false);
+        },
+      );
+    });
+
+    return () => {
+      task.cancel();
+      unsubscribe();
+    };
   }, []);
 
   /**

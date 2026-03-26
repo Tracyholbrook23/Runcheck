@@ -53,6 +53,7 @@ import { auth } from '../config/firebase';
 import { useProfile } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
 import { subscribeToRunMessages, sendRunMessage, markRunChatSeen, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
+import { sanitizeFreeText } from '../utils/sanitize';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -472,7 +473,7 @@ export default function RunChatScreen({ route, navigation }) {
                   placeholder="Message..."
                   placeholderTextColor={colors.textMuted}
                   value={inputText}
-                  onChangeText={setInputText}
+                  onChangeText={(text) => setInputText(sanitizeFreeText(text, 500))}
                   maxLength={500}
                   multiline
                   returnKeyType="send"

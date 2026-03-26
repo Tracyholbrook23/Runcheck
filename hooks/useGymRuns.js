@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { InteractionManager } from 'react-native';
 import { auth } from '../config/firebase';
 import {
   subscribeToGymRuns,
@@ -43,6 +44,8 @@ export const useGymRuns = (gymId) => {
   const uid = auth.currentUser?.uid;
 
   // ── Subscription 1: all upcoming runs at this gym ──────────────────────────
+  // Deferred with InteractionManager so the snapshot callback doesn't compete with
+  // the navigation animation for the JS thread, preventing the frozen-skeleton issue.
   useEffect(() => {
     if (!gymId) {
       setRuns([]);
@@ -52,12 +55,19 @@ export const useGymRuns = (gymId) => {
 
     setRunsReady(false);
 
-    const unsubscribe = subscribeToGymRuns(gymId, (newRuns) => {
-      setRuns(newRuns);
-      setRunsReady(true);
+    let unsubscribe = () => {};
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      unsubscribe = subscribeToGymRuns(gymId, (newRuns) => {
+        setRuns(newRuns);
+        setRunsReady(true);
+      });
     });
 
-    return unsubscribe;
+    return () => {
+      task.cancel();
+      unsubscribe();
+    };
   }, [gymId]);
 
   // ── Subscription 2: user's participation at this gym ──────────────────────
@@ -70,12 +80,19 @@ export const useGymRuns = (gymId) => {
 
     setParticipantsReady(false);
 
-    const unsubscribe = subscribeToUserRunsAtGym(uid, gymId, (participants) => {
-      setUserParticipants(participants);
-      setParticipantsReady(true);
+    let unsubscribe = () => {};
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      unsubscribe = subscribeToUserRunsAtGym(uid, gymId, (participants) => {
+        setUserParticipants(participants);
+        setParticipantsReady(true);
+      });
     });
 
-    return unsubscribe;
+    return () => {
+      task.cancel();
+      unsubscribe();
+    };
   }, [gymId, uid]);
 
   // ── Derived: Set of run IDs the user has joined ────────────────────────────

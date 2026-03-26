@@ -392,7 +392,19 @@ export const leaveRun = async (runId) => {
     // participantCount from being driven below 0 during retries or stale-data races.
     const currentCount = runSnap.exists() ? (runSnap.data().participantCount ?? 0) : 0;
     if (currentCount > 0) {
-      txn.update(runRef, { participantCount: increment(-1) });
+      if (currentCount === 1) {
+        // Last person leaving — cancel the run entirely so it doesn't become a
+        // ghost run. A cancelled run is excluded from startOrJoinRun's query
+        // (which filters status == 'upcoming'), preventing the user from being
+        // silently re-added to their own empty run the next time they try to
+        // start one at the same gym.
+        txn.update(runRef, {
+          participantCount: increment(-1),
+          status: 'cancelled',
+        });
+      } else {
+        txn.update(runRef, { participantCount: increment(-1) });
+      }
     }
   });
 

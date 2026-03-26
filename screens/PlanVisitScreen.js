@@ -490,58 +490,62 @@ export default function PlanVisitScreen({ navigation }) {
               </View>
             </View>
           </LinearGradient>
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-            <ScrollView contentContainerStyle={styles.scrollBody}>
+          <View style={{ flex: 1 }}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+              <ScrollView contentContainerStyle={styles.scrollBody}>
 
-              {gyms.map((gym) => (
-                <TouchableOpacity
-                  key={gym.id}
-                  style={[
-                    styles.gymCard,
-                    // Highlight the selected gym with a primary-color border
-                    selectedGym?.id === gym.id && styles.gymCardSelected,
-                  ]}
-                  onPress={() => setSelectedGym(gym)}
-                >
-                  <View style={styles.gymCardLeft}>
-                    {/* Checkmark when selected, outline circle otherwise */}
-                    <Ionicons
-                      name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={22}
-                      color={selectedGym?.id === gym.id ? colors.primary : colors.textMuted}
-                    />
-                  </View>
-                  <View style={styles.gymCardInfo}>
-                    <Text style={styles.gymCardName}>{gym.name}</Text>
-                    <Text style={styles.gymCardAddress}>{gym.address}</Text>
-                    <Text style={styles.gymCardType}>
-                      {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
-                      <Text style={styles.gymCardAccent}>OPEN RUN</Text>
-                    </Text>
-                  </View>
-                  {/* Live presence badge — count from useLivePresenceMap (expiry-filtered, deduplicated) */}
-                  {(countMap[gym.id] ?? 0) > 0 && (
-                    <View style={styles.presenceBadge}>
-                      <Text style={styles.presenceBadgeText}>{countMap[gym.id]} here</Text>
+                {gyms.map((gym) => (
+                  <TouchableOpacity
+                    key={gym.id}
+                    style={[
+                      styles.gymCard,
+                      // Highlight the selected gym with a primary-color border
+                      selectedGym?.id === gym.id && styles.gymCardSelected,
+                    ]}
+                    onPress={() => setSelectedGym(gym)}
+                  >
+                    <View style={styles.gymCardLeft}>
+                      {/* Checkmark when selected, outline circle otherwise */}
+                      <Ionicons
+                        name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={22}
+                        color={selectedGym?.id === gym.id ? colors.primary : colors.textMuted}
+                      />
                     </View>
-                  )}
-                </TouchableOpacity>
-              ))}
+                    <View style={styles.gymCardInfo}>
+                      <Text style={styles.gymCardName}>{gym.name}</Text>
+                      <Text style={styles.gymCardAddress}>{gym.address}</Text>
+                      <Text style={styles.gymCardType}>
+                        {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
+                        <Text style={styles.gymCardAccent}>OPEN RUN</Text>
+                      </Text>
+                    </View>
+                    {/* Live presence badge — count from useLivePresenceMap (expiry-filtered, deduplicated) */}
+                    {(countMap[gym.id] ?? 0) > 0 && (
+                      <View style={styles.presenceBadge}>
+                        <Text style={styles.presenceBadgeText}>{countMap[gym.id]} here</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                ))}
 
-              <View style={styles.buttonRow}>
-                <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep(1)}>
-                  <Text style={styles.secondaryButtonText}>Back</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.primaryButton, !selectedGym && styles.buttonDisabled]}
-                  onPress={() => selectedGym && setStep(3)}
-                  disabled={!selectedGym}
-                >
-                  <Text style={styles.primaryButtonText}>Next</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </TouchableWithoutFeedback>
+              </ScrollView>
+            </TouchableWithoutFeedback>
+
+            {/* Pinned footer — always visible regardless of list length */}
+            <View style={styles.buttonRowPinned}>
+              <TouchableOpacity style={styles.secondaryButton} onPress={() => setStep(1)}>
+                <Text style={styles.secondaryButtonText}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, !selectedGym && styles.buttonDisabled]}
+                onPress={() => selectedGym && setStep(3)}
+                disabled={!selectedGym}
+              >
+                <Text style={styles.primaryButtonText}>Next</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
     );
@@ -883,7 +887,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   scrollBody: {
     paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.xl,
+    paddingBottom: SPACING.sm,
   },
   scroll: {
     padding: SPACING.md,
@@ -1355,6 +1359,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     justifyContent: 'space-between',
     marginTop: SPACING.lg,
     gap: SPACING.sm,
+  },
+  buttonRowPinned: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
   },
   primaryButton: {
     flex: 1,

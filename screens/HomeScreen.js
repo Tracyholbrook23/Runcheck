@@ -421,16 +421,6 @@ const HomeScreen = ({ navigation }) => {
   // Reuses liveCountMap — no extra query needed.
   const checkedInCount = isCheckedIn ? (liveCountMap[presence?.gymId] || 0) : 0;
 
-  // TEMP debug — remove once counts confirmed correct
-  if (__DEV__ && totalActive > 0) {
-    const topId = Object.entries(liveCountMap).sort((a, b) => b[1] - a[1])[0]?.[0];
-    if (topId) {
-      console.log('[LiveBanner] hottestGym id:', topId);
-      console.log('[LiveBanner] raw presence docs:', (livePresenceMap[topId] || []).length);
-      console.log('[LiveBanner] deduped active count:', liveCountMap[topId]);
-    }
-  }
-
   // Gym with the most real-time active players — used by the LIVE indicator.
   // Derived from liveCountMap, NOT from the stale gym.currentPresenceCount field.
   let hottestGym = null;
@@ -1101,22 +1091,6 @@ const HomeScreen = ({ navigation }) => {
                 // never from gym.currentPresenceCount or any other source.
                 const startedAgo     = getStartedAgoText(activePresences);
 
-                // Debug logs — active player list + timestamp
-                if (__DEV__) {
-                  const startMillis = activePresences
-                    .map((p) => p.checkedInAt?.toMillis?.() ?? null)
-                    .filter(Boolean);
-                  const startedAt = startMillis.length > 0
-                    ? new Date(Math.min(...startMillis)).toISOString()
-                    : 'unknown';
-                  console.log(
-                    `[LiveRun:${gym.name}] activeUniqueCount=${activeCount}`,
-                    'userIds=[' + activePresences.map((p) => p.odId).join(', ') + ']'
-                  );
-                  console.log(
-                    `[LiveRun:${gym.name}] startedAt=${startedAt} startedAgo="${startedAgo}"`
-                  );
-                }
                 return (
                   <TouchableOpacity
                     key={gym.id}

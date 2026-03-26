@@ -26,7 +26,16 @@ Nothing in this file should be worked on during a session unless the user explic
 - "Challenge" system (1v1 or crew vs crew invites)
 - Crew/team creation and management
 - Follow other players (not just gyms)
-- Notification system (push notifications for runs, tags, friend activity)
+- ~~**Notification system — gym follow alerts (Phase 2 N-05)**~~ — **Done 2026-03-25.** `notifyFollowersRunCreated` Cloud Function deployed. Notifies gym followers when a new future run is created. Deduped per follower per run. Needs `firebase deploy --only functions:notifyFollowersRunCreated` to go live.
+- ~~**Notification system — live activity alerts (Phase 2 V2 N-06)**~~ — **Done 2026-03-25.** `onGymPresenceUpdated` + `notifyFollowersPresenceMilestone` implemented. Two-function design: trigger stamps a pending milestone marker on upward threshold crossings (3, 6 players); scheduler confirms 5-min stability then notifies followers with 3-hour cooldown. Needs `firebase deploy --only functions:onGymPresenceUpdated,functions:notifyFollowersPresenceMilestone` to go live.
+- **Notification system — V3 deferred items** (do not implement until approved):
+  - `notifyFollowersRunActive` — alert when a run transitions to `active`. Needs consistent `status` writes.
+  - Per-gym mute preferences (`users/{uid}.notifPrefs.mutedGyms[]`)
+  - Daily notification cap across all followed-gym alerts
+  - `notifyFollowersPresenceMilestone` pagination for large follower counts (>500 per gym)
+  - Follower query pagination for gyms with 500+ followers
+  - **`notifyFollowersRunCreated` pagination** — current query loads all followers into memory; paginate with `startAfter` when any gym exceeds ~500 followers
+- Notification system (push notifications for tags, friend activity)
 - "Who's going tonight?" pre-commitment feed
 
 ---
@@ -98,6 +107,7 @@ Nothing in this file should be worked on during a session unless the user explic
 - End-to-end test suite for critical flows
 - CI/CD pipeline for automated builds and deploys
 - Firestore Security Rules audit and tightening
+- **⚠️ NEEDS TESTING — Skeleton screens frozen until touch/scroll (2026-03-26)** — Reported on RunDetailsScreen: after tapping a gym, the skeleton placeholder stayed stuck and never updated until the user touched/scrolled. Root cause is Firestore `onSnapshot` callbacks firing during the React Native navigation animation, competing for the JS thread and causing setState updates to queue up without flushing. Fix applied: added `InteractionManager.runAfterInteractions` to defer all subscriptions in `useGym.js`, `useGymRuns.js`, `useGymPresences.js`, `useGymSchedules.js`, `useGyms.js`, and `useLivePresenceMap.js`. Also removed two debug blocks from `HomeScreen.js` render path that were running array operations on every re-render. **Not yet confirmed fixed in production — needs real-device testing.** If still occurring after navigation animation completes, check for any remaining `onSnapshot` calls opened directly inside `RunDetailsScreen.js` (not through a hook) or any `console.log` calls inside render functions.
 
 ---
 

@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { InteractionManager } from 'react-native';
 import { subscribeToGymSchedules } from '../services/scheduleService';
 
 /**
@@ -41,15 +42,23 @@ export const useGymSchedules = (gymId) => {
 
     setLoading(true);
 
-    // The service callback delivers both a flat list and a slot-grouped map
-    const unsubscribe = subscribeToGymSchedules(gymId, (scheduleData, bySlot) => {
-      setSchedules(scheduleData);
-      setSchedulesBySlot(bySlot);
-      setLoading(false);
+    // Deferred with InteractionManager so the snapshot callback doesn't compete with
+    // the navigation animation for the JS thread, preventing the frozen-skeleton issue.
+    let unsubscribe = () => {};
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      // The service callback delivers both a flat list and a slot-grouped map
+      unsubscribe = subscribeToGymSchedules(gymId, (scheduleData, bySlot) => {
+        setSchedules(scheduleData);
+        setSchedulesBySlot(bySlot);
+        setLoading(false);
+      });
     });
 
-    // Cleanup: unsubscribe when gymId changes or component unmounts
-    return unsubscribe;
+    return () => {
+      task.cancel();
+      unsubscribe();
+    };
   }, [gymId]);
 
   return {

@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-23 (added noShowProcessedAt to runs schema; introduced detectRunNoShows Cloud Function for run participant no-show penalty)_
+_Last updated: 2026-03-25 (2026-03-24 session: added adminActions collection, isRemoved fields on DM messages, messageContext on reports, blockedUsers on users, mutedBy on conversations, skillLevel+gymName on runParticipants; added removeDmMessage CF, onDmMessageCreated CF; updated dmService with block/mute functions; updated moderationHelpers with enforceRemoveDmMessage)_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -67,6 +67,9 @@ Firebase-only backend. No custom server. Logic lives in:
   unsuspendedAt: Timestamp,
   unsuspendReason: string | null,
   autoModerated: boolean,        // true if suspended by auto-moderation
+  // ── DM Blocking (written by dmService.blockUser / dmService.unblockUser) ──
+  blockedUsers: string[],        // UIDs blocked by this user (arrayUnion/arrayRemove). Added 2026-03-24.
+                                 // Firestore rules: existing "write own doc" rule already covers this field.
   // ── Push Notifications (written by utils/notifications.js on app launch) ──
   pushToken: string | null,      // Expo push token — saved by registerPushToken(); null if not granted
   // ── Notification deduplication (written by Phase 1 Cloud Functions) ──
@@ -183,6 +186,13 @@ Firebase-only backend. No custom server. Logic lives in:
                              // Written by markRunChatSeen() when the user opens the run chat.
                              // Compared against runs/{runId}.lastMessageAt by useMyRunChats to
                              // compute isUnread / runChatUnreadCount. Added 2026-03-22.
+  skillLevel: 'Casual' | 'Competitive' | 'Either' | null,
+                             // Snapshot of the participant's skillLevel at RSVP time. Written by
+                             // joinRun() in runService.js via fetchUserDisplayInfo(). Absent on
+                             // participant docs written before 2026-03-24 — use presence cross-
+                             // reference (V1 fallback) for those. Added 2026-03-24.
+  gymName: string,           // Denormalized gym name — written by joinRun() at join time.
+                             // Already present via runService fetchUserDisplayInfo. Added 2026-03-24.
 }
 ```
 > Compound key `{runId}_{userId}` makes joins idempotent (setDoc overwrites) and leaveRun O(1) (delete by ID, no query). Ownership enforced via the `userId` field since Firestore rules cannot split the doc ID string.
@@ -257,9 +267,17 @@ Firebase-only backend. No custom server. Logic lives in:
   autoModerationReason: string | null,
   createdAt: Timestamp,
   updatedAt: Timestamp,
+  // ── Message reports (present only when type === 'message') ──
+  messageContext: {              // Added 2026-03-24.
+    conversationId: string,
+    messageId: string,
+    senderId: string,
+    messageText: string,         // sanitized excerpt (client-trimmed before submit)
+    messageSentAt: Timestamp | null,
+  } | undefined,
 }
 ```
-> Duplicate prevention: composite unique on `reportedBy + type + targetId`. Auto-moderation in `submitReport` checks pending count against thresholds (clip→3, run→3, player→5) and triggers enforcement helpers.
+> Duplicate prevention: composite unique on `reportedBy + type + targetId`. Auto-moderation in `submitReport` checks pending count against thresholds (clip→3, run→3, player→5) and triggers enforcement helpers. For `type='message'`, `targetOwnerId` is set to `messageContext.senderId`. No auto-moderation threshold for message reports in V1.
 
 ### `gymClips/{clipId}` — full schema (deterministic ID: `{scheduleId}_{uid}` or `presence_{gymId}_{uid}`)
 ```js
@@ -327,6 +345,22 @@ Firebase-only backend. No custom server. Logic lives in:
 }
 ```
 
+### `adminActions/{autoId}`   ← Added 2026-03-24
+```js
+{
+  actionType: 'remove_message' | 'suspend_user',
+  adminId: string,               // UID of the admin who performed the action
+  targetId: string,              // messageId (for remove_message) or userId (for suspend_user)
+  conversationId: string | null, // present for remove_message
+  reason: string | null,
+  reportId: string | null,       // associated report, if action triggered from a report
+  suspensionLevel: number | null, // present for suspend_user
+  durationDays: number | null,   // present for suspend_user
+  timestamp: Timestamp,          // serverTimestamp()
+}
+```
+> Written only by Cloud Functions (Admin SDK) — no client read/write. Read via Firebase Console only in V1. No UI. Audit trail for admin enforcement actions. V1 coverage: message removal and user suspension. Does not yet cover `unsuspendUser` or `hideClip`.
+
 ---
 
 
@@ -343,7 +377,10 @@ Deterministic ID: `[uid_a, uid_b].sort().join('_')` — same two users always sh
   createdAt: Timestamp,
   lastSeenAt: {
     [uid]: Timestamp           // per-user last-seen timestamp; unread = lastActivityAt > lastSeenAt[uid]
-  }
+  },
+  mutedBy: {                   // per-user mute state. Written with dot-notation updateDoc.
+    [uid]: true                // true = push notifications suppressed for this user. Absent if nobody muted.
+  } | undefined,               // Cleared with deleteField() on unmute. Added 2026-03-24.
 }
 ```
 
@@ -352,10 +389,17 @@ Deterministic ID: `[uid_a, uid_b].sort().join('_')` — same two users always sh
 {
   senderId: string,    // Firebase Auth UID of sender
   text: string,
-  createdAt: Timestamp  // serverTimestamp() — drives message ordering
+  createdAt: Timestamp,  // serverTimestamp() — drives message ordering
+  // ── Moderation (written by removeDmMessage Cloud Function) ──
+  isRemoved: boolean,        // true if admin soft-deleted. Added 2026-03-24.
+  removedBy: string,         // admin UID
+  removedAt: Timestamp,
+  removedReason: string | null,
 }
 ```
+> Removed messages render a pill-style placeholder ("This message was removed") in `DMConversationScreen.js`. Hard delete intentionally out of scope for V1 (audit trail needed). Message doc is NOT deleted on removal.
 ⚠️ **Firestore rules for `conversations` collection not yet written.** Currently no security rules protect this collection. Add rules before any real users access DMs.
+> **Suspended user rule (2026-03-24):** `isNotSuspended()` helper in `runcheck-backend/firestore.rules` blocks `allow create` on DM messages and run chat messages for suspended users. Server-enforced even if client bypass is attempted.
 
 ## Services
 
@@ -382,10 +426,15 @@ Deterministic ID: `[uid_a, uid_b].sort().join('_')` — same two users always sh
 
 
 ### `dmService.js`
-- **`openOrCreateConversation({currentUid, currentUserName, currentUserAvatar, otherUid, otherUserName, otherUserAvatar})`** — Idempotent. Checks if conversation doc exists before reading users. Returns `conversationId`.
+- **`openOrCreateConversation({currentUid, currentUserName, currentUserAvatar, otherUid, otherUserName, otherUserAvatar})`** — Idempotent. Slow path (new conversation) reads both user docs in parallel. Bidirectional block guard: throws if either party has blocked the other. Returns `conversationId`.
 - **`subscribeToConversations(uid, callback)`** — Real-time inbox ordered by `lastActivityAt` desc. Queries `conversations` where `participantIds array-contains uid`.
-- **`sendDMMessage({conversationId, senderId, text})`** — Two sequential writes: (1) `addDoc` to messages subcollection with `serverTimestamp()`; (2) `updateDoc` on conversation doc for `lastMessage`, `lastActivityAt`. Not transactional — `lastMessage` may lag by one message under tight race.
+- **`sendDMMessage({conversationId, senderId, recipientId?, text})`** — Reads sender's user doc to check `isSuspended`. If `recipientId` provided, reads recipient's `blockedUsers` and throws if sender is listed. Two sequential writes: (1) `addDoc` to messages subcollection with `serverTimestamp()`; (2) `updateDoc` on conversation doc. Not transactional.
 - **`markConversationSeen(conversationId, uid)`** — Writes `lastSeenAt.${uid}` via dot-notation field path. Called on DM screen mount.
+- **`blockUser(currentUid, targetUid)`** — `arrayUnion(targetUid)` on `users/{currentUid}.blockedUsers`. Idempotent. Added 2026-03-24.
+- **`unblockUser(currentUid, targetUid)`** — `arrayRemove(targetUid)` on `users/{currentUid}.blockedUsers`. Added 2026-03-24.
+- **`muteConversation(conversationId, uid)`** — Dot-notation `set mutedBy.{uid}: true` on conversation doc. Added 2026-03-24.
+- **`unmuteConversation(conversationId, uid)`** — Dot-notation `deleteField()` on `mutedBy.{uid}`. Added 2026-03-24.
+- **`getConversationMuteState(conversationId, uid)`** — One-shot `getDoc`, returns boolean. Added 2026-03-24.
 
 ### `pointsService.js`
 Single source of truth for all point writes. Never write `totalPoints` anywhere else.
@@ -489,7 +538,8 @@ All Cloud Functions use `onCall` from `firebase-functions/v2/https`. Deployed fr
 | `unsuspendUser` | `unsuspendUser.ts` | Admin callable: lifts a suspension. Delegates to `enforceUnsuspendUser`. |
 | `unhideClip` | `unhideClip.ts` | Admin callable: unhides a clip. Delegates to `enforceUnhideClip`. |
 | `moderateReport` | `moderateReport.ts` | Admin callable: marks reports as reviewed/resolved with optional admin notes. |
-| `submitReport` | `submitReport.ts` | User callable: submits a report with duplicate prevention. **Triggers auto-moderation** when pending count reaches threshold. |
+| `submitReport` | `submitReport.ts` | User callable: submits a report with duplicate prevention. **Triggers auto-moderation** when **pending** count reaches threshold. Supports `type='message'` with `messageContext` payload. Added message support 2026-03-24. |
+| `removeDmMessage` | `removeDmMessage.ts` | Admin callable: soft-deletes a DM message (`isRemoved: true`). Accepts `{ conversationId, messageId, reason?, reportId? }`. Calls `enforceRemoveDmMessage` → optionally `resolveRelatedReport`. Writes to `adminActions/{autoId}`. Added 2026-03-24. |
 
 ### moderationHelpers.ts — Shared Enforcement Logic
 Single source of truth for all moderation actions. Both admin callables and auto-moderation call these helpers so logic is never duplicated.
@@ -502,6 +552,7 @@ Single source of truth for all moderation actions. Both admin callables and auto
 | `enforceUnsuspendUser` | `users/{userId}` | Clears `isSuspended`, preserves `suspensionLevel` for history |
 | `enforceUnhideClip` | `gymClips/{clipId}` | Clears `isHidden`, preserves audit trail |
 | `resolveRelatedReport` | `reports/{reportId}` | Sets `status: 'resolved'` with system note |
+| `enforceRemoveDmMessage` | `conversations/{id}/messages/{msgId}` | Sets `isRemoved: true` + audit fields. Idempotent. Added 2026-03-24. |
 
 **Auto-moderation thresholds** (in `submitReport.ts`):
 - Clip: 3 pending reports → `enforceHideClip` + resolve all related reports
@@ -541,6 +592,26 @@ Shared helper: `notificationHelpers.ts` — `sendExpoPush()` (Expo Push API via 
 | `notifyRunStartingSoon` | `notifyRunStartingSoon.ts` | **Scheduled every 5 min.** Finds `runs` with `status=='upcoming'` and `startTime` in [now+25min, now+35min]. Sends "run starts soon" push to every participant. Cooldown key `runReminder_{runId}`, 24h TTL per participant. |
 | `onRunParticipantJoined` | `onRunParticipantJoined.ts` | **Firestore onCreate** on `runParticipants/{docId}`. Notifies run creator when a new player joins. Skips self-join (creator joining their own run). Cooldown key `participantJoined_{runId}` on creator doc, 5-min TTL (batches rapid joins). |
 | `onParticipantCountMilestone` | `onParticipantCountMilestone.ts` | **Firestore onUpdate** on `runs/{runId}`. Fires when `participantCount` crosses milestone thresholds [5, 10, 20]. Notifies creator once per milestone. Cooldown key `runMilestone_{runId}_{threshold}` on creator doc, 24h TTL. |
+| `onDmMessageCreated` | `onDmMessageCreated.ts` | **Firestore onCreate** on `conversations/{id}/messages/{msgId}`. Sends push notification to the recipient. Mute guard: reads `conversationData.mutedBy?.[recipientUid]` (already loaded) — returns early if muted (no push, no cooldown penalty). Added 2026-03-24. |
+
+### Phase 2 Push Notification Functions (added 2026-03-25)
+
+| Function | File | Role |
+|----------|------|------|
+| `notifyFollowersRunCreated` | `notifyFollowersRunCreated.ts` | **Firestore onCreate** on `runs/{runId}`. Queries all users whose `followedGyms` contains the run's `gymId`. Skips: private runs, past-start runs, the creator, users with no push token. Dedup: cooldown key `followRunCreated_{runId}` on each follower doc, 24h TTL (one notification per run per follower). Falls back to `gyms/{gymId}.name` when `gymName` is absent from the run doc (Cloud Function-created runs don't include it). Notification copy: Title `"New run at {gymName}"`, Body `"{Day} at {time} — tap to join"` (America/Chicago timezone). Deep link data: `{ screen: 'RunDetails', runId, gymId }`. |
+| `onGymPresenceUpdated` | `notifyFollowersPresenceMilestone.ts` | **Firestore onDocumentUpdated** on `gyms/{gymId}`. Watches `currentPresenceCount` for upward crossings of thresholds [3, 6]. On crossing, writes a pending milestone marker to the gym doc (`presenceMilestonePending`, `presenceMilestoneThreshold`, `presenceMilestoneReachedAt`). Does NOT send notifications directly — defers to the scheduler for stability validation. Clears the marker if count drops below all thresholds. |
+| `notifyFollowersPresenceMilestone` | `notifyFollowersPresenceMilestone.ts` | **Scheduled every 5 min.** Finds gyms with `presenceMilestonePending == true`. For each, checks that the milestone has been stable for 5+ minutes (`STABILITY_MS`) and that the current count is still at/above the threshold. Notifies all followers of the gym. Dedup: cooldown key `presenceMilestone_{gymId}` on each follower doc, 3-hour TTL (one live-activity alert per gym per user per 3 hours). Notification copy: Title `"🏀 {gymName} is live"`, Body `"{count} players are hooping — tap to join!"`. Deep link data: `{ screen: 'GymDetail', gymId }`. |
+
+**New Firestore fields on `gyms/{gymId}` (written by `onGymPresenceUpdated`):**
+- `presenceMilestonePending: boolean` — true when a threshold crossing is awaiting stability confirmation
+- `presenceMilestoneThreshold: number` — which threshold (3 or 6) is pending
+- `presenceMilestoneReachedAt: Timestamp` — when the threshold was first crossed (used for stability check)
+
+**What was intentionally deferred to V3 (do not implement until approved):**
+- `notifyFollowersRunActive` — alert when a run's status transitions to 'active'. Needs `status` field to be written consistently before this is reliable.
+- Per-gym mute preferences (`users/{uid}.notifPrefs.mutedGyms[]`).
+- Daily notification cap across all followed-gym alerts.
+- Follower query pagination for gyms with 500+ followers (currently loads all into memory).
 
 ---
 
@@ -607,8 +678,8 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 8. **Runs indexes** — three new composite indexes required (see Required Firestore Indexes #8–10). Create these in the Firebase console or `firestore.indexes.json` to avoid "index required" errors at query time.
 10. **Run Chat Firestore rules must be deployed** — `runcheck-backend/firestore.rules` now includes `match /messages/{messageId}` inside `match /runs/{runId}` with `exists(runParticipants/{runId}_{uid})` for both read and create. Deploy with `cd ~/Desktop/runcheck-backend && firebase deploy --only firestore:rules`. Until deployed, any participant attempting to open Run Chat will hit `permission-denied`.
 
-11. **`conversations` Firestore rules not written** — The DM feature (`dmService.js`) reads/writes `conversations/{id}` and `conversations/{id}/messages/{autoId}` but no Firestore security rules exist for this collection yet. Any authenticated user can read/write any conversation doc. Add rules before real user testing: require `request.auth.uid in resource.data.participantIds` for read/write.
-12. **`onDmMessageCreated` Cloud Function not implemented** — Push notifications for new DMs are not yet wired up. The notification tap handler in App.js expects `data.type === 'dm'` from a Cloud Function payload, but that function doesn't exist yet.
+11. **`conversations` Firestore rules not written** — The DM feature reads/writes `conversations/{id}` and `conversations/{id}/messages/{autoId}` but no Firestore security rules exist for this collection yet. Any authenticated user can read/write any conversation doc. Add rules before real user testing: require `request.auth.uid in resource.data.participantIds` for read/write. NOTE: `isNotSuspended()` rule on message creates was added 2026-03-24, but the broader read/write collection-level rules are still missing.
+13. **`usernames` Firestore rules not written** — Any authenticated user can overwrite another user's username reservation. Write rule needed: only owner `uid == request.auth.uid` can create; no updates or deletes. Low immediate risk but must be closed before launch.
 
 9. **`notifCooldowns` map will grow unboundedly** — Phase 1 notifications store cooldown keys as a map on `users/{uid}.notifCooldowns`. Each key is unique per run (e.g. `runReminder_{runId}`, `participantJoined_{runId}`, `runMilestone_{runId}_5`). Power users who join hundreds of runs over time will accumulate a large map, approaching Firestore's 1 MB doc limit. **Migration plan:** Move to `users/{uid}/notifCooldowns/{key}` subcollection (one doc per cooldown key, `setAt: Timestamp`). Only `checkAndSetCooldown` in `notificationHelpers.ts` needs to change. Add a Firestore TTL policy on the subcollection to auto-delete docs after 48h. **Do this before serious marketing / ~500+ active users.**
 

@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { InteractionManager } from 'react-native';
 import { subscribeToGymPresences } from '../services/presenceService';
 
 /**
@@ -39,14 +40,21 @@ export const useGymPresences = (gymId) => {
 
     setLoading(true);
 
-    // Open a real-time listener on the presences subcollection for this gym
-    const unsubscribe = subscribeToGymPresences(gymId, (presenceData) => {
-      setPresences(presenceData);
-      setLoading(false);
+    // Deferred with InteractionManager so the snapshot callback doesn't compete with
+    // the navigation animation for the JS thread, preventing the frozen-skeleton issue.
+    let unsubscribe = () => {};
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      unsubscribe = subscribeToGymPresences(gymId, (presenceData) => {
+        setPresences(presenceData);
+        setLoading(false);
+      });
     });
 
-    // Cleanup: unsubscribe when gymId changes or component unmounts
-    return unsubscribe;
+    return () => {
+      task.cancel();
+      unsubscribe();
+    };
   }, [gymId]);
 
   return {

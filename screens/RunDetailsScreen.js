@@ -76,6 +76,7 @@ import {
 import { handleFollowPoints } from '../services/pointsService';
 import { formatSkillLevel } from '../services/models';
 import { checkReviewEligibility, submitReview } from '../services/reviewService';
+import { sanitizeFreeText } from '../utils/sanitize';
 
 /**
  * isToday — Checks whether a given Date falls on the current calendar day.
@@ -493,6 +494,7 @@ export default function RunDetailsScreen({ route, navigation }) {
       setRunModalVisible(false);
       setSelectedRunDay(null);
       setSelectedRunSlot(null);
+      setRunLevel('mixed'); // reset so next open starts fresh
       if (created) {
         Alert.alert(
           'Run Started!',
@@ -2307,7 +2309,7 @@ export default function RunDetailsScreen({ route, navigation }) {
               multiline
               maxLength={400}
               value={reviewText}
-              onChangeText={setReviewText}
+              onChangeText={(text) => setReviewText(sanitizeFreeText(text, 400))}
             />
 
             {/* Submit */}

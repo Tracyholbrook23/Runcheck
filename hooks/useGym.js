@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect } from 'react';
+import { InteractionManager } from 'react-native';
 import { subscribeToGym } from '../services/gymService';
 
 /**
@@ -29,7 +30,9 @@ export const useGym = (gymId) => {
   const [gym, setGym] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Re-subscribe whenever gymId changes (e.g., user navigates to a different gym detail)
+  // Re-subscribe whenever gymId changes (e.g., user navigates to a different gym detail).
+  // Deferred with InteractionManager so the Firestore snapshot callback doesn't compete
+  // with the navigation animation for the JS thread, preventing the frozen-skeleton issue.
   useEffect(() => {
     if (!gymId) {
       setGym(null);
@@ -39,12 +42,19 @@ export const useGym = (gymId) => {
 
     setLoading(true);
 
-    const unsubscribe = subscribeToGym(gymId, (gymData) => {
-      setGym(gymData);
-      setLoading(false);
+    let unsubscribe = () => {};
+
+    const task = InteractionManager.runAfterInteractions(() => {
+      unsubscribe = subscribeToGym(gymId, (gymData) => {
+        setGym(gymData);
+        setLoading(false);
+      });
     });
 
-    return unsubscribe;
+    return () => {
+      task.cancel();
+      unsubscribe();
+    };
   }, [gymId]);
 
   /**

@@ -37,6 +37,7 @@ import { useTheme } from '../contexts';
 import { callFunction, auth } from '../config/firebase';
 import { blockUser } from '../services/dmService';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
+import { sanitizeFreeText } from '../utils/sanitize';
 
 // ---------------------------------------------------------------------------
 // Reason options
@@ -248,7 +249,7 @@ export default function ReportModal({ visible, onClose, type, targetId, messageC
                       },
                     ]}
                     value={description}
-                    onChangeText={setDescription}
+                    onChangeText={(text) => setDescription(sanitizeFreeText(text, 500))}
                     placeholder="Tell us more about the issue..."
                     placeholderTextColor={colors.textMuted}
                     multiline
