@@ -38,6 +38,7 @@ import { useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
+import { sanitizeName } from '../utils/sanitize';
 
 // Valid skill level options — matches models.js and onboarding
 const SKILL_LEVELS = ['Casual', 'Competitive', 'Either'];
@@ -145,7 +146,7 @@ export default function EditProfileScreen({ navigation }) {
               <TextInput
                 style={styles.textInput}
                 value={name}
-                onChangeText={setName}
+                onChangeText={(text) => setName(sanitizeName(text))}
                 placeholder="Your name"
                 placeholderTextColor={colors.textMuted}
                 maxLength={40}

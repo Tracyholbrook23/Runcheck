@@ -38,6 +38,7 @@ import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
 import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
+import { sanitizePersonName, sanitizeUsername } from '../utils/sanitize';
 
 /** The three play-style options a user can choose from during registration. */
 const SKILL_OPTIONS = ['Casual', 'Competitive', 'Either'];
@@ -331,7 +332,7 @@ export default function SignupScreen({ navigation }) {
                     label="First Name"
                     placeholder="First"
                     value={firstName}
-                    onChangeText={setFirstName}
+                    onChangeText={(text) => setFirstName(sanitizePersonName(text))}
                   />
                 </View>
                 <View style={styles.nameField}>
@@ -339,7 +340,7 @@ export default function SignupScreen({ navigation }) {
                     label="Last Name"
                     placeholder="Last"
                     value={lastName}
-                    onChangeText={setLastName}
+                    onChangeText={(text) => setLastName(sanitizePersonName(text))}
                   />
                 </View>
               </View>
@@ -349,7 +350,7 @@ export default function SignupScreen({ navigation }) {
                 autoCapitalize="none"
                 autoCorrect={false}
                 value={username}
-                onChangeText={(val) => setUsername(val.replace(/[^a-zA-Z0-9._]/g, ''))}
+                onChangeText={(val) => setUsername(sanitizeUsername(val))}
               />
               <Text style={styles.fieldHint}>
                 3–20 characters · letters, numbers, dots, underscores · must start with a letter

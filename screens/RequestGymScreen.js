@@ -27,6 +27,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
 import { callFunction } from '../config/firebase';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
+import { sanitizeAddress, sanitizeState, sanitizeFreeText } from '../utils/sanitize';
 
 // Type options for the picker
 const TYPE_OPTIONS = [
@@ -158,7 +159,7 @@ export default function RequestGymScreen({ navigation }) {
             placeholder="e.g. Planet Fitness - Round Rock"
             placeholderTextColor={colors.textMuted}
             value={gymName}
-            onChangeText={setGymName}
+            onChangeText={(text) => setGymName(sanitizeAddress(text, 200))}
             maxLength={200}
             autoCapitalize="words"
             returnKeyType="next"
@@ -171,7 +172,7 @@ export default function RequestGymScreen({ navigation }) {
             placeholder="e.g. 123 Main St, Round Rock, TX 78664"
             placeholderTextColor={colors.textMuted}
             value={address}
-            onChangeText={setAddress}
+            onChangeText={(text) => setAddress(sanitizeAddress(text, 300))}
             maxLength={300}
             autoCapitalize="words"
             returnKeyType="next"
@@ -186,7 +187,7 @@ export default function RequestGymScreen({ navigation }) {
                 placeholder="Round Rock"
                 placeholderTextColor={colors.textMuted}
                 value={city}
-                onChangeText={setCity}
+                onChangeText={(text) => setCity(sanitizeAddress(text, 100))}
                 maxLength={100}
                 autoCapitalize="words"
                 returnKeyType="next"
@@ -199,7 +200,7 @@ export default function RequestGymScreen({ navigation }) {
                 placeholder="TX"
                 placeholderTextColor={colors.textMuted}
                 value={state}
-                onChangeText={setState}
+                onChangeText={(text) => setState(sanitizeState(text))}
                 maxLength={2}
                 autoCapitalize="characters"
                 returnKeyType="next"
@@ -262,7 +263,7 @@ export default function RequestGymScreen({ navigation }) {
             placeholder="Any details that would help us find and verify this gym — hours, number of courts, entry fee, membership requirements, etc."
             placeholderTextColor={colors.textMuted}
             value={notes}
-            onChangeText={setNotes}
+            onChangeText={(text) => setNotes(sanitizeFreeText(text, 500))}
             maxLength={500}
             multiline
             numberOfLines={3}

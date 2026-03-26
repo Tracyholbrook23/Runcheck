@@ -48,6 +48,7 @@ import { useMyRunChats } from '../hooks/useMyRunChats';
 import { openOrCreateConversation, muteConversation, unmuteConversation } from '../services/dmService';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { sanitizeSearch } from '../utils/sanitize';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -568,7 +569,7 @@ export default function MessagesScreen({ navigation }) {
       <View style={[styles.searchBarWrapper, { borderBottomColor: colors.border }]}>
         <SearchBar
           value={searchQuery}
-          onChangeText={setSearchQuery}
+          onChangeText={(text) => setSearchQuery(sanitizeSearch(text))}
           onClear={handleClear}
           colors={colors}
         />

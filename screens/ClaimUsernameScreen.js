@@ -35,6 +35,7 @@ import { Logo, Button, Input } from '../components';
 import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, getDoc, runTransaction } from 'firebase/firestore';
+import { sanitizeUsername } from '../utils/sanitize';
 
 /**
  * USERNAME_REGEX — Same validation pattern as SignupScreen.
@@ -178,7 +179,7 @@ export default function ClaimUsernameScreen({ navigation }) {
                 autoCapitalize="none"
                 value={username}
                 onChangeText={(text) => {
-                  setUsername(text);
+                  setUsername(sanitizeUsername(text));
                   setError('');
                 }}
               />

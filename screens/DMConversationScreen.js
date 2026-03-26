@@ -58,6 +58,7 @@ import {
   unmuteConversation,
 } from '../services/dmService';
 import ReportModal from '../components/ReportModal';
+import { sanitizeFreeText } from '../utils/sanitize';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -487,7 +488,7 @@ export default function DMConversationScreen({ route, navigation }) {
                 placeholder="Message..."
                 placeholderTextColor={colors.textMuted}
                 value={inputText}
-                onChangeText={setInputText}
+                onChangeText={(text) => setInputText(sanitizeFreeText(text, 500))}
                 maxLength={500}
                 multiline
                 returnKeyType="send"

@@ -26,6 +26,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, BUTTON_HEIGHT } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { db, auth } from '../config/firebase';
+import { sanitizeUsername } from '../utils/sanitize';
 import {
   collection,
   query,
@@ -123,14 +124,15 @@ export default function SearchUsersScreen({ navigation }) {
    * handleTextChange — Updates search text and triggers a debounced search.
    */
   const handleTextChange = (text) => {
-    setSearchText(text);
+    const safe = sanitizeUsername(text);
+    setSearchText(safe);
 
     // Clear any pending debounce
     if (debounceTimer.current) {
       clearTimeout(debounceTimer.current);
     }
 
-    const trimmed = text.trim();
+    const trimmed = safe.trim();
     if (trimmed.length < MIN_QUERY_LENGTH) {
       setResults([]);
       setHasSearched(false);
@@ -141,9 +143,9 @@ export default function SearchUsersScreen({ navigation }) {
     // Show loading immediately so the user sees feedback
     setLoading(true);
 
-    // Debounce the actual Firestore query
+    // Debounce the actual Firestore query — pass the sanitized value
     debounceTimer.current = setTimeout(() => {
-      runSearch(text);
+      runSearch(safe);
     }, DEBOUNCE_MS);
   };
 
