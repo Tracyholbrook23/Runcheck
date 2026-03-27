@@ -98,4 +98,31 @@ Always reconcile: compare what was planned at session start vs. what actually ha
 
 ---
 
-_Last updated: 2026-03-17_
+---
+
+## Quick Handoff — Start Here Tomorrow (2026-03-27 session end)
+
+**What was fixed today:**
+- AdminAllClipsScreen composite index errors (isHidden+hiddenAt, isDeletedByUser+deletedAt)
+- expireClips.ts: raw file deletion guard prevents permanently broken clips
+- storagePath vs finalStoragePath: reverted incorrect client-side changes across 7 files — storagePath is always authoritative
+- Age validation: COPPA-compliant (13–100), integer stored in Firestore
+- OnboardingHomeCourtScreen: location button, search bar, request-gym row, distance labels
+- RequestGym navigation error from onboarding: registered in root stack
+- ProfileStack dark-mode back button: added screenOptions NAV_HEADER
+
+**Root causes discovered:**
+- finalStoragePath is written at finalization as a reserved path but may point to a non-existent file if processor failed. storagePath is always the live playback field.
+- expireClips was deleting raw files for clips where raw was the only copy (storagePath === rawStoragePath). Now guarded.
+
+**What still needs manual action:**
+1. Firebase Console → Firestore → `gymClips/presence_cowboys-fit-pflugerville_SMQUyWWMUOZpBHYN7pWlt15b6CB3` → set `isHidden = true`
+2. `firebase deploy --only firestore:indexes` (isHidden+hiddenAt and isDeletedByUser+deletedAt indexes)
+3. `firebase deploy --only functions:expireClips` (raw deletion guard)
+4. Fresh iOS build (~April 1 when EAS quota resets) — current TestFlight binary missing OTA channel header
+5. Full real-device QA pass after fresh build
+
+**First recommended task tomorrow:**
+Run the two pending deploys (#2 and #3 above), then do manual Firestore fix (#1). After that: real-device QA pass on onboarding flow (location button, home court selection, request-gym nav) and verify AdminAllClipsScreen Hidden/Deleted tabs load without errors.
+
+_Last updated: 2026-03-27_

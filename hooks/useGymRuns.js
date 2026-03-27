@@ -14,7 +14,6 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { InteractionManager } from 'react-native';
 import { auth } from '../config/firebase';
 import {
   subscribeToGymRuns,
@@ -44,8 +43,11 @@ export const useGymRuns = (gymId) => {
   const uid = auth.currentUser?.uid;
 
   // ── Subscription 1: all upcoming runs at this gym ──────────────────────────
-  // Deferred with InteractionManager so the snapshot callback doesn't compete with
-  // the navigation animation for the JS thread, preventing the frozen-skeleton issue.
+  // Subscribe immediately — no InteractionManager delay. The deferred approach
+  // was originally intended to avoid competing with navigation animations for JS
+  // thread time, but React StrictMode + React Navigation native stack in new arch
+  // (RN 0.81 / Expo SDK 54) runs effect cleanup synchronously before the task
+  // callback fires, cancelling it and leaving runsReady stuck at false indefinitely.
   useEffect(() => {
     if (!gymId) {
       setRuns([]);
@@ -55,22 +57,18 @@ export const useGymRuns = (gymId) => {
 
     setRunsReady(false);
 
-    let unsubscribe = () => {};
-
-    const task = InteractionManager.runAfterInteractions(() => {
-      unsubscribe = subscribeToGymRuns(gymId, (newRuns) => {
-        setRuns(newRuns);
-        setRunsReady(true);
-      });
+    const unsubscribe = subscribeToGymRuns(gymId, (newRuns) => {
+      setRuns(newRuns);
+      setRunsReady(true);
     });
 
     return () => {
-      task.cancel();
       unsubscribe();
     };
   }, [gymId]);
 
   // ── Subscription 2: user's participation at this gym ──────────────────────
+  // Same immediate-subscribe pattern as subscription 1 — no InteractionManager.
   useEffect(() => {
     if (!gymId || !uid) {
       setUserParticipants([]);
@@ -80,17 +78,12 @@ export const useGymRuns = (gymId) => {
 
     setParticipantsReady(false);
 
-    let unsubscribe = () => {};
-
-    const task = InteractionManager.runAfterInteractions(() => {
-      unsubscribe = subscribeToUserRunsAtGym(uid, gymId, (participants) => {
-        setUserParticipants(participants);
-        setParticipantsReady(true);
-      });
+    const unsubscribe = subscribeToUserRunsAtGym(uid, gymId, (participants) => {
+      setUserParticipants(participants);
+      setParticipantsReady(true);
     });
 
     return () => {
-      task.cancel();
       unsubscribe();
     };
   }, [gymId, uid]);

@@ -35,7 +35,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { InteractionManager } from 'react-native';
 import { collection, query, where, limit, onSnapshot } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { PRESENCE_STATUS } from '../services/models';
@@ -60,72 +59,70 @@ export const useLivePresenceMap = () => {
   const [countMap, setCountMap]       = useState({});
 
   useEffect(() => {
-    // Defer subscription until any in-progress navigation animations are done.
-    // Presence data is non-critical for initial render — deferring prevents
-    // this subscription from competing with the navigation animation for JS
-    // thread time, which caused the "frozen skeleton until touch" symptom.
-    let unsubscribe = () => {};
+    // Subscribe immediately — no InteractionManager delay. The deferred approach
+    // was originally intended to avoid competing with navigation animations for JS
+    // thread time, but React StrictMode + React Navigation native stack in new arch
+    // (RN 0.81 / Expo SDK 54) runs effect cleanup synchronously before the task
+    // callback fires, cancelling it. Presence counts would stay at 0 indefinitely.
+    // This hook doesn't gate any loading spinner, but immediate subscription ensures
+    // counts populate correctly on first render without requiring a user interaction.
+    const q = query(
+      collection(db, 'presence'),
+      where('status', '==', PRESENCE_STATUS.ACTIVE),
+      limit(200)
+    );
 
-    const task = InteractionManager.runAfterInteractions(() => {
-      const q = query(
-        collection(db, 'presence'),
-        where('status', '==', PRESENCE_STATUS.ACTIVE),
-        limit(200)
-      );
+    const unsubscribe = onSnapshot(
+      q,
+      (snap) => {
+        const now = new Date();
 
-      unsubscribe = onSnapshot(
-        q,
-        (snap) => {
-          const now = new Date();
+        // Build gymId → Map<odId, playerObject> to deduplicate in one pass.
+        // Using a Map keyed by odId ensures each user is counted only once per gym.
+        const perGym = {};
 
-          // Build gymId → Map<odId, playerObject> to deduplicate in one pass.
-          // Using a Map keyed by odId ensures each user is counted only once per gym.
-          const perGym = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (!data.gymId || !data.odId) return;
 
-          snap.docs.forEach((d) => {
-            const data = d.data();
-            if (!data.gymId || !data.odId) return;
+          // Client-side expiry guard — drops sessions whose timer has lapsed
+          // before the backend cleanup Cloud Function fires.
+          const expiresAt = data.expiresAt?.toDate?.();
+          if (expiresAt && expiresAt < now) return;
 
-            // Client-side expiry guard — drops sessions whose timer has lapsed
-            // before the backend cleanup Cloud Function fires.
-            const expiresAt = data.expiresAt?.toDate?.();
-            if (expiresAt && expiresAt < now) return;
+          if (!perGym[data.gymId]) perGym[data.gymId] = new Map();
 
-            if (!perGym[data.gymId]) perGym[data.gymId] = new Map();
+          // Only keep the first entry per odId per gym (deduplication).
+          if (!perGym[data.gymId].has(data.odId)) {
+            perGym[data.gymId].set(data.odId, {
+              odId:        data.odId,
+              userName:    data.userName    ?? null,
+              userAvatar:  data.userAvatar  ?? null,
+              checkedInAt: data.checkedInAt ?? null,
+            });
+          }
+        });
 
-            // Only keep the first entry per odId per gym (deduplication).
-            if (!perGym[data.gymId].has(data.odId)) {
-              perGym[data.gymId].set(data.odId, {
-                odId:        data.odId,
-                userName:    data.userName    ?? null,
-                userAvatar:  data.userAvatar  ?? null,
-                checkedInAt: data.checkedInAt ?? null,
-              });
-            }
-          });
+        // Convert Map structures to plain arrays / numbers for React state.
+        const nextPresenceMap = {};
+        const nextCountMap    = {};
 
-          // Convert Map structures to plain arrays / numbers for React state.
-          const nextPresenceMap = {};
-          const nextCountMap    = {};
+        Object.entries(perGym).forEach(([gymId, playerMap]) => {
+          nextPresenceMap[gymId] = Array.from(playerMap.values());
+          nextCountMap[gymId]    = playerMap.size;
+        });
 
-          Object.entries(perGym).forEach(([gymId, playerMap]) => {
-            nextPresenceMap[gymId] = Array.from(playerMap.values());
-            nextCountMap[gymId]    = playerMap.size;
-          });
-
-          setPresenceMap(nextPresenceMap);
-          setCountMap(nextCountMap);
-        },
-        () => {
-          // On error clear both maps so screens fall back to zero gracefully.
-          setPresenceMap({});
-          setCountMap({});
-        }
-      );
-    });
+        setPresenceMap(nextPresenceMap);
+        setCountMap(nextCountMap);
+      },
+      () => {
+        // On error clear both maps so screens fall back to zero gracefully.
+        setPresenceMap({});
+        setCountMap({});
+      }
+    );
 
     return () => {
-      task.cancel();
       unsubscribe();
     };
   }, []);

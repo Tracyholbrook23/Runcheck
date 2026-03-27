@@ -100,10 +100,13 @@ export const useUserClips = (uid) => {
         .forEach(async (c) => {
           resolvedIdsRef.current.add(c.id);
 
-          // Step 1: download URL
+          // storagePath is the authoritative playback path set by the backend.
+          // finalStoragePath is reserved by name on every doc but the file only
+          // exists when the processor succeeded; do not prefer it over storagePath.
+          const playbackPath = c.storagePath;
           let url;
           try {
-            url = await getDownloadURL(ref(storage, c.storagePath));
+            url = await getDownloadURL(ref(storage, playbackPath));
             setVideoUrls((prev) => {
               if (prev[c.id]) return prev;
               return { ...prev, [c.id]: url };

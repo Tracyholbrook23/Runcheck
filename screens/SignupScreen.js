@@ -153,13 +153,19 @@ export default function SignupScreen({ navigation }) {
     hasLetter: /[a-zA-Z]/.test(password),
   }), [password]);
 
+  // Age must be a whole number in the range 13–100.
+  // 13 is the minimum for COPPA compliance; 100 keeps the field realistic.
+  // Stored as a number on the user profile so age-group analytics work correctly.
+  const ageNum = parseInt(age, 10);
+  const isAgeValid = !isNaN(ageNum) && ageNum >= 13 && ageNum <= 100;
+
   // All fields must have a value before the button becomes active.
   // Deep validation (email format, password strength, etc.) runs on submit.
   const isFormComplete = Boolean(
     firstName.trim() &&
     lastName.trim() &&
     username.trim() &&
-    age.trim() &&
+    isAgeValid &&
     skillLevel &&
     email.trim() &&
     password &&
@@ -195,10 +201,10 @@ export default function SignupScreen({ navigation }) {
       return;
     }
 
-    // Validate age is a real number in a sensible range
-    const ageNum = parseInt(age, 10);
-    if (isNaN(ageNum) || ageNum < 13 || ageNum > 100) {
-      setFormError('Please enter a valid age (13–100).');
+    // Validate age — real-time clamping already prevents > 100, so this
+    // mainly catches ages below 13 (COPPA minimum) and any edge cases.
+    if (!isAgeValid) {
+      setFormError('You must be at least 13 years old to create an account.');
       return;
     }
 
@@ -360,9 +366,18 @@ export default function SignupScreen({ navigation }) {
                 placeholder="Your age"
                 keyboardType="number-pad"
                 value={age}
-                onChangeText={(val) => setAge(val.replace(/[^0-9]/g, ''))}
+                onChangeText={(val) => {
+                  // Strip anything that isn't a digit
+                  const digits = val.replace(/[^0-9]/g, '');
+                  if (digits === '') { setAge(''); return; }
+                  // Parse to integer — this also removes leading zeros (e.g. "07" → 7)
+                  const n = parseInt(digits, 10);
+                  // Clamp silently at 100 so the user can't type an impossible age
+                  setAge(String(Math.min(n, 100)));
+                }}
                 maxLength={3}
               />
+              <Text style={styles.fieldHint}>Must be 13 or older</Text>
 
               {/* Skill Level Picker — pill buttons styled by the selected skill's theme color */}
               <Text style={styles.fieldLabel}>Skill Level</Text>

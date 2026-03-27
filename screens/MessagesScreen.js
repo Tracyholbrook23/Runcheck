@@ -46,6 +46,7 @@ import {
 import { useConversations } from '../hooks';
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { openOrCreateConversation, muteConversation, unmuteConversation } from '../services/dmService';
+import { muteRunChat, unmuteRunChat } from '../services/runChatService';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { sanitizeSearch } from '../utils/sanitize';
@@ -288,58 +289,114 @@ function DMRow({ item, uid, colors, navigation }) {
   );
 }
 
-function RunChatRow({ item, colors, navigation }) {
+function RunChatRow({ item, uid, colors, navigation }) {
   const gymName = item.gymName || 'Run Chat';
   const timeLabel = formatRunTime(item.startTime);
   const rowTitle = timeLabel ? `${gymName} – ${timeLabel}` : gymName;
   const isUnread = !!item.isUnread;
+  const isMuted = !!item.isMuted;
+  const swipeableRef = useRef(null);
+
+  const handleMuteToggle = () => {
+    swipeableRef.current?.close();
+    if (isMuted) {
+      unmuteRunChat(item.runId, uid).catch(() => {});
+    } else {
+      muteRunChat(item.runId, uid).catch(() => {});
+    }
+  };
+
+  const handleLongPress = () => {
+    Alert.alert(
+      rowTitle,
+      isMuted
+        ? 'You won\'t receive notifications from this run chat.'
+        : 'You\'ll stop receiving notifications from this run chat.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isMuted ? 'Unmute notifications' : 'Mute notifications',
+          onPress: handleMuteToggle,
+        },
+      ],
+    );
+  };
+
+  const renderRightActions = () => (
+    <TouchableOpacity
+      style={[styles.swipeAction, { backgroundColor: isMuted ? '#34C759' : '#636366' }]}
+      onPress={handleMuteToggle}
+      activeOpacity={0.85}
+    >
+      <Ionicons
+        name={isMuted ? 'notifications-outline' : 'notifications-off-outline'}
+        size={22}
+        color="#fff"
+      />
+      <Text style={styles.swipeActionText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+    </TouchableOpacity>
+  );
 
   return (
-    <TouchableOpacity
-      style={[styles.row, { borderBottomColor: colors.border }]}
-      activeOpacity={0.7}
-      onPress={() =>
-        navigation.navigate('RunChat', {
-          runId: item.runId,
-          gymId: item.gymId,
-          gymName,
-          startTime: item.startTime ?? null,
-        })
-      }
+    <Swipeable
+      ref={swipeableRef}
+      renderRightActions={renderRightActions}
+      rightThreshold={40}
+      overshootRight={false}
     >
-      <RunChatAvatar gymId={item.gymId} gymImageUrl={item.gymImageUrl} colors={colors} />
+      <TouchableOpacity
+        style={[styles.row, { borderBottomColor: colors.border, backgroundColor: colors.background }]}
+        activeOpacity={0.7}
+        onPress={() =>
+          navigation.navigate('RunChat', {
+            runId: item.runId,
+            gymId: item.gymId,
+            gymName,
+            startTime: item.startTime ?? null,
+          })
+        }
+        onLongPress={handleLongPress}
+        delayLongPress={400}
+      >
+        <RunChatAvatar gymId={item.gymId} gymImageUrl={item.gymImageUrl} colors={colors} />
 
-      <View style={styles.rowContent}>
-        <View style={styles.rowTop}>
-          <Text
-            style={[
-              styles.rowName,
-              { color: colors.textPrimary },
-              isUnread && styles.rowNameUnread,
-            ]}
-            numberOfLines={1}
-          >
-            {rowTitle}
-          </Text>
-        </View>
+        <View style={styles.rowContent}>
+          <View style={styles.rowTop}>
+            <Text
+              style={[
+                styles.rowName,
+                { color: colors.textPrimary },
+                isUnread && styles.rowNameUnread,
+              ]}
+              numberOfLines={1}
+            >
+              {rowTitle}
+            </Text>
+            <View style={styles.rowTopRight}>
+              {isMuted && (
+                <Ionicons name="notifications-off" size={13} color={colors.textMuted} />
+              )}
+            </View>
+          </View>
 
-        <View style={styles.rowBottom}>
-          <Text
-            style={[
-              styles.rowPreview,
-              { color: isUnread ? colors.textPrimary : colors.textMuted },
-              isUnread && styles.rowPreviewUnread,
-            ]}
-            numberOfLines={1}
-          >
-            Group chat
-          </Text>
-          {isUnread && (
-            <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
-          )}
+          <View style={styles.rowBottom}>
+            <Text
+              style={[
+                styles.rowPreview,
+                { color: isUnread ? colors.textPrimary : colors.textMuted },
+                isUnread && styles.rowPreviewUnread,
+              ]}
+              numberOfLines={1}
+            >
+              Group chat
+            </Text>
+            {isUnread && (
+              <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
+            )}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Swipeable>
   );
 }
 
@@ -614,7 +671,7 @@ export default function MessagesScreen({ navigation }) {
           }
 
           if (section.type === 'runChat') {
-            return <RunChatRow item={item} colors={colors} navigation={navigation} />;
+            return <RunChatRow item={item} uid={uid} colors={colors} navigation={navigation} />;
           }
 
           if (section.type === 'player') {

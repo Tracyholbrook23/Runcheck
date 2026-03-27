@@ -127,7 +127,9 @@ export default function VerifyEmailScreen({ navigation, route }) {
             username,
             usernameLower,
             phoneNumber: null,
-            age,
+            // Store as integer so age-group queries and analytics work correctly.
+            // SignupScreen validates 13–100 before this point.
+            age: parseInt(age, 10),
             skillLevel,
             email,
           });

@@ -17,6 +17,7 @@ import {
   collection,
   addDoc,
   doc,
+  getDoc,
   updateDoc,
   query,
   orderBy,
@@ -115,6 +116,50 @@ export async function sendRunMessage({ runId, senderId, senderName, senderAvatar
   // Stamp lastMessageAt on the run doc so useMyRunChats can detect unread chats.
   // Fire-and-forget — never blocks sending and never throws to the caller.
   updateDoc(doc(db, 'runs', runId), { lastMessageAt: serverTimestamp() }).catch(() => {});
+}
+
+/**
+ * muteRunChat — Mutes push notifications for this run chat for the current user.
+ *
+ * Writes `isMuted: true` to `runParticipants/{runId}_{uid}`.
+ * The same doc is used by markRunChatSeen (lastReadAt) — no schema change.
+ *
+ * @param {string} runId — Firestore run document ID.
+ * @param {string} uid   — Firebase Auth UID of the muting user.
+ */
+export async function muteRunChat(runId, uid) {
+  if (!runId || !uid) return;
+  await updateDoc(doc(db, 'runParticipants', `${runId}_${uid}`), { isMuted: true });
+}
+
+/**
+ * unmuteRunChat — Re-enables push notifications for this run chat.
+ *
+ * @param {string} runId — Firestore run document ID.
+ * @param {string} uid   — Firebase Auth UID of the unmuting user.
+ */
+export async function unmuteRunChat(runId, uid) {
+  if (!runId || !uid) return;
+  await updateDoc(doc(db, 'runParticipants', `${runId}_${uid}`), { isMuted: false });
+}
+
+/**
+ * getRunChatMuteState — Returns the current mute state for this run chat.
+ *
+ * Reads `runParticipants/{runId}_{uid}.isMuted`. Returns false on any error.
+ *
+ * @param {string} runId — Firestore run document ID.
+ * @param {string} uid   — Firebase Auth UID of the current user.
+ * @returns {Promise<boolean>}
+ */
+export async function getRunChatMuteState(runId, uid) {
+  if (!runId || !uid) return false;
+  try {
+    const snap = await getDoc(doc(db, 'runParticipants', `${runId}_${uid}`));
+    return snap.exists() ? snap.data().isMuted === true : false;
+  } catch {
+    return false;
+  }
 }
 
 /**

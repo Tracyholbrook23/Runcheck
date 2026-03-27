@@ -131,6 +131,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `utils/badges.js` | **DEPRECATED** re-export shim — forwards to `config/ranks`, `config/points`, `utils/rankHelpers` |
 | `utils/locationUtils.js` | GPS utility module: `isLocationGranted`, `requestLocationPermission`, `getCurrentLocation`, `calculateDistanceMeters`. Dev mode returns Cowboys Fit coords. Used by `useProximityCheckIn`. |
 | `utils/haptics.js` | Haptic feedback helpers with no-op fallbacks: `hapticSuccess`, `hapticLight`, `hapticMedium`, `hapticHeavy`. Used in CheckInScreen, RunDetailsScreen, RecordClipScreen, TrimClipScreen. |
+| `utils/sanitize.js` | **Centralized input sanitizer** (added 2026-03-25). Seven pure sanitizer functions: `sanitizeUsername`, `sanitizeName`, `sanitizePersonName`, `sanitizeSearch`, `sanitizeFreeText`, `sanitizeAddress`, `sanitizeState`. All are safe to call on every keystroke (O(n), no throws). |
 
 ### Service Layer
 | File | Role |
@@ -142,8 +143,8 @@ Zone assignments are based on file content, service dependencies, and the data m
 - `usernames/{usernameLower}` — username reservation docs `{ uid, createdAt }`. Uniqueness enforced; written atomically with `users/{uid}` in Firestore transaction. Added 2026-03-22.
 - `schedules/{scheduleId}` — individual schedule records
 - `friendRequests/{autoId}` — incoming/outgoing friend requests
-- `conversations/{conversationId}` — DM conversation docs (deterministic ID: `[uid_a, uid_b].sort().join('_')`). ⚠️ Firestore rules not yet deployed.
-- `conversations/{conversationId}/messages/{autoId}` — DM message subcollection. ⚠️ Firestore rules not yet deployed.
+- `conversations/{conversationId}` — DM conversation docs (deterministic ID: `[uid_a, uid_b].sort().join('_')`). Firestore rules deployed 2026-03-25 (verified 2026-03-26).
+- `conversations/{conversationId}/messages/{autoId}` — DM message subcollection. Firestore rules deployed 2026-03-25 (verified 2026-03-26).
 
 ### Known Issues (see DEV_TASKS.md)
 - **RC-003**: Reliability score card may not reflect latest Cloud Function writes
@@ -434,6 +435,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `scripts/testFunctions.js` | Ad-hoc Cloud Function call testing |
 | `scripts/verifyGymCoordinates.js` | Verifies gym location data |
 | `scripts/weeklyReset.js` | Weekly stat reset — manual admin backup (dry-run by default; `COMMIT=true` to write) |
+| `scripts/repairReliabilityScores.js` | **One-time admin repair script** (added 2026-03-25). Recalculates `reliability.score` for all users from stored counters using canonical formula. Dry-run by default; `DRY_RUN=false` to commit. Fixes scores written before the `totalAttended < 3` lock was added to `onScheduleWrite.ts` / `detectRunNoShows.ts`. |
 | `runcheck-backend/functions/src/weeklyReset.ts` | **Automated** weekly reset Cloud Function — runs every Monday 00:05 CT via Cloud Scheduler; saves top 3 winners + batch-resets `weeklyPoints` |
 | `seedProductionGyms.js` | **Single source of truth** for gym data. Validates all entries (required fields, enums, coordinates, ID format, image host). Seeds via `set(merge:true)`. Warns on non-Firebase-Storage image URLs. Run with `--validate` for dry run. |
 
@@ -497,5 +499,5 @@ The following files serve multiple zones and should be treated carefully when ma
 
 ---
 
-_Last updated: 2026-03-24 (Added `muteConversation`, `unmuteConversation`, `getConversationMuteState` to dmService.js role description. Previous: 2026-03-23 — Weekly cleanup: added OnboardingRegionScreen, ClaimUsernameScreen, EditProfileScreen, MessagesScreen, DMConversationScreen to zone listings. Added `usernames/` and `conversations/` collections to Zone 3. Added `dmService.js` to Zone 3 service layer.)_
+_Last updated: 2026-03-26 (Added `utils/sanitize.js` to Zone 3 utility layer. Added `scripts/repairReliabilityScores.js` to Zone 5 migration scripts. Previous: 2026-03-24 — Added `muteConversation`, `unmuteConversation`, `getConversationMuteState` to dmService.js role description. Previous: 2026-03-23 — Weekly cleanup: added OnboardingRegionScreen, ClaimUsernameScreen, EditProfileScreen, MessagesScreen, DMConversationScreen to zone listings. Added `usernames/` and `conversations/` collections to Zone 3. Added `dmService.js` to Zone 3 service layer.)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._

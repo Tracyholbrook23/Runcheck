@@ -81,6 +81,10 @@ export function useMyRunChats() {
               chatExpiresAt: runData.chatExpiresAt || null,
               gymImageUrl: gymData.imageUrl || null,
               isUnread,
+              // isMuted is written by muteRunChat / unmuteRunChat to the
+              // runParticipants doc. Already present in `p` from the live
+              // subscribeToAllUserRuns snapshot — no extra read needed.
+              isMuted: p.isMuted === true,
             };
           } catch {
             // If the docs can't be fetched, fall back gracefully.

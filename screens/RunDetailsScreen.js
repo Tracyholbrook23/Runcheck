@@ -818,15 +818,16 @@ export default function RunDetailsScreen({ route, navigation }) {
           resolvedClipIdsRef.current.add(c.id);
 
           // ── Step 1: download URL ──────────────────────────────────────────
-          // Always use c.storagePath — the backend sets this to whichever
-          // Storage object actually exists and is playable right now:
-          //   No processor → rawStoragePath   (raw upload, exists immediately)
-          //   Processor ran → finalStoragePath (transcoded output)
-          // Do NOT use finalStoragePath directly: it is reserved by name at
-          // finalize time but no file exists there until the processor runs.
+          // storagePath is the authoritative playback path — always set by the
+          // backend to whichever Storage file actually exists:
+          //   processor succeeded  → storagePath = finalStoragePath (gymClips/…)
+          //   processor failed/raw → storagePath = rawStoragePath   (gymClipsRaw/…)
+          // Do NOT prefer finalStoragePath: it is reserved by name on every clip
+          // doc at write time but the file only exists if the processor succeeded.
+          const playbackPath = c.storagePath;
           let url;
           try {
-            url = await getDownloadURL(ref(storage, c.storagePath));
+            url = await getDownloadURL(ref(storage, playbackPath));
             setClipVideoUrls((prev) => {
               if (prev[c.id]) return prev;
               return { ...prev, [c.id]: url };
@@ -892,22 +893,9 @@ export default function RunDetailsScreen({ route, navigation }) {
       !c.isDeletedByUser;
 
     const unsubClips = onSnapshot(clipsQuery, (snap) => {
-      // TEMP: log every returned doc so we can confirm status/field shape
-      if (__DEV__) {
-        snap.docs.forEach((d) => {
-          const { status, createdAt, expiresAt, thumbnailPath, storagePath, finalStoragePath, uploaderUid } = d.data();
-          console.log('[gymClips doc]', {
-            id: d.id, status, createdAt, expiresAt,
-            thumbnailPath, storagePath, finalStoragePath, uploaderUid,
-          });
-        });
-      }
       const readyList = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter(isReadyClip);
-      if (__DEV__) {
-        console.log('[gymClips] total returned:', snap.docs.length, '| visible after filter:', readyList.length);
-      }
       setGymClips(readyList);
       setClipsLoading(false);
       resolveClipUrls(readyList);

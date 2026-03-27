@@ -52,7 +52,7 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { auth } from '../config/firebase';
 import { useProfile } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
-import { subscribeToRunMessages, sendRunMessage, markRunChatSeen, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
+import { subscribeToRunMessages, sendRunMessage, markRunChatSeen, muteRunChat, unmuteRunChat, getRunChatMuteState, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
 import { sanitizeFreeText } from '../utils/sanitize';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -194,6 +194,9 @@ export default function RunChatScreen({ route, navigation }) {
   const { joinedRunIds, loading: participantLoading } = useGymRuns(gymId);
   const isParticipant = joinedRunIds.has(runId);
 
+  // Mute state — loaded once on mount when participation is confirmed
+  const [isMuted, setIsMuted] = useState(false);
+
   // Messages state
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(true);
@@ -269,6 +272,28 @@ export default function RunChatScreen({ route, navigation }) {
     if (!runId || !uid || !isParticipant) return;
     markRunChatSeen(runId, uid);
   }, [runId, uid, isParticipant]);
+
+  // ── Load initial mute state ────────────────────────────────────────────────
+  // Reads once when participation is confirmed. Non-fatal on error.
+  useEffect(() => {
+    if (!runId || !uid || !isParticipant) return;
+    getRunChatMuteState(runId, uid).then(setIsMuted).catch(() => {});
+  }, [runId, uid, isParticipant]);
+
+  // ── Mute toggle ────────────────────────────────────────────────────────────
+  const handleMuteToggle = useCallback(async () => {
+    const next = !isMuted;
+    setIsMuted(next); // optimistic
+    try {
+      if (next) {
+        await muteRunChat(runId, uid);
+      } else {
+        await unmuteRunChat(runId, uid);
+      }
+    } catch {
+      setIsMuted(!next); // revert on error
+    }
+  }, [isMuted, runId, uid]);
 
   // ── Auto-scroll to bottom on new messages ─────────────────────────────────
   const scrollToBottom = useCallback(() => {
@@ -350,8 +375,21 @@ export default function RunChatScreen({ route, navigation }) {
           ) : null}
         </View>
       ),
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={handleMuteToggle}
+          style={{ marginRight: 4, padding: 8 }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={isMuted ? 'notifications-off' : 'notifications-outline'}
+            size={22}
+            color={isMuted ? colors.textMuted : colors.textPrimary}
+          />
+        </TouchableOpacity>
+      ),
     });
-  }, [navigation, gymName, startTime, colors]);
+  }, [navigation, gymName, startTime, colors, isMuted, handleMuteToggle]);
 
   // ─── Render ────────────────────────────────────────────────────────────────
   // Render priority:

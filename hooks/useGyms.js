@@ -15,7 +15,6 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { InteractionManager } from 'react-native';
 import { subscribeToGyms } from '../services/gymService';
 
 /**
@@ -34,27 +33,25 @@ export const useGyms = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Defer subscription until any in-progress navigation animations are done.
-    // Without this, the Firestore onSnapshot callback fires while the nav
-    // animation holds the JS thread, causing state updates to queue up and
-    // the loading skeleton to appear frozen until the user touches the screen.
-    let unsubscribe = () => {};
-
-    const task = InteractionManager.runAfterInteractions(() => {
-      unsubscribe = subscribeToGyms(
-        (gymData) => {
-          setGyms(gymData);
-          setLoading(false);
-        },
-        () => {
-          setError(true);
-          setLoading(false);
-        },
-      );
-    });
+    // Subscribe immediately — no InteractionManager delay. The deferred approach
+    // was originally intended to avoid competing with navigation animations for JS
+    // thread time, but React StrictMode + React Navigation native stack in new arch
+    // (RN 0.81 / Expo SDK 54) runs effect cleanup synchronously before the task
+    // callback fires, cancelling it and leaving loading stuck at true indefinitely.
+    // Immediate subscription is reliable: Firebase handles its own queuing and the
+    // first snapshot resolves loading without any animation dependency.
+    const unsubscribe = subscribeToGyms(
+      (gymData) => {
+        setGyms(gymData);
+        setLoading(false);
+      },
+      () => {
+        setError(true);
+        setLoading(false);
+      },
+    );
 
     return () => {
-      task.cancel();
       unsubscribe();
     };
   }, []);

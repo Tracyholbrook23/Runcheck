@@ -257,6 +257,7 @@ export default function AdminFeaturedClipsScreen({ navigation }) {
 
       for (const c of clips) {
         if (videoUrls[c.id]) continue;
+        // storagePath is the authoritative playback path set by the backend.
         const path = c.storagePath;
         if (!path) continue;
 

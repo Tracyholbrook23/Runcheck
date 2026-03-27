@@ -286,6 +286,39 @@ const HomeScreen = ({ navigation }) => {
     return () => { cancelled = true; unsubscribe(); };
   }, []);
 
+  // RC-002 complete fix: Subscribe to run docs for every 'started a run at' item
+  // currently in the feed. When any subscribed run becomes empty or cancelled,
+  // remove it from the feed immediately — without needing to delete the activity
+  // doc. This handles the case where the last leaver is not the run creator (who
+  // would otherwise be blocked by the Firestore activity delete rule).
+  const feedRunIds = useMemo(
+    () =>
+      activityFeed
+        .filter((item) => item.action === 'started a run at' && item.runId)
+        .map((item) => item.runId),
+    [activityFeed]
+  );
+
+  useEffect(() => {
+    if (feedRunIds.length === 0) return;
+    const unsubscribes = feedRunIds.map((runId) =>
+      onSnapshot(
+        doc(db, 'runs', runId),
+        (snap) => {
+          const isEmpty =
+            !snap.exists() ||
+            snap.data().status === 'cancelled' ||
+            (snap.data().participantCount ?? 0) <= 0;
+          if (isEmpty) {
+            setActivityFeed((prev) => prev.filter((a) => a.runId !== runId));
+          }
+        },
+        () => {} // on error, leave item; cross-reference catches it on next snapshot
+      )
+    );
+    return () => unsubscribes.forEach((u) => u());
+  }, [feedRunIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /**
    * getRelativeTime — Converts a Firestore Timestamp (or Date) to a short
    * human-readable relative string like "3m ago" or "2h ago".

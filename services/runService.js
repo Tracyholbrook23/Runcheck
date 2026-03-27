@@ -50,6 +50,7 @@ import {
   getDocs,
   addDoc,
   setDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -365,6 +366,10 @@ export const leaveRun = async (runId) => {
 
   // Tracks whether a late-cancel penalty should fire after the transaction.
   let penaltyAmount = 0;
+  // Tracks whether this leave emptied the run (last participant out).
+  // Used after the transaction to delete the stale activity doc so the
+  // HomeScreen feed updates immediately. RC-002.
+  let runWasCancelled = false;
 
   await runTransaction(db, async (txn) => {
     const [participantSnap, runSnap] = await Promise.all([
@@ -402,6 +407,7 @@ export const leaveRun = async (runId) => {
           participantCount: increment(-1),
           status: 'cancelled',
         });
+        runWasCancelled = true;
       } else {
         txn.update(runRef, { participantCount: increment(-1) });
       }
@@ -413,6 +419,17 @@ export const leaveRun = async (runId) => {
     penalizePoints(uid, penaltyAmount).catch((err) => {
       if (__DEV__) console.error('Leave-run penalty error:', err);
     });
+  }
+
+  // RC-002: When the last participant leaves, delete the 'started a run at'
+  // activity doc for this run. Deleting it triggers the HomeScreen activity
+  // onSnapshot, which causes the stale run card in the feed to disappear
+  // immediately instead of lingering for up to 2 hours.
+  // Fire-and-forget — failure here is silent and non-critical.
+  if (runWasCancelled) {
+    getDocs(query(collection(db, 'activity'), where('runId', '==', runId)))
+      .then((snap) => { snap.forEach((d) => deleteDoc(d.ref).catch(() => {})); })
+      .catch(() => {});
   }
 };
 

@@ -25,7 +25,7 @@
 import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef, StackActions } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -202,7 +202,7 @@ function PlanStack() {
 function ProfileStack() {
   const { themeStyles } = useTheme();
   return (
-    <Stack.Navigator>
+    <Stack.Navigator screenOptions={themeStyles.NAV_HEADER}>
       <Stack.Screen name="ProfileMain" component={ProfileScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Leaderboard" component={LeaderboardScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Premium" component={PremiumScreen} options={{ headerShown: false }} />
@@ -285,8 +285,45 @@ function MainTabs() {
         component={RunsStack}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
+            // Only intercept when the Runs tab is already the focused tab AND the
+            // RunsStack has screens pushed above ViewRunsMain.
+            //
+            // We use StackActions.popToTop() targeted at the RunsStack's navigation
+            // state key rather than navigation.navigate('Runs', { screen: 'ViewRunsMain' }).
+            //
+            // Why navigate() was wrong:
+            //   navigate() processed as a pop animation while simultaneously letting
+            //   the user push a new RunDetailsScreen — competing animations in new arch
+            //   (RN 0.81 / Expo SDK 54) caused the React reconciler to run
+            //   cleanup+remount cycles on the incoming screen before its push animation
+            //   settled, leaving gymLoading / presencesLoading / schedulesLoading
+            //   stuck at true.
+            //
+            // Why navigationRef.dispatch() didn't work:
+            //   navigationRef dispatches to the ROOT stack (Splash / Login / Main),
+            //   not to RunsStack.  POP_TO_TOP on a root stack with only [Main]
+            //   throws "no screen to go back to".
+            //
+            // Correct approach:
+            //   Read the RunsStack's navigation state key from the tab state, then
+            //   dispatch popToTop() with `target: <key>` so React Navigation routes
+            //   the action to exactly RunsStack and nowhere else.
+            if (!navigation.isFocused()) return;
+
+            const tabState = navigation.getState();
+            const runsRoute = tabState?.routes?.find((r) => r.name === 'Runs');
+            const runsStackState = runsRoute?.state;
+
+            // runsStackState is undefined if the Runs tab has never been visited yet
+            // (lazy-load). In that case nothing to pop — let default behaviour handle it.
+            if (!runsStackState || runsStackState.index === 0) return;
+
+            // Screens are stacked above ViewRunsMain — pop back to root.
             e.preventDefault();
-            navigation.navigate('Runs', { screen: 'ViewRunsMain' });
+            navigation.dispatch({
+              ...StackActions.popToTop(),
+              target: runsStackState.key,
+            });
           },
         })}
       />
@@ -319,6 +356,7 @@ function AppContent() {
         <Stack.Screen name="OnboardingWelcome" component={OnboardingWelcomeScreen} />
         <Stack.Screen name="OnboardingHomeCourt" component={OnboardingHomeCourtScreen} />
         <Stack.Screen name="OnboardingFinish" component={OnboardingFinishScreen} />
+        <Stack.Screen name="RequestGym" component={RequestGymScreen} options={{ headerShown: true, title: 'Request a Gym' }} />
         <Stack.Screen name="Main" component={MainTabs} />
       </Stack.Navigator>
     </NavigationContainer>

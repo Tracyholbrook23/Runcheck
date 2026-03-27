@@ -222,6 +222,7 @@ export default function AdminHiddenClipsScreen({ navigation }) {
 
       for (const c of clips) {
         if (videoUrls[c.id]) continue; // already resolved
+        // storagePath is the authoritative playback path set by the backend.
         const path = c.storagePath;
         if (!path) continue;
 

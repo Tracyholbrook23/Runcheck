@@ -11,7 +11,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { InteractionManager } from 'react-native';
 import { subscribeToGym } from '../services/gymService';
 
 /**
@@ -31,8 +30,12 @@ export const useGym = (gymId) => {
   const [loading, setLoading] = useState(true);
 
   // Re-subscribe whenever gymId changes (e.g., user navigates to a different gym detail).
-  // Deferred with InteractionManager so the Firestore snapshot callback doesn't compete
-  // with the navigation animation for the JS thread, preventing the frozen-skeleton issue.
+  // Subscribe immediately — no InteractionManager or setTimeout delay. Both deferred
+  // approaches were tried and proved unreliable: React StrictMode + React Navigation's
+  // native stack in new arch (RN 0.81 / Expo SDK 54) runs effect cleanup before any
+  // deferred callback fires, permanently cancelling the subscription. Immediate
+  // subscription is reliable — the Firestore SDK handles its own queuing and the first
+  // snapshot resolves loading without depending on animation timing.
   useEffect(() => {
     if (!gymId) {
       setGym(null);
@@ -42,17 +45,12 @@ export const useGym = (gymId) => {
 
     setLoading(true);
 
-    let unsubscribe = () => {};
-
-    const task = InteractionManager.runAfterInteractions(() => {
-      unsubscribe = subscribeToGym(gymId, (gymData) => {
-        setGym(gymData);
-        setLoading(false);
-      });
+    const unsubscribe = subscribeToGym(gymId, (gymData) => {
+      setGym(gymData);
+      setLoading(false);
     });
 
     return () => {
-      task.cancel();
       unsubscribe();
     };
   }, [gymId]);

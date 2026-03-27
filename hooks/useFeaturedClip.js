@@ -130,10 +130,13 @@ export const useFeaturedClip = (gyms) => {
     const storage = getStorage();
 
     (async () => {
-      // Video URL
+      // storagePath is the authoritative playback path set by the backend.
+      // finalStoragePath is reserved by name on every doc but the file only
+      // exists when the processor succeeded; do not prefer it over storagePath.
+      const playbackPath = clip.storagePath;
       let url = null;
       try {
-        url = await getDownloadURL(ref(storage, clip.storagePath));
+        url = await getDownloadURL(ref(storage, playbackPath));
         if (!cancelled) setVideoUrl(url);
       } catch (err) {
         if (__DEV__) console.warn('[useFeaturedClip] getDownloadURL failed:', err.message);

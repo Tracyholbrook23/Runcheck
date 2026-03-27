@@ -13,7 +13,6 @@
  */
 
 import { useState, useEffect } from 'react';
-import { InteractionManager } from 'react-native';
 import { subscribeToGymPresences } from '../services/presenceService';
 
 /**
@@ -40,19 +39,14 @@ export const useGymPresences = (gymId) => {
 
     setLoading(true);
 
-    // Deferred with InteractionManager so the snapshot callback doesn't compete with
-    // the navigation animation for the JS thread, preventing the frozen-skeleton issue.
-    let unsubscribe = () => {};
-
-    const task = InteractionManager.runAfterInteractions(() => {
-      unsubscribe = subscribeToGymPresences(gymId, (presenceData) => {
-        setPresences(presenceData);
-        setLoading(false);
-      });
+    // Subscribe immediately — see useGym.js for full rationale on why the
+    // previous setTimeout approach was removed.
+    const unsubscribe = subscribeToGymPresences(gymId, (presenceData) => {
+      setPresences(presenceData);
+      setLoading(false);
     });
 
     return () => {
-      task.cancel();
       unsubscribe();
     };
   }, [gymId]);

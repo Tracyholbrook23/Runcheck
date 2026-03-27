@@ -22,7 +22,7 @@ Nothing in this file should be worked on during a session unless the user explic
 ## Social Features
 
 - ~~**Run Chat**~~ — **Done 2026-03-20.** Per-run group chat fully implemented. `RunChatScreen` with real-time Firestore `onSnapshot`, access gated to run participants, Cloud Function push notifications to all participants, gym name + start time shown in Messages inbox, back button wired up in HomeStack and ProfileStack.
-- ~~In-app messaging / DMs~~ — **Code complete 2026-03-21.** Full DM system built: `openOrCreateConversation`, `DMConversationScreen`, `MessagesScreen` (SectionList with DMs + Run Chats), unread count badge on home screen Messages icon. ⚠️ `onDmMessageCreated` Cloud Function (DM push notifications) is NOT yet built — App.js tap handler is wired and waiting. Firestore rules for `conversations` collection not yet deployed.
+- ~~In-app messaging / DMs~~ — **Code complete 2026-03-21.** Full DM system built: `openOrCreateConversation`, `DMConversationScreen`, `MessagesScreen` (SectionList with DMs + Run Chats), unread count badge on home screen Messages icon. `onDmMessageCreated` Cloud Function implemented and exported in `index.ts`. Firestore rules deployed 2026-03-25 (verified 2026-03-26).
 - "Challenge" system (1v1 or crew vs crew invites)
 - Crew/team creation and management
 - Follow other players (not just gyms)
@@ -78,6 +78,7 @@ Nothing in this file should be worked on during a session unless the user explic
 - ~~Pull-to-refresh on all list screens~~ — **Done.** Added to HomeScreen, ProfileScreen, RunDetailsScreen, LeaderboardScreen (plus ViewRunsScreen and admin screens already had it).
 - ~~Onboarding tutorial / walkthrough for new users~~ — **Done.** 3-step onboarding flow implemented (Welcome → Home Court → Location + Finish).
 - Accessibility audit (VoiceOver, Dynamic Type, contrast)
+- **Run level badge on ViewRunsScreen has no context** — The gym card on the Find a Run screen shows a run level badge (e.g., "Competitive") but it appears out of nowhere with no label or explanation. Users won't know what it means or who set it. Options to consider: (1) add a small label above or beside it like "Vibe:" or "Level:", (2) show it only when a run is actually active (not on "No run yet" cards), (3) add a tooltip or info icon that explains the levels. The badge is rendered in `ViewRunsScreen.js` / `HomeScreen.js` gym card. Current run levels are: `mixed`, `casual`, `competitive`.
 
 ---
 
@@ -107,9 +108,21 @@ Nothing in this file should be worked on during a session unless the user explic
 - End-to-end test suite for critical flows
 - CI/CD pipeline for automated builds and deploys
 - Firestore Security Rules audit and tightening
-- **⚠️ NEEDS TESTING — Skeleton screens frozen until touch/scroll (2026-03-26)** — Reported on RunDetailsScreen: after tapping a gym, the skeleton placeholder stayed stuck and never updated until the user touched/scrolled. Root cause is Firestore `onSnapshot` callbacks firing during the React Native navigation animation, competing for the JS thread and causing setState updates to queue up without flushing. Fix applied: added `InteractionManager.runAfterInteractions` to defer all subscriptions in `useGym.js`, `useGymRuns.js`, `useGymPresences.js`, `useGymSchedules.js`, `useGyms.js`, and `useLivePresenceMap.js`. Also removed two debug blocks from `HomeScreen.js` render path that were running array operations on every re-render. **Not yet confirmed fixed in production — needs real-device testing.** If still occurring after navigation animation completes, check for any remaining `onSnapshot` calls opened directly inside `RunDetailsScreen.js` (not through a hook) or any `console.log` calls inside render functions.
+- **✅ Skeleton screens frozen until touch/scroll — RESOLVED 2026-03-26** — RunDetailsScreen and ViewRunsScreen skeletons were getting stuck indefinitely. Investigation went through three phases: (1) `InteractionManager.runAfterInteractions()` removed from all six hooks — React StrictMode + new arch runs cleanup before deferred callbacks fire; (2) `setTimeout(350ms)` tried and also failed for the same reason; (3) hooks changed to immediate `onSnapshot` — these three were necessary prerequisites but did not fully resolve the freeze. **True root cause:** the Runs tab `tabPress` listener was calling `navigation.navigate('Runs', { screen: 'ViewRunsMain' })`, which triggered a pop animation on RunsStack while the user could immediately push a new RunDetailsScreen. Competing animations in new arch caused the React reconciler to run effect cleanup+remount cycles on the new screen before the push animation settled, leaving loading flags permanently stuck at `true`. **Fix:** `App.js` tabPress listener replaced with `StackActions.popToTop()` dispatched with `target: runsStackState.key` so the action routes directly to RunsStack (not the root navigator). All six hooks remain on immediate subscribe. Confirmed resolved by Tracy 2026-03-26.
 
 ---
 
-_Last updated: 2026-03-22_
+## Gym Data & Onboarding at Scale
+
+- **Bulk gym import pipeline** — Currently adding gyms one at a time: manually searching, verifying address, and finding a basketball-court photo for each location. This doesn't scale. Need a smarter approach before expanding to new cities. Options to explore:
+  - **Google Places API** — Query `type=gym` or keyword `"basketball"` within a radius, get name/address/coordinates/photos automatically. Could build a one-time import script that writes directly to Firestore `gyms` collection with a `status: 'pending_review'` flag so they can be spot-checked before going live.
+  - **Yelp Fusion API** — Similar to Google Places, searchable by category and location. May surface rec centers and public courts that Google misses.
+  - **OpenStreetMap / Overpass API** — Free, no API key, can query `leisure=sports_centre` + `sport=basketball` nodes by bounding box. Good for public parks and rec centers.
+  - **Photos** — Google Places API returns up to 10 place photos per result; can pull the best one and store the URL (or download to Firebase Storage). Avoids manually hunting for images.
+  - **Admin review flow** — After bulk import, build a simple admin screen (or script) to flip `status: 'pending_review'` → `status: 'active'` after spot-checking name, address, and photo quality.
+  - **Suggested by users** — The existing `RequestGymScreen` flow already lets users submit gyms. Could combine: bulk import for known venues + user requests for anything missed.
+
+---
+
+_Last updated: 2026-03-26_
 _To add an idea: append it to the relevant section with a brief description. Do not act on it without explicit approval._

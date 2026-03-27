@@ -45,7 +45,7 @@ Two users joined a run and both left. The run card remained visible even though 
 ---
 
 ## RC-002 — Stale Activity Cleanup
-**Status:** `[~]` Partial — `'joined a run at'` resolved; stale `'started a run at'` is a follow-up
+**Status:** `[x]` Complete — 2026-03-26
 **Priority:** Medium
 
 ### Goal
@@ -60,7 +60,7 @@ Activity feed entries referencing runs that have zero participants (or are past 
 - `services/presenceService.js` — also writes to `activity` collection on check-in
 
 ### Acceptance Criteria
-- [ ] Activity items for runs are hidden when `participantCount === 0` or run is past grace window
+- [x] Activity items for runs are hidden when `participantCount === 0` or run is past grace window
 - [x] Only `'started a run at'` action is created going forward (not `'joined a run at'`) — see BACKEND_MEMORY Known Issue #6
 - [x] Community Activity section renamed from "Recent Activity" and filtered to high-value events only (`'started a run at'`, `'joined a run at'`, `'clip_posted'`)
 - [x] Low-signal events (`'checked in at'`, `'planned a visit to'`) suppressed from Community Activity section
@@ -81,15 +81,23 @@ Activity feed entries referencing runs that have zero participants (or are past 
 - Derived `communityDisplayFeed` from the existing `communityActivity` / `activityFeed` partition, filtered through the allowlist. `'checked in at'` and `'planned a visit to'` are now excluded from the section.
 - Friends Activity section untouched.
 
-### Follow-up Required — Stale `'started a run at'` entries
-`'started a run at'` activity docs remain visible for up to 2 hours after a run empties. Fully solving this requires one of:
-- A cross-reference lookup per feed item against `runs.participantCount` (additional Firestore read per item)
-- A Cloud Function that deletes or marks the activity doc when `participantCount` reaches 0
-This is out of scope for the current fix and should be tracked as a separate task if needed.
+### Resolution (2026-03-26) — Stale `'started a run at'` entries (Complete Fix)
+
+**Part A — `runService.js` (fire-and-forget delete, 2026-03-26 first pass):**
+When the last participant leaves a run (`currentCount === 1`), `leaveRun` fire-and-forgets a `getDocs + deleteDoc` on `activity` where `runId == runId`. Deleting the activity doc triggers the HomeScreen `onSnapshot`, which drops the stale card immediately. Works correctly when the run creator is the last to leave.
+
+**Part B — `screens/HomeScreen.js` (reactive run-doc subscriptions, 2026-03-26):**
+Added `feedRunIds` (`useMemo` extracting runIds from `'started a run at'` feed items) and a companion `useEffect` that opens an `onSnapshot` listener on each run doc. When any subscribed run becomes empty (`participantCount <= 0`) or cancelled, `setActivityFeed(prev => prev.filter(...))` removes the item immediately — without requiring a delete of the activity doc. This handles all last-leaver scenarios regardless of who created the run. No deploy needed.
+
+**Part C — `runcheck-backend/firestore.rules` (extended delete rule, 2026-03-26):**
+Extended the activity `allow delete` rule to permit any signed-in user to delete `'started a run at'` docs (not just the doc owner). This means Part A's fire-and-forget delete now succeeds for non-creator last-leavers instead of silently failing with PERMISSION_DENIED. Requires `firebase deploy --only firestore:rules`.
+
+The existing cross-reference in HomeScreen (gen/cancelled guards added 2026-03-13) remains as defense-in-depth.
 
 ### Locked Files
 - `services/runService.js`
 - `screens/HomeScreen.js`
+- `runcheck-backend/firestore.rules`
 
 ---
 
@@ -332,6 +340,43 @@ Replaced `gym.currentPresenceCount` with `countMap[gym.id]` from `useLivePresenc
 - [x] Expired presences no longer inflate the count on this screen
 - [x] No badge shown when no non-expired active presences exist
 - [x] No regression to HomeScreen, ViewRunsScreen, or any other screen
+
+---
+
+## RC-009 — 2026-03-27 Session Fixes
+
+**Status:** `[x]` Code complete. Two backend deploys pending.
+
+### What Was Fixed
+
+**A — AdminAllClipsScreen composite index errors (complete)**
+- `where('isHidden', '==', true)` + `orderBy('hiddenAt', 'desc')` and `where('isDeletedByUser', '==', true)` + `orderBy('deletedAt', 'desc')` both require composite indexes that were missing.
+- Added `isHidden+hiddenAt` and `isDeletedByUser+deletedAt` indexes to `runcheck-backend/firestore.indexes.json`.
+- ⚠️ **DEPLOY REQUIRED**: `firebase deploy --only firestore:indexes`
+
+**B — expireClips raw-file safety guard (complete)**
+- `expireClips.ts` was deleting `rawStoragePath` for clips where `storagePath === rawStoragePath` (raw is the primary playback source for `ready_raw` status and processor-failed clips). This made those clips permanently unplayable.
+- Added guard: if `data.storagePath === rawPath`, log warning and return without deleting.
+- ⚠️ **DEPLOY REQUIRED**: `firebase deploy --only functions:expireClips`
+
+**C — storagePath vs finalStoragePath client-side revert (complete)**
+- A prior session changed 7 client files to use `finalStoragePath || storagePath` for video URLs.
+- Root cause: `finalStoragePath` is a reserved destination path written at finalization, but the file only exists there if Cloud Run processor succeeded. For `ready_raw`/processor-failed clips, `finalStoragePath` points to a nonexistent file.
+- Reverted all 7 files back to `storagePath` only: `RunDetailsScreen.js`, `useFeaturedClip.js`, `useUserClips.js`, `useTaggedClips.js`, `AdminAllClipsScreen.js`, `AdminFeaturedClipsScreen.js`, `AdminHiddenClipsScreen.js`.
+
+**D — Permanently broken clip (manual action required)**
+- `gymClips/presence_cowboys-fit-pflugerville_SMQUyWWMUOZpBHYN7pWlt15b6CB3` — both storage paths deleted; cannot be repaired.
+- ⚠️ **MANUAL ACTION**: Firebase Console → set `isHidden = true` on that doc.
+
+**E — Age validation + COPPA hardening (complete)**
+- `SignupScreen`: strips non-digits, parseInt, clamps at 100, `isAgeValid` (13–100) gate, hint text.
+- `VerifyEmailScreen`: writes `age: parseInt(age, 10)` as integer.
+
+**F — OnboardingHomeCourtScreen overhaul (complete)**
+- "Use My Location" tap-only button, search bar, distance labels, request-gym low-weight row, subtitle update.
+
+**G — RequestGym navigation fix + ProfileStack back-button fix (complete)**
+- `App.js`: `RequestGym` added to root stack; `ProfileStack` gets `screenOptions={themeStyles.NAV_HEADER}`.
 
 ---
 

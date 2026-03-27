@@ -116,9 +116,13 @@ export const useTaggedClips = (uid) => {
       .forEach(async (c) => {
         resolvedIdsRef.current.add(c.id);
 
+        // storagePath is the authoritative playback path set by the backend.
+        // finalStoragePath is reserved by name on every doc but the file only
+        // exists when the processor succeeded; do not prefer it over storagePath.
+        const playbackPath = c.storagePath;
         let url;
         try {
-          url = await getDownloadURL(ref(storage, c.storagePath));
+          url = await getDownloadURL(ref(storage, playbackPath));
           setVideoUrls((prev) => (prev[c.id] ? prev : { ...prev, [c.id]: url }));
         } catch (err) {
           if (__DEV__) console.warn('[useTaggedClips] getDownloadURL failed for', c.id, err.message);
