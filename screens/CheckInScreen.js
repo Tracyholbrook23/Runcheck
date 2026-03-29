@@ -15,6 +15,7 @@ import {
   View,
   Text,
   Image,
+  ImageBackground,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
@@ -212,11 +213,14 @@ export default function CheckInScreen({ navigation }) {
   // ── State 1: Loading ───────────────────────────────────────────────────────
   if (presenceLoading) {
     return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
+      <ImageBackground source={require('../assets/images/runs-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        </SafeAreaView>
+      </ImageBackground>
     );
   }
 
@@ -225,18 +229,16 @@ export default function CheckInScreen({ navigation }) {
     const timeRemaining = getTimeRemaining();
 
     return (
+      <ImageBackground source={require('../assets/images/runs-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
       <SafeAreaView style={styles.safe}>
         <View style={styles.container}>
-          {/* Header with gradient */}
-          <LinearGradient
-            colors={['#3D1E00', '#1A0A00', colors.background]}
-            locations={[0, 0.55, 1]}
-            style={styles.headerGradient}
-          >
+          {/* Header */}
+          <View style={styles.headerGradient}>
             <View style={styles.header}>
               <Text style={styles.screenTitle}>Check In</Text>
             </View>
-          </LinearGradient>
+          </View>
 
           <View style={styles.body}>
             {/* Live status pill */}
@@ -289,23 +291,22 @@ export default function CheckInScreen({ navigation }) {
           </View>
         </View>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
   // ── State 3: Not Checked In ────────────────────────────────────────────────
   return (
+    <ImageBackground source={require('../assets/images/runs-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+      <View style={styles.overlay} />
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Header with gradient */}
-        <LinearGradient
-          colors={['#3D1E00', '#1A0A00', colors.background]}
-          locations={[0, 0.55, 1]}
-          style={styles.headerGradient}
-        >
+        {/* Header */}
+        <View style={styles.headerGradient}>
           <View style={styles.header}>
             <Text style={styles.screenTitle}>Check In</Text>
           </View>
-        </LinearGradient>
+        </View>
 
         <View style={styles.body}>
           {/* Logo */}
@@ -421,6 +422,7 @@ export default function CheckInScreen({ navigation }) {
         </View>
       </View>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 
@@ -433,9 +435,16 @@ export default function CheckInScreen({ navigation }) {
  */
 const getStyles = (colors, isDark) =>
   StyleSheet.create({
+    bgImage: {
+      flex: 1,
+    },
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.70)',
+    },
     safe: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: 'transparent',
     },
     container: {
       flex: 1,

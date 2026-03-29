@@ -105,8 +105,8 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] **All Cloud Functions deployed and verified** — deployed 2026-03-26. Phase 1 (notifyRunStartingSoon, onRunParticipantJoined, onParticipantCountMilestone, onDmMessageCreated) and Phase 2 (notifyFollowersRunCreated, notifyFollowersPresenceMilestone, onGymPresenceUpdated, detectRunNoShows, onScheduleWrite) all confirmed live.
 - [x] **Firestore security rules deployed and verified** — deployed 2026-03-25, verified match 2026-03-26. Covers: auth, users, usernames, gyms, runs, runParticipants, activity, conversations (DMs), run chat messages. All security gaps resolved.
 - [x] **serviceAccountKey.json not in git history** — verified 2026-03-26. No credential exposure. No rotation required.
-- [x] **AdminAllClipsScreen composite index errors fixed** — added `isHidden+hiddenAt` and `isDeletedByUser+deletedAt` composite indexes to `firestore.indexes.json`. ⚠️ **PENDING DEPLOY**: `firebase deploy --only firestore:indexes`
-- [x] **expireClips raw-file deletion safety guard** — `expireClips.ts` now skips raw file deletion when `storagePath === rawStoragePath`, preventing permanently unplayable clips for ready_raw and processor-failed clips. ⚠️ **PENDING DEPLOY**: `firebase deploy --only functions:expireClips`
+- [x] **AdminAllClipsScreen composite index errors fixed** — added `isHidden+hiddenAt` and `isDeletedByUser+deletedAt` composite indexes to `firestore.indexes.json`. Deployed 2026-03-28.
+- [x] **expireClips raw-file deletion safety guard** — `expireClips.ts` now skips raw file deletion when `storagePath === rawStoragePath`, preventing permanently unplayable clips for ready_raw and processor-failed clips. Deployed 2026-03-28.
 - [x] **Onboarding home court screen improved** — "Use My Location" tap-only button, search bar, distance labels on gym rows, "Nearby gyms" section label, low-friction request-gym row above list. Fixed `RequestGym` navigation error from onboarding (screen now registered in root stack). (2026-03-27)
 
 ---
@@ -125,4 +125,4 @@ These are known improvements that can wait until after launch:
 
 ---
 
-_Last updated: 2026-03-27_
+_Last updated: 2026-03-28_

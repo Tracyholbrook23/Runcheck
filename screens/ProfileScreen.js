@@ -45,6 +45,7 @@ import {
   Animated,
   Modal,
   FlatList,
+  ImageBackground,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,6 +80,7 @@ import { getUserRank, getProgressToNextRank } from '../utils/rankHelpers';
 import { awardPoints } from '../services/pointsService';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 
 /**
  * AnimatedCourtBadge — Pulsing green dot + player count for a My Courts row.
@@ -590,12 +592,8 @@ export default function ProfileScreen({ navigation }) {
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={false}>
 
-          {/* Header gradient placeholder */}
-          <LinearGradient
-            colors={['#3D1E00', '#1A0A00', '#000000']}
-            locations={[0, 0.55, 1]}
-            style={[styles.headerGradient, { alignItems: 'center', paddingBottom: 32 }]}
-          >
+          {/* Header placeholder */}
+          <View style={[styles.headerGradient, { alignItems: 'center', paddingBottom: 32 }]}>
             {/* Avatar circle */}
             <View style={{ width: 96, height: 96, borderRadius: 48, backgroundColor: skelBase, marginBottom: 12 }} />
             {/* Name */}
@@ -604,7 +602,7 @@ export default function ProfileScreen({ navigation }) {
             <View style={{ width: 90, height: 12, borderRadius: 6, backgroundColor: skelLight, marginBottom: 16 }} />
             {/* Rank card placeholder */}
             <View style={{ width: 200, height: 56, borderRadius: RADIUS.lg, backgroundColor: skelBase }} />
-          </LinearGradient>
+          </View>
 
           {/* Stats row placeholder */}
           <View style={{ flexDirection: 'row', marginHorizontal: SPACING.md, marginTop: SPACING.lg, gap: SPACING.sm }}>
@@ -632,6 +630,8 @@ export default function ProfileScreen({ navigation }) {
   })();
 
   return (
+    <ImageBackground source={require('../assets/images/profllepg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+      <View style={styles.overlay} />
     <SafeAreaView style={styles.safe}>
       <ScrollView
         contentContainerStyle={styles.scroll}
@@ -644,11 +644,7 @@ export default function ProfileScreen({ navigation }) {
         }
       >
         {/* ── Avatar & User Info ─────────────────────────────────────────── */}
-        <LinearGradient
-          colors={['#3D1E00', '#1A0A00', '#000000']}
-          locations={[0, 0.55, 1]}
-          style={styles.headerGradient}
-        >
+        <View style={styles.headerGradient}>
         <View style={styles.header}>
           {/* Tappable avatar: shows picked photo, live profile photo, or initials fallback */}
           <TouchableOpacity onPress={handlePickImage} disabled={uploading}>
@@ -749,7 +745,7 @@ export default function ProfileScreen({ navigation }) {
             <Text style={[styles.leaderboardBtnText, { color: colors.primary }]}>View Leaderboard</Text>
           </TouchableOpacity>
         </View>
-        </LinearGradient>
+        </View>
 
         {/* ── Reliability Score ──────────────────────────────────────────── */}
         <View style={[styles.card, { borderWidth: 1, borderColor: displayTier.color + '40' }]}>
@@ -1477,6 +1473,7 @@ export default function ProfileScreen({ navigation }) {
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 
@@ -1489,9 +1486,16 @@ export default function ProfileScreen({ navigation }) {
  */
 const getStyles = (colors, isDark) =>
   StyleSheet.create({
+    bgImage: {
+      flex: 1,
+    },
+    overlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.80)',
+    },
     safe: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: 'transparent',
     },
     loadingContainer: {
       flex: 1,
@@ -1553,32 +1557,41 @@ const getStyles = (colors, isDark) =>
       textTransform: 'uppercase',
       letterSpacing: 0.3,
     },
-    // Cards — no border in dark mode (surface bg provides enough separation)
+    // Cards — solid dark with depth
     card: {
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(20,20,20,0.85)' : colors.surface,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.md,
-      ...(isDark
-        ? { borderWidth: 0 }
-        : { borderWidth: 1, borderColor: colors.border }),
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      shadowColor: '#000',
+      shadowOpacity: 0.4,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 8,
     },
     cardTitle: {
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.bold,
-      color: colors.textSecondary,
+      color: isDark ? 'rgba(255,255,255,0.70)' : colors.textSecondary,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
       marginBottom: SPACING.sm,
     },
     // Premium teaser card
     premiumCard: {
-      backgroundColor: isDark ? '#1F1510' : '#FFF3ED',
+      backgroundColor: isDark ? 'rgba(20,20,20,0.90)' : '#FFF3ED',
       borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.md,
       borderWidth: 1,
-      borderColor: '#FF6B3544',
+      borderColor: isDark ? 'rgba(255,120,0,0.40)' : '#FF6B3566',
+      shadowColor: '#000',
+      shadowOpacity: 0.4,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 8,
     },
     premiumTopRow: {
       flexDirection: 'row',
@@ -1588,7 +1601,9 @@ const getStyles = (colors, isDark) =>
       width: 40,
       height: 40,
       borderRadius: RADIUS.sm,
-      backgroundColor: '#FF6B3520',
+      backgroundColor: 'rgba(255,107,53,0.22)',
+      borderWidth: 1,
+      borderColor: 'rgba(255,107,53,0.35)',
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: SPACING.sm,
@@ -1610,10 +1625,10 @@ const getStyles = (colors, isDark) =>
       marginRight: SPACING.xs,
     },
     premiumPill: {
-      backgroundColor: '#FF6B3520',
+      backgroundColor: 'rgba(255,107,53,0.15)',
       borderRadius: RADIUS.full,
       borderWidth: 1,
-      borderColor: '#FF6B3555',
+      borderColor: 'rgba(255,107,53,0.55)',
       paddingHorizontal: 7,
       paddingVertical: 1,
     },
@@ -1625,7 +1640,7 @@ const getStyles = (colors, isDark) =>
     },
     premiumSubtitle: {
       fontSize: FONT_SIZES.small,
-      color: isDark ? '#FF8F60' : '#C4501A',
+      color: isDark ? 'rgba(255,255,255,0.85)' : '#C4501A',
       lineHeight: 18,
     },
     premiumCtaRow: {
@@ -1652,7 +1667,7 @@ const getStyles = (colors, isDark) =>
     reliabilityScoreLabel: {
       fontSize: FONT_SIZES.xs,
       fontWeight: FONT_WEIGHTS.bold,
-      color: colors.textMuted,
+      color: 'rgba(255,255,255,0.70)',
       textTransform: 'uppercase',
       letterSpacing: 0.8,
       marginBottom: 2,
@@ -1693,7 +1708,7 @@ const getStyles = (colors, isDark) =>
     },
     tierHint: {
       fontSize: FONT_SIZES.small,
-      color: colors.textSecondary,
+      color: 'rgba(255,255,255,0.60)',
       marginTop: SPACING.sm,
     },
     scoreBarTrack: {
@@ -1719,12 +1734,12 @@ const getStyles = (colors, isDark) =>
     statNumber: {
       fontSize: FONT_SIZES.title,
       fontWeight: FONT_WEIGHTS.extraBold,
-      color: colors.textPrimary,
+      color: '#FFFFFF',
       marginTop: 4,
     },
     statLabel: {
       fontSize: FONT_SIZES.xs,
-      color: colors.textMuted,
+      color: 'rgba(255,255,255,0.85)',
       marginTop: 2,
       textTransform: 'uppercase',
       letterSpacing: 0.3,
@@ -1740,7 +1755,7 @@ const getStyles = (colors, isDark) =>
     },
     attendanceLabel: {
       fontSize: FONT_SIZES.small,
-      color: colors.textSecondary,
+      color: 'rgba(255,255,255,0.85)',
       fontWeight: FONT_WEIGHTS.semibold,
       textTransform: 'uppercase',
       letterSpacing: 0.3,
@@ -1768,16 +1783,20 @@ const getStyles = (colors, isDark) =>
     },
     // Gym Requests link
     gymRequestsRow: {
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(20,20,20,0.85)' : colors.surface,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.md,
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      ...(isDark
-        ? { borderWidth: 0 }
-        : { borderWidth: 1, borderColor: colors.border }),
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      shadowColor: '#000',
+      shadowOpacity: 0.4,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 8,
     },
     gymRequestsLeft: {
       flexDirection: 'row',
@@ -1787,7 +1806,7 @@ const getStyles = (colors, isDark) =>
     gymRequestsLabel: {
       fontSize: FONT_SIZES.body,
       fontWeight: FONT_WEIGHTS.medium,
-      color: colors.textPrimary,
+      color: 'rgba(255,255,255,0.85)',
     },
     gymRequestsRight: {
       flexDirection: 'row',
@@ -1825,16 +1844,20 @@ const getStyles = (colors, isDark) =>
     },
     // Admin Tools link
     adminToolsRow: {
-      backgroundColor: colors.surface,
+      backgroundColor: isDark ? 'rgba(20,20,20,0.85)' : colors.surface,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
       marginBottom: SPACING.md,
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      ...(isDark
-        ? { borderWidth: 0 }
-        : { borderWidth: 1, borderColor: colors.border }),
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.08)',
+      shadowColor: '#000',
+      shadowOpacity: 0.4,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 5 },
+      elevation: 8,
     },
     brandingFooter: {
       alignItems: 'center',
@@ -2137,7 +2160,7 @@ const getStyles = (colors, isDark) =>
     },
     rankProgressLabel: {
       fontSize: FONT_SIZES.xs,
-      color: colors.textMuted,
+      color: 'rgba(255,255,255,0.70)',
     },
     leaderboardBtn: {
       flexDirection: 'row',

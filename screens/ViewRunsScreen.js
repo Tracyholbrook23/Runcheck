@@ -46,6 +46,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms, useProfile, useLivePresenceMap, useLocation } from '../hooks';
@@ -519,16 +520,20 @@ export default function ViewRunsScreen({ navigation, route }) {
 
   return (
     <ImageBackground
-      source={require('../assets/images/runs-bg.jpg')}
+      source={require('../assets/images/RunsBR.jpg')}
       style={styles.bgImage}
       resizeMode="cover"
+      blurRadius={3}
     >
       {/* Dark overlay — sits between the background image and all content */}
       <View style={styles.overlay} />
       <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
-        {/* Header — title row and search bar */}
-        <View style={styles.headerGradient}>
+        {/* Header — title row and search bar, top gradient darkens image behind header */}
+        <LinearGradient
+          colors={['rgba(0,0,0,0.90)', 'transparent']}
+          style={styles.headerGradient}
+        >
           {/* Header row — title/subtitle on the left, map icon on the right */}
           <View style={styles.titleRow}>
             <View>
@@ -624,7 +629,7 @@ export default function ViewRunsScreen({ navigation, route }) {
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </LinearGradient>
 
         {/* Dismissible error banner — shown when gyms subscription fails */}
         {fetchError && (
@@ -940,7 +945,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.75)',
+    backgroundColor: 'rgba(0,0,0,0.80)',
   },
   safe: {
     flex: 1,
@@ -985,18 +990,18 @@ loadingText: {
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(30,30,30,0.88)',
+    backgroundColor: 'rgba(20,20,20,0.85)',
     borderRadius: RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: 13,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: 'rgba(249,115,22,0.35)',
-    shadowColor: '#F97316',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   searchIcon: {
     marginRight: SPACING.xs,
@@ -1020,9 +1025,9 @@ loadingText: {
   followBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(249,115,22,0.08)',
+    backgroundColor: 'rgba(255,120,0,0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(249,115,22,0.20)',
+    borderColor: 'rgba(249,115,22,0.25)',
     borderRadius: RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: 10,
@@ -1077,17 +1082,17 @@ loadingText: {
   },
   gymCard: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(20,20,20,0.95)',
+    backgroundColor: 'rgba(18,18,18,0.82)',
     borderRadius: RADIUS.lg,
     marginBottom: 12,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
   homeCourtCard: {
     // No border — accent bar handles the visual cue

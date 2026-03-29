@@ -30,12 +30,16 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ImageBackground,
   TouchableWithoutFeedback,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
   ActivityIndicator,
   Alert,
+  Modal,
+  Pressable,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,10 +48,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { useSchedules, useGyms, useProfile, useLivePresenceMap } from '../hooks';
+import { useSchedules, useGyms, useProfile, useLivePresenceMap, useLocation } from '../hooks';
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
-import { subscribeToAllUpcomingRuns, startOrJoinRun } from '../services/runService';
+import { calculateDistanceMeters } from '../utils/locationUtils';
+import { subscribeToAllUpcomingRuns, startOrJoinRun, joinExistingRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
 import { addDoc, updateDoc, collection, serverTimestamp, Timestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
@@ -79,6 +84,18 @@ const getAvailableDays = () => {
 };
 
 
+
+// ── Plan Visit gym filter options ─────────────────────────────────────────────
+const PLAN_TYPE_FILTERS = [
+  { key: null,       label: 'All' },
+  { key: 'indoor',  label: 'Indoor' },
+  { key: 'outdoor', label: 'Outdoor' },
+];
+const PLAN_ACCESS_FILTERS = [
+  { key: null,         label: 'All' },
+  { key: 'free',       label: 'Free' },
+  { key: 'membership', label: 'Membership' },
+];
 
 /**
  * GymThumbnail — Small rounded gym image, falling back to an icon.
@@ -122,7 +139,21 @@ export default function PlanVisitScreen({ navigation }) {
   const [selectedDay, setSelectedDay] = useState(null);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [startingRun, setStartingRun] = useState(false);
+  // Loading guard for "Join Run" on run cards in the "Runs Being Planned" section.
+  // Kept separate from startingRun so Step 4 / Step 1 card CTAs stay independent.
+  const [joiningRun, setJoiningRun] = useState(false);
   const [step, setStep] = useState(1);
+  // How many OTHER users have scheduled the same gym/slot as the one just created.
+  // V1: exact timeSlot key match. Future: ±60-min clustering across nearby slots.
+  const [coPlannersCount, setCoPlannersCount] = useState(0);
+
+  // ── Step 2 gym filter state ───────────────────────────────────────────────
+  const [gymSearch, setGymSearch] = useState('');
+  const [gymTypeFilter, setGymTypeFilter] = useState(null);
+  const [gymAccessFilter, setGymAccessFilter] = useState(null);
+  const [gymCityFilter, setGymCityFilter] = useState(null);
+  const [sortByNearestPlan, setSortByNearestPlan] = useState(false);
+  const [gymFilterSheetVisible, setGymFilterSheetVisible] = useState(false);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
@@ -147,6 +178,63 @@ export default function PlanVisitScreen({ navigation }) {
 
   const { gyms, loading: gymsLoading } = useGyms();
   const { countMap } = useLivePresenceMap();
+  const { location: userLocation, getCurrentLocation } = useLocation();
+
+  // ── Step 2 filter helpers ─────────────────────────────────────────────────
+  const sanitizeGymSearch = (raw) =>
+    raw
+      .replace(/[^a-zA-Z0-9 '.\-&]/g, '')
+      .replace(/^ +/, '')
+      .replace(/ {2,}/g, ' ')
+      .slice(0, 50);
+
+  // Cities derived dynamically from loaded gyms so it auto-expands as gyms are added.
+  const availableGymCities = useMemo(() => {
+    const seen = new Set();
+    const cities = [];
+    gyms.forEach((g) => {
+      if (g.city && !seen.has(g.city)) { seen.add(g.city); cities.push(g.city); }
+    });
+    return cities.sort();
+  }, [gyms]);
+
+  // Requests GPS before enabling nearest sort (same pattern as ViewRunsScreen).
+  const handleNearestPlanToggle = async () => {
+    if (!sortByNearestPlan && !userLocation) {
+      try { await getCurrentLocation(); } catch (_) {}
+    }
+    setSortByNearestPlan((prev) => !prev);
+  };
+
+  // Filtered + sorted gym list for Step 2 gym selection.
+  const filteredGymsForPlan = useMemo(() => {
+    const q = gymSearch.trim().toLowerCase();
+    let result = gyms;
+    if (q) {
+      result = result.filter((gym) => {
+        const name    = gym.name?.toLowerCase()    ?? '';
+        const address = gym.address?.toLowerCase() ?? '';
+        const city    = gym.city?.toLowerCase()    ?? '';
+        return name.includes(q) || address.includes(q) || city.includes(q);
+      });
+    }
+    if (gymTypeFilter === 'indoor')       result = result.filter((g) => g.type !== 'outdoor');
+    else if (gymTypeFilter === 'outdoor') result = result.filter((g) => g.type === 'outdoor');
+    if (gymAccessFilter === 'free')            result = result.filter((g) => g.accessType === 'free');
+    else if (gymAccessFilter === 'membership') result = result.filter((g) => g.accessType !== 'free');
+    if (gymCityFilter) result = result.filter((g) => g.city === gymCityFilter);
+    if (sortByNearestPlan && userLocation) {
+      result = [...result].sort((a, b) => {
+        const aDist = a.location ? calculateDistanceMeters(userLocation, a.location) : Infinity;
+        const bDist = b.location ? calculateDistanceMeters(userLocation, b.location) : Infinity;
+        return aDist - bDist;
+      });
+    }
+    return result;
+  }, [gyms, gymSearch, gymTypeFilter, gymAccessFilter, gymCityFilter, sortByNearestPlan, userLocation]);
+
+  const gymActiveFilterCount =
+    (gymTypeFilter ? 1 : 0) + (gymAccessFilter ? 1 : 0) + (gymCityFilter ? 1 : 0) + (sortByNearestPlan ? 1 : 0);
 
   // ── Runs the user has joined — used to show/hide chat button ────────────
   const { runChats } = useMyRunChats();
@@ -227,6 +315,14 @@ export default function PlanVisitScreen({ navigation }) {
         if (__DEV__) console.error('Activity write error (plan):', err);
       }
 
+      // Compute how many OTHER users are planning the same gym/slot, using the
+      // gyms list already in memory (useGyms real-time subscription).
+      // scheduleCounts includes the current user so subtract 1.
+      // V1: exact timeSlot key match; future: ±60-min clustering.
+      const planGym = gyms.find((g) => g.id === selectedGym.id);
+      const rawCount = planGym?.scheduleCounts?.[newSchedule.timeSlot] ?? 0;
+      setCoPlannersCount(Math.max(0, rawCount - 1));
+
       // Show the confirmation screen instead of a native alert.
       // Selections are NOT cleared here — Step 4 needs them for display.
       // They are reset when the user taps "Done" on the confirmation screen.
@@ -293,31 +389,32 @@ export default function PlanVisitScreen({ navigation }) {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <ImageBackground source={require('../assets/images/court-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
         <View style={styles.centered}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
   // ─── Step 1: Planned Visits ────────────────────────────────────────────────
   if (step === 1) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <ImageBackground source={require('../assets/images/court-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <LinearGradient
-            colors={['#3D1E00', '#1A0A00', colors.background]}
-            locations={[0, 0.55, 1]}
-            style={styles.headerGradient}
-          >
+          <View style={styles.headerGradient}>
             <View style={styles.titleRow}>
               <View>
                 <Text style={styles.title}>Plan a Visit</Text>
                 <Text style={styles.subtitle}>Schedule when you plan to play</Text>
               </View>
             </View>
-          </LinearGradient>
+          </View>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <ScrollView contentContainerStyle={styles.scrollBody}>
 
@@ -326,6 +423,22 @@ export default function PlanVisitScreen({ navigation }) {
                   <Text style={styles.sectionTitle}>Upcoming Visits</Text>
                   {schedules.map((schedule) => {
                     const scheduleGym = gyms.find((g) => g.id === schedule.gymId);
+                    // How many OTHER users are planning this gym/slot.
+                    // scheduleCounts includes the current user, so subtract 1.
+                    // V1: exact timeSlot key match; future: ±60-min clustering.
+                    const otherCount = Math.max(
+                      0,
+                      (scheduleGym?.scheduleCounts?.[schedule.timeSlot] ?? 1) - 1
+                    );
+                    // Is there already a run at this gym within ±60 min of this slot?
+                    // Uses communityRuns already subscribed in memory — no extra reads.
+                    const hasExistingRun = communityRuns.some((run) => {
+                      if (run.gymId !== schedule.gymId) return false;
+                      const runTime = run.startTime?.toDate?.();
+                      const schedTime = schedule.scheduledTime?.toDate?.();
+                      if (!runTime || !schedTime) return false;
+                      return Math.abs(runTime.getTime() - schedTime.getTime()) <= 60 * 60 * 1000;
+                    });
                     return (
                       <View key={schedule.id} style={styles.intentCard}>
                         <GymThumbnail
@@ -342,13 +455,51 @@ export default function PlanVisitScreen({ navigation }) {
                               {scheduleGym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
                             </Text>
                           )}
+                          {otherCount >= 1 && (
+                            <View style={[
+                              styles.coPlannerBadge,
+                              otherCount >= 3 && styles.coPlannerBadgeHigh,
+                            ]}>
+                              <Ionicons
+                                name={otherCount >= 3 ? 'flame-outline' : 'people-outline'}
+                                size={11}
+                                color={colors.primary}
+                                style={{ marginRight: 3 }}
+                              />
+                              <Text style={styles.coPlannerBadgeText}>
+                                {otherCount >= 3
+                                  ? `Run forming · ${otherCount + 1} players planning`
+                                  : otherCount === 2
+                                  ? `${otherCount + 1} players lining up for this time`
+                                  : '1 other planning to play here'}
+                              </Text>
+                            </View>
+                          )}
                         </View>
-                        <TouchableOpacity
-                          style={styles.cancelButton}
-                          onPress={() => handleCancelSchedule(schedule)}
-                        >
-                          <Text style={styles.cancelButtonText}>Cancel</Text>
-                        </TouchableOpacity>
+                        <View style={styles.cardActionColumn}>
+                          {otherCount >= 2 && !hasExistingRun && (
+                            <TouchableOpacity
+                              style={styles.cardStartRunButton}
+                              disabled={startingRun}
+                              onPress={async () => {
+                                const time = schedule.scheduledTime?.toDate?.();
+                                if (!time) return;
+                                const run = await startOrJoinRun(schedule.gymId, schedule.gymName, time);
+                                if (run?.id) {
+                                  navigation.navigate('RunDetails', { runId: run.id });
+                                }
+                              }}
+                            >
+                              <Text style={styles.cardStartRunText}>Start Run</Text>
+                            </TouchableOpacity>
+                          )}
+                          <TouchableOpacity
+                            style={styles.cancelButton}
+                            onPress={() => handleCancelSchedule(schedule)}
+                          >
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     );
                   })}
@@ -375,6 +526,15 @@ export default function PlanVisitScreen({ navigation }) {
                   communityRuns.map((run) => {
                     const runGym = gyms.find((g) => g.id === run.gymId);
                     const isJoined = joinedRunIds.has(run.id);
+                    // "Your Visit" badge: user has a schedule at this gym within
+                    // ±60 min of this run. V1: exact slot match; future: clustering.
+                    const hasMatchingVisit = schedules.some((schedule) => {
+                      if (schedule.gymId !== run.gymId) return false;
+                      const schedTime = schedule.scheduledTime?.toDate?.();
+                      const runTime = run.startTime?.toDate?.();
+                      if (!schedTime || !runTime) return false;
+                      return Math.abs(schedTime.getTime() - runTime.getTime()) <= 60 * 60 * 1000;
+                    });
                     return (
                       <TouchableOpacity
                         key={run.id}
@@ -425,6 +585,12 @@ export default function PlanVisitScreen({ navigation }) {
                                 : `${run.participantCount} players going`}
                             </Text>
                           </View>
+                          {hasMatchingVisit && (
+                            <View style={styles.yourVisitBadge}>
+                              <Ionicons name="calendar-outline" size={11} color={colors.primary} style={{ marginRight: 3 }} />
+                              <Text style={styles.yourVisitBadgeText}>Your Visit</Text>
+                            </View>
+                          )}
                         </View>
                         {isJoined && (
                           <TouchableOpacity
@@ -445,10 +611,39 @@ export default function PlanVisitScreen({ navigation }) {
                             <Ionicons name="chatbubble-outline" size={16} color={colors.primary} />
                           </TouchableOpacity>
                         )}
-                        <View style={styles.viewRunButton}>
-                          <Text style={styles.viewRunButtonText}>View</Text>
-                          <Ionicons name="chevron-forward" size={12} color={colors.primary} />
-                        </View>
+                        {hasMatchingVisit && !isJoined ? (
+                          // User has a scheduled visit for this gym/time but hasn't joined yet.
+                          // Show "Join Run" as the primary CTA instead of the passive "View".
+                          <TouchableOpacity
+                            style={styles.viewRunButton}
+                            disabled={joiningRun}
+                            activeOpacity={0.7}
+                            onPress={async () => {
+                              setJoiningRun(true);
+                              try {
+                                await joinExistingRun(run.id, run.gymId, run.gymName);
+                                navigation.getParent()?.navigate('Runs', {
+                                  screen: 'RunDetails',
+                                  params: { gymId: run.gymId, gymName: run.gymName, players: 0 },
+                                });
+                              } catch (e) {
+                                // Fail gracefully — do not crash the UI.
+                                // User can still tap the card to navigate to RunDetails.
+                                if (__DEV__) console.warn('[PlanVisitScreen] joinExistingRun failed:', e?.message);
+                              } finally {
+                                setJoiningRun(false);
+                              }
+                            }}
+                          >
+                            <Text style={styles.viewRunButtonText}>Join Run</Text>
+                            <Ionicons name="chevron-forward" size={12} color={colors.primary} />
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={styles.viewRunButton}>
+                            <Text style={styles.viewRunButtonText}>View</Text>
+                            <Ionicons name="chevron-forward" size={12} color={colors.primary} />
+                          </View>
+                        )}
                       </TouchableOpacity>
                     );
                   })
@@ -470,13 +665,16 @@ export default function PlanVisitScreen({ navigation }) {
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
   // ─── Step 2: Select Gym ────────────────────────────────────────────────────
   if (step === 2) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <ImageBackground source={require('../assets/images/court-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
           <LinearGradient
             colors={['#3D1E00', '#1A0A00', colors.background]}
@@ -490,44 +688,117 @@ export default function PlanVisitScreen({ navigation }) {
               </View>
             </View>
           </LinearGradient>
+
+          {/* ── Search bar + filter button ───────────────────────────────── */}
+          <View style={styles.gymSearchRow}>
+            <View style={styles.gymSearchBar}>
+              <Ionicons name="search-outline" size={16} color={colors.textMuted} style={{ marginRight: 6 }} />
+              <TextInput
+                style={styles.gymSearchInput}
+                placeholder="Search gyms"
+                placeholderTextColor={colors.textMuted}
+                value={gymSearch}
+                onChangeText={(t) => setGymSearch(sanitizeGymSearch(t))}
+                returnKeyType="search"
+                clearButtonMode="while-editing"
+                autoCorrect={false}
+                autoCapitalize="words"
+              />
+              {gymSearch.length > 0 && (
+                <TouchableOpacity onPress={() => setGymSearch('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity
+              style={[styles.gymFilterButton, gymActiveFilterCount > 0 && styles.gymFilterButtonActive]}
+              onPress={() => setGymFilterSheetVisible(true)}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="options-outline" size={15} color={gymActiveFilterCount > 0 ? '#fff' : 'rgba(255,255,255,0.8)'} style={{ marginRight: 4 }} />
+              <Text style={[styles.gymFilterButtonText, gymActiveFilterCount > 0 && styles.gymFilterButtonTextActive]}>
+                Filter{gymActiveFilterCount > 0 ? ` (${gymActiveFilterCount})` : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* ── Active filter chips ──────────────────────────────────────── */}
+          {gymActiveFilterCount > 0 && (
+            <View style={styles.gymActiveChipsRow}>
+              {gymTypeFilter && (
+                <TouchableOpacity style={styles.gymActiveChip} onPress={() => setGymTypeFilter(null)} activeOpacity={0.8}>
+                  <Text style={styles.gymActiveChipText}>{gymTypeFilter === 'indoor' ? 'Indoor' : 'Outdoor'}</Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+              {gymAccessFilter && (
+                <TouchableOpacity style={[styles.gymActiveChip, { backgroundColor: gymAccessFilter === 'free' ? '#22C55E' : '#F59E0B' }]} onPress={() => setGymAccessFilter(null)} activeOpacity={0.8}>
+                  <Text style={styles.gymActiveChipText}>{gymAccessFilter === 'free' ? 'Free' : 'Membership'}</Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+              {gymCityFilter && (
+                <TouchableOpacity style={[styles.gymActiveChip, { backgroundColor: '#6366F1' }]} onPress={() => setGymCityFilter(null)} activeOpacity={0.8}>
+                  <Ionicons name="location" size={11} color="#fff" style={{ marginRight: 3 }} />
+                  <Text style={styles.gymActiveChipText}>{gymCityFilter}</Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+              {sortByNearestPlan && (
+                <TouchableOpacity style={[styles.gymActiveChip, { backgroundColor: '#0A84FF' }]} onPress={() => setSortByNearestPlan(false)} activeOpacity={0.8}>
+                  <Ionicons name="navigate" size={11} color="#fff" style={{ marginRight: 3 }} />
+                  <Text style={styles.gymActiveChipText}>Nearest</Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           <View style={{ flex: 1 }}>
             <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
               <ScrollView contentContainerStyle={styles.scrollBody}>
 
-                {gyms.map((gym) => (
-                  <TouchableOpacity
-                    key={gym.id}
-                    style={[
-                      styles.gymCard,
-                      // Highlight the selected gym with a primary-color border
-                      selectedGym?.id === gym.id && styles.gymCardSelected,
-                    ]}
-                    onPress={() => setSelectedGym(gym)}
-                  >
-                    <View style={styles.gymCardLeft}>
-                      {/* Checkmark when selected, outline circle otherwise */}
-                      <Ionicons
-                        name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={22}
-                        color={selectedGym?.id === gym.id ? colors.primary : colors.textMuted}
-                      />
-                    </View>
-                    <View style={styles.gymCardInfo}>
-                      <Text style={styles.gymCardName}>{gym.name}</Text>
-                      <Text style={styles.gymCardAddress}>{gym.address}</Text>
-                      <Text style={styles.gymCardType}>
-                        {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
-                        <Text style={styles.gymCardAccent}>OPEN RUN</Text>
-                      </Text>
-                    </View>
-                    {/* Live presence badge — count from useLivePresenceMap (expiry-filtered, deduplicated) */}
-                    {(countMap[gym.id] ?? 0) > 0 && (
-                      <View style={styles.presenceBadge}>
-                        <Text style={styles.presenceBadgeText}>{countMap[gym.id]} here</Text>
+                {filteredGymsForPlan.length === 0 ? (
+                  <View style={styles.gymFilterEmptyState}>
+                    <Ionicons name="search-outline" size={28} color={colors.textMuted} style={{ marginBottom: 8 }} />
+                    <Text style={styles.gymFilterEmptyText}>No gyms match your filters</Text>
+                    <TouchableOpacity onPress={() => { setGymSearch(''); setGymTypeFilter(null); setGymAccessFilter(null); setGymCityFilter(null); setSortByNearestPlan(false); }}>
+                      <Text style={styles.gymFilterClearText}>Clear all filters</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  filteredGymsForPlan.map((gym) => (
+                    <TouchableOpacity
+                      key={gym.id}
+                      style={[
+                        styles.gymCard,
+                        selectedGym?.id === gym.id && styles.gymCardSelected,
+                      ]}
+                      onPress={() => setSelectedGym(gym)}
+                    >
+                      <View style={styles.gymCardLeft}>
+                        <Ionicons
+                          name={selectedGym?.id === gym.id ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={22}
+                          color={selectedGym?.id === gym.id ? colors.primary : colors.textMuted}
+                        />
                       </View>
-                    )}
-                  </TouchableOpacity>
-                ))}
+                      <View style={styles.gymCardInfo}>
+                        <Text style={styles.gymCardName}>{gym.name}</Text>
+                        <Text style={styles.gymCardAddress}>{gym.address}</Text>
+                        <Text style={styles.gymCardType}>
+                          {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}{' '}
+                          <Text style={styles.gymCardAccent}>OPEN RUN</Text>
+                        </Text>
+                      </View>
+                      {(countMap[gym.id] ?? 0) > 0 && (
+                        <View style={styles.presenceBadge}>
+                          <Text style={styles.presenceBadgeText}>{countMap[gym.id]} here</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  ))
+                )}
 
               </ScrollView>
             </TouchableWithoutFeedback>
@@ -547,7 +818,132 @@ export default function PlanVisitScreen({ navigation }) {
             </View>
           </View>
         </KeyboardAvoidingView>
+
+        {/* ── Filter bottom sheet modal ──────────────────────────────────── */}
+        <Modal
+          visible={gymFilterSheetVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setGymFilterSheetVisible(false)}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setGymFilterSheetVisible(false)} />
+          <View style={styles.sheetContainer}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Filter By</Text>
+              <TouchableOpacity onPress={() => setGymFilterSheetVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={isDark ? '#8E8E93' : '#6B7280'} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Court Type */}
+            <Text style={styles.sheetSectionLabel}>Court Type</Text>
+            <View style={styles.sheetPillRow}>
+              {PLAN_TYPE_FILTERS.map((f) => {
+                const active = gymTypeFilter === f.key;
+                return (
+                  <TouchableOpacity
+                    key={String(f.key)}
+                    style={[styles.sheetPill, active && styles.sheetPillActive]}
+                    onPress={() => setGymTypeFilter(active ? null : f.key)}
+                    activeOpacity={0.75}
+                  >
+                    {f.key === 'indoor'  && <Ionicons name="business-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />}
+                    {f.key === 'outdoor' && <Ionicons name="sunny-outline"    size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />}
+                    {f.key === null      && <Ionicons name="apps-outline"     size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />}
+                    <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{f.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Access */}
+            <Text style={styles.sheetSectionLabel}>Access</Text>
+            <View style={styles.sheetPillRow}>
+              {PLAN_ACCESS_FILTERS.map((f) => {
+                const active = gymAccessFilter === f.key;
+                const accentColor = f.key === 'free' ? '#22C55E' : f.key === 'membership' ? '#F59E0B' : colors.primary;
+                return (
+                  <TouchableOpacity
+                    key={String(f.key)}
+                    style={[styles.sheetPill, active && { backgroundColor: accentColor, borderColor: accentColor }]}
+                    onPress={() => setGymAccessFilter(active ? null : f.key)}
+                    activeOpacity={0.75}
+                  >
+                    {f.key === 'free'        && <Ionicons name="pricetag-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />}
+                    {f.key === 'membership'  && <Ionicons name="card-outline"     size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />}
+                    {f.key === null          && <Ionicons name="apps-outline"     size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />}
+                    <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{f.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* City */}
+            {availableGymCities.length > 0 && (
+              <>
+                <Text style={styles.sheetSectionLabel}>City</Text>
+                <View style={styles.sheetPillRow}>
+                  {availableGymCities.map((city) => {
+                    const active = gymCityFilter === city;
+                    return (
+                      <TouchableOpacity
+                        key={city}
+                        style={[styles.sheetPill, active && { backgroundColor: '#6366F1', borderColor: '#6366F1' }]}
+                        onPress={() => setGymCityFilter(active ? null : city)}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons name="location-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />
+                        <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{city}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            {/* Sort By — Nearest First */}
+            <Text style={styles.sheetSectionLabel}>Sort By</Text>
+            <TouchableOpacity
+              style={[styles.sheetToggleRow, sortByNearestPlan && styles.sheetToggleRowActive]}
+              onPress={handleNearestPlanToggle}
+              activeOpacity={0.75}
+            >
+              <View style={styles.sheetToggleLeft}>
+                <Ionicons name="navigate-outline" size={16} color={sortByNearestPlan ? '#0A84FF' : (isDark ? '#8E8E93' : '#6B7280')} style={{ marginRight: 10 }} />
+                <View>
+                  <Text style={[styles.sheetToggleTitle, sortByNearestPlan && { color: '#0A84FF' }]}>Nearest First</Text>
+                  <Text style={styles.sheetToggleSub}>Sort all gyms by your location</Text>
+                </View>
+              </View>
+              <View style={[styles.sheetToggleSwitch, sortByNearestPlan && styles.sheetToggleSwitchOn]}>
+                <View style={[styles.sheetToggleThumb, sortByNearestPlan && styles.sheetToggleThumbOn]} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Clear All — only shown when any filter is active */}
+            {gymActiveFilterCount > 0 && (
+              <TouchableOpacity
+                style={styles.sheetClearBtn}
+                onPress={() => { setGymTypeFilter(null); setGymAccessFilter(null); setGymCityFilter(null); setSortByNearestPlan(false); setGymFilterSheetVisible(false); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sheetClearBtnText}>Clear All Filters</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Done button */}
+            <TouchableOpacity
+              style={styles.sheetDoneButton}
+              onPress={() => setGymFilterSheetVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.sheetDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
@@ -560,8 +956,70 @@ export default function PlanVisitScreen({ navigation }) {
       ? 'Tomorrow'
       : `${selectedDay?.label}, ${selectedDay?.dateStr}`;
 
+    // Check if a run at this gym already exists within ±60 min of the chosen
+    // slot — using the communityRuns subscription already in memory.
+    const existingRun = communityRuns.find((run) => {
+      if (run.gymId !== selectedGym?.id) return false;
+      const runTime = run.startTime?.toDate?.();
+      if (!runTime || !selectedSlot?.date) return false;
+      return Math.abs(runTime.getTime() - selectedSlot.date.getTime()) <= 60 * 60 * 1000;
+    });
+
+    // ── Signal row — compact factual indicator (icon + text below the time) ──
+    // High-momentum threshold: 3+ co-planners (4+ total including current user).
+    const signalIcon = existingRun
+      ? 'basketball-outline'
+      : coPlannersCount >= 3
+      ? 'flame-outline'
+      : coPlannersCount >= 1
+      ? 'people-outline'
+      : 'calendar-outline';
+
+    const signalIconColor = (existingRun || coPlannersCount >= 1)
+      ? colors.primary
+      : colors.textMuted;
+
+    const signalText = existingRun
+      ? 'Run already forming'
+      : coPlannersCount >= 3
+      ? `Run forming · ${coPlannersCount + 1} players planning`
+      : coPlannersCount === 2
+      ? `${coPlannersCount + 1} players lining up for this time`
+      : coPlannersCount === 1
+      ? '1 other player planning to play here'
+      : "You're the first one so far";
+
+    const signalTextColor = (existingRun || coPlannersCount >= 1)
+      ? 'rgba(255,255,255,0.90)'
+      : colors.textMuted;
+
+    // ── Prompt section — motivating CTA copy ──────────────────────────────────
+    const promptTitle = existingRun
+      ? 'A run is already in motion'
+      : coPlannersCount >= 3
+      ? 'This time slot has momentum'
+      : coPlannersCount === 2
+      ? 'The court is filling up'
+      : coPlannersCount === 1
+      ? 'Someone else is planning to play'
+      : 'Want others to run with you?';
+
+    const promptDesc = existingRun
+      ? "Hop in and let the crew know you're coming."
+      : coPlannersCount >= 3
+      ? 'Start the run so everyone can lock in.'
+      : coPlannersCount === 2
+      ? 'Start a run and make the session official.'
+      : coPlannersCount === 1
+      ? 'Start a run so you can both lock in and coordinate.'
+      : 'Starting a run lets anyone planning this time find it and join in.';
+
+    const runButtonLabel = existingRun ? 'Join the Run' : 'Start a Run';
+
     return (
-      <SafeAreaView style={styles.safe}>
+      <ImageBackground source={require('../assets/images/court-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
         <LinearGradient
           colors={['#3D1E00', '#1A0A00', colors.background]}
           locations={[0, 0.55, 1]}
@@ -586,12 +1044,18 @@ export default function PlanVisitScreen({ navigation }) {
             {dayLabel} {'\u00B7'} {selectedSlot?.label}
           </Text>
 
-          {/* Start a Run prompt */}
-          <View style={styles.confirmationPrompt}>
-            <Text style={styles.confirmationPromptTitle}>Want others to join you?</Text>
-            <Text style={styles.confirmationPromptDesc}>
-              Starting a run lets nearby players see your session and hop in.
+          {/* Contextual signal row — compact indicator of who else is planning */}
+          <View style={styles.confirmationSignalRow}>
+            <Ionicons name={signalIcon} size={13} color={signalIconColor} style={{ marginRight: 5 }} />
+            <Text style={[styles.confirmationSignalText, { color: signalTextColor }]}>
+              {signalText}
             </Text>
+          </View>
+
+          {/* Run prompt — motivating CTA; copy updates based on co-planners/run state */}
+          <View style={styles.confirmationPrompt}>
+            <Text style={styles.confirmationPromptTitle}>{promptTitle}</Text>
+            <Text style={styles.confirmationPromptDesc}>{promptDesc}</Text>
           </View>
 
           {/* Action buttons */}
@@ -603,16 +1067,16 @@ export default function PlanVisitScreen({ navigation }) {
               if (!selectedGym || !selectedSlot) return;
               setStartingRun(true);
               try {
-                // Create the run using the same service RunDetailsScreen uses.
                 // startOrJoinRun handles the merge rule — if a run already exists
-                // within ±60 min at this gym, the user joins it instead.
+                // within ±60 min at this gym, the user joins it instead of
+                // creating a new one. Same logic whether label says "Start" or "Join".
                 await startOrJoinRun(
                   selectedGym.id,
                   selectedGym.name,
                   selectedSlot.date
                 );
 
-                // Navigate to RunDetailsScreen so the user sees their new run
+                // Navigate to RunDetailsScreen so the user sees their run
                 navigation.getParent()?.navigate('Runs', {
                   screen: 'RunDetails',
                   params: {
@@ -639,10 +1103,19 @@ export default function PlanVisitScreen({ navigation }) {
             ) : (
               <>
                 <Ionicons name="basketball-outline" size={18} color="#FFFFFF" style={{ marginRight: SPACING.xs }} />
-                <Text style={styles.confirmationPrimaryText}>Start a Run</Text>
+                <Text style={styles.confirmationPrimaryText}>{runButtonLabel}</Text>
               </>
             )}
           </TouchableOpacity>
+
+          {/* Helper line — only shown for Start a Run, not Join the Run */}
+          {!existingRun && (
+            <Text style={styles.confirmationRunHint}>
+              {coPlannersCount >= 3
+                ? 'Enough players are lining up — start it so everyone can lock in.'
+                : 'Anyone planning this time can start the run'}
+            </Text>
+          )}
 
           <TouchableOpacity
             style={styles.confirmationSecondaryButton}
@@ -658,6 +1131,7 @@ export default function PlanVisitScreen({ navigation }) {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
@@ -717,7 +1191,9 @@ export default function PlanVisitScreen({ navigation }) {
   })();
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <ImageBackground source={require('../assets/images/court-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+      <View style={styles.overlay} />
+      <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
       <LinearGradient
         colors={['#3D1E00', '#1A0A00', colors.background]}
@@ -865,6 +1341,7 @@ export default function PlanVisitScreen({ navigation }) {
       </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </SafeAreaView>
+    </ImageBackground>
   );
 }
 
@@ -878,7 +1355,14 @@ export default function PlanVisitScreen({ navigation }) {
 const getStyles = (colors, isDark) => StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: 'transparent',
+  },
+  bgImage: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.70)',
   },
   headerGradient: {
     paddingHorizontal: SPACING.md,
@@ -959,12 +1443,30 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginTop: 2,
   },
   cancelButton: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: SPACING.xxs,
   },
   cancelButtonText: {
     color: colors.danger,
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.regular,
+  },
+  cardActionColumn: {
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  cardStartRunButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 7,
+    backgroundColor: 'rgba(255,120,0,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,120,0,0.30)',
+    borderRadius: 20,
+  },
+  cardStartRunText: {
     fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.90)',
     fontWeight: FONT_WEIGHTS.semibold,
   },
   // ── Runs Being Planned ──────────────────────────────────
@@ -1096,16 +1598,17 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   gymCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
+    backgroundColor: isDark ? 'rgba(20,20,20,0.85)' : colors.surface,
     borderRadius: RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
-    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : colors.border,
   },
   gymCardSelected: {
-    borderColor: colors.primary,
     borderWidth: 2,
-    backgroundColor: colors.primary + '15',
+    borderColor: '#FF7A00',
+    backgroundColor: isDark ? 'rgba(255,120,0,0.08)' : colors.primary + '15',
   },
   gymCardLeft: {
     marginRight: SPACING.sm,
@@ -1116,16 +1619,16 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   gymCardName: {
     fontSize: FONT_SIZES.body,
     fontWeight: FONT_WEIGHTS.semibold,
-    color: colors.textPrimary,
+    color: isDark ? '#FFFFFF' : colors.textPrimary,
   },
   gymCardAddress: {
     fontSize: FONT_SIZES.xs,
-    color: colors.textMuted,
+    color: isDark ? 'rgba(255,255,255,0.65)' : colors.textMuted,
     marginTop: 2,
   },
   gymCardType: {
     fontSize: FONT_SIZES.small,
-    color: colors.textSecondary,
+    color: isDark ? 'rgba(255,255,255,0.85)' : colors.textSecondary,
     marginTop: 2,
   },
   gymCardAccent: {
@@ -1306,6 +1809,22 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
     marginTop: SPACING.xs,
   },
+  // Compact signal row below the time label — dark surface, icon + one-line text
+  confirmationSignalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingVertical: 6,
+    paddingHorizontal: SPACING.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  confirmationSignalText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
   confirmationPrompt: {
     marginTop: SPACING.xl,
     alignItems: 'center',
@@ -1354,6 +1873,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.medium,
     color: colors.textSecondary,
   },
+  // Subtle hint under the Start a Run button — communicates shared ownership
+  confirmationRunHint: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.60)',
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+    marginHorizontal: SPACING.md,
+  },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1397,5 +1924,268 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
+  },
+
+  // ── Visit signal badges ────────────────────────────────────────────────────
+  // Co-planner badge on Step 1 schedule cards (other users planning same slot)
+  coPlannerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  coPlannerBadgeText: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.90)',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  // High-momentum pill — subtle orange-tinted background for 3+ co-planners
+  coPlannerBadgeHigh: {
+    backgroundColor: 'rgba(255,120,0,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,120,0,0.22)',
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 5,
+  },
+  // "Your Visit" badge on Step 1 run cards (user has a schedule near this run)
+  yourVisitBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  yourVisitBadgeText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+
+  // ── Step 2: Search + Filter ───────────────────────────────────────────────
+  gymSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  gymSearchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
+    paddingHorizontal: SPACING.sm,
+    height: 40,
+  },
+  gymSearchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    paddingVertical: 0,
+  },
+  gymFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+  },
+  gymFilterButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  gymFilterButtonText: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  gymFilterButtonTextActive: {
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  gymActiveChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.xs,
+    gap: 6,
+  },
+  gymActiveChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+  },
+  gymActiveChipText: {
+    fontSize: FONT_SIZES.xs,
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  gymFilterEmptyState: {
+    alignItems: 'center',
+    paddingVertical: SPACING.xl,
+    gap: SPACING.xs,
+  },
+  gymFilterEmptyText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  gymFilterClearText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+    marginTop: SPACING.xs,
+  },
+
+  // ── Filter bottom sheet (mirrors ViewRunsScreen) ──────────────────────────
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  sheetContainer: {
+    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: isDark ? '#48484A' : '#D1D5DB',
+    alignSelf: 'center',
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
+  },
+  sheetTitle: {
+    fontSize: FONT_SIZES.h3,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+  },
+  sheetSectionLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  sheetPillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  sheetPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: RADIUS.full,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)',
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)',
+  },
+  sheetPillActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  sheetPillText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  sheetPillTextActive: {
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  sheetDoneButton: {
+    backgroundColor: colors.primary,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+  },
+  sheetDoneText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#fff',
+  },
+  // ── Sort toggle row (mirrors ViewRunsScreen exactly) ──────────────────────
+  sheetToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: isDark ? '#48484A' : '#E5E7EB',
+    marginBottom: SPACING.sm,
+  },
+  sheetToggleRowActive: {
+    borderColor: '#0A84FF',
+    backgroundColor: isDark ? 'rgba(10,132,255,0.15)' : 'rgba(10,132,255,0.08)',
+  },
+  sheetToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sheetToggleTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: isDark ? '#FFFFFF' : '#111111',
+  },
+  sheetToggleSub: {
+    fontSize: FONT_SIZES.xs,
+    color: isDark ? '#8E8E93' : '#6B7280',
+    marginTop: 1,
+  },
+  sheetToggleSwitch: {
+    width: 40,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: isDark ? '#48484A' : '#D1D5DB',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  sheetToggleSwitchOn: {
+    backgroundColor: '#0A84FF',
+  },
+  sheetToggleThumb: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    alignSelf: 'flex-start',
+  },
+  sheetToggleThumbOn: {
+    alignSelf: 'flex-end',
+  },
+  sheetClearBtn: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.xs,
+  },
+  sheetClearBtnText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.danger || '#EF4444',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });
