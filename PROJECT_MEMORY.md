@@ -120,6 +120,41 @@ const getRunEnergyLabel = (count) => {
 };
 ```
 
+## Visit → Run Formation UX
+
+Visits (scheduled via `PlanVisitScreen`) act as a social signal layer that helps runs form organically. Runs are always created manually — there is no auto-run creation.
+
+### Co-planner signal tiers (Step 1 visit cards)
+`coPlannersCount` is derived from `gyms/{gymId}.scheduleCounts[timeSlot]` (already in memory via `useGyms` — no extra Firestore reads). Self-count subtracted (`rawCount − 1`, floored at 0).
+
+| `otherCount` | Badge copy | Badge style |
+|---|---|---|
+| 0 | No badge | — |
+| 1 | "1 other planning to play here" | Plain row |
+| 2 | "3 players lining up for this time" | Plain row |
+| 3+ | "Run forming · N players planning" | Orange pill (`coPlannerBadgeHigh`) + flame icon |
+
+### Start Run shortcut (Step 1 visit cards)
+When `otherCount >= 2 && !hasExistingRun`, a "Start Run" pill appears inside the visit card (right column, above Cancel). Calls `startOrJoinRun` directly; navigates to RunDetails on success. Uses the `startingRun` loading guard.
+
+### Step 4 confirmation (co-planner context)
+Step 4 shows a signal row + dynamic title/description based on `coPlannersCount` and `existingRun`:
+- 0 co-planners → "Want others to run with you?" + neutral calendar icon
+- 1 co-planner → "Someone else is planning to play" + people icon
+- 2 co-planners → "The court is filling up" + people icon
+- 3+ co-planners → "This time slot has momentum" + flame icon
+- Existing run → "A run is already in motion" + basketball icon + "Join the Run" button
+
+Helper text "Anyone planning this time can start the run" (or stronger copy at 3+) sits below the CTA to reinforce community ownership.
+
+### Join Run on run cards (Runs Being Planned section)
+When `hasMatchingVisit && !isJoined`, the "View" pill on a run card is replaced with a "Join Run" button. Uses `joinExistingRun(run.id, ...)` — bypasses the ±60-min merge logic since the run already exists. Uses a separate `joiningRun` loading guard (independent of `startingRun`). On error, fails gracefully with a dev-only log; user can still tap the card to navigate to RunDetails.
+
+### Notification: run created near scheduled visit
+`onRunCreatedNotifyScheduledVisitors` Cloud Function (Firestore `onCreate` on `runs/{runId}`) notifies users with a matching `schedules` doc (`gymId` match + `status === 'scheduled'` + `scheduledTime` within ±60 min of `run.startTime`). The ±60-min window is intentionally identical to the `startOrJoinRun` merge window. See BACKEND_MEMORY for full details.
+
+---
+
 ## Currently Working
 - Check-in flow: GPS validation (disabled for testing), presence write, activity feed write, points award
 - Check-out flow: manual deducts 10 pts + deletes activity entry; auto-expiry preserves points
@@ -199,6 +234,18 @@ Captures proof that a run happened and how many people showed up. Designed 2026-
 - **Phase 1 (approved, post-TestFlight):** Add two new fields to `runs/{runId}` — `joinedCount` (total unique users who ever joined, never decremented) and `peakParticipantCount` (high-water mark of `participantCount`). Both written inside the existing `joinRun` transaction in `runService.js`, guarded by the same `!alreadyJoined` check that protects `participantCount`. ~5 lines, one file, no backend deploy, no UI changes. Silently accumulates data for future use.
 - **Phase 2 (deferred — post-launch, stable user base):** Formal run completion: `status: 'completed'`, `completedAt`, `actualAttendees[]`, `attendedCount`, `durationMinutes`. Triggered in `leaveRun` when `participantCount → 0`. Also needs a `completeStaleRuns` Cloud Function for abandoned runs. Medium risk — changes run lifecycle state irreversibly.
 - **Phase 3 (deferred — growth phase):** Analytics and aggregation. Per-user "Runs Attended" history, turnout estimates, `runHistory` collection, gym trust signals.
+
+---
+
+## Files Modified Recently (2026-03-29 — Visit → Run Formation UX + Scheduled Visitor Notifications)
+
+| File | What changed |
+|------|-------------|
+| `screens/PlanVisitScreen.js` | (1) **Co-planner detection**: `coPlannersCount` state derived from `gyms.scheduleCounts` (in-memory, no extra reads). (2) **Tiered signal badges** on Step 1 visit cards: 3 levels (1 other / 2 others / 3+ with flame icon + orange pill). (3) **Start Run shortcut** on visit cards: "Start Run" pill appears when `otherCount >= 2 && !hasExistingRun`; calls `startOrJoinRun`, navigates to RunDetails. (4) **Step 4 dynamic copy**: 5-state contextual title/description/CTA based on `coPlannersCount` and `existingRun`. Signal row (icon + pill). Helper text "Anyone planning this time can start the run". (5) **Join Run on run cards**: `hasMatchingVisit && !isJoined` → "Join Run" pill replaces "View"; calls `joinExistingRun` (no merge logic). `joiningRun` loading guard, try/catch, fail-graceful error handling. (6) **Import**: Added `joinExistingRun` to runService import. (7) **Header**: Removed `LinearGradient` from Step 1 header; replaced with plain `View`. |
+| `runcheck-backend/functions/src/onRunCreatedNotifyScheduledVisitors.ts` | **NEW** Cloud Function. `onDocumentCreated('runs/{runId}')`. Queries `schedules` at same gym within ±60 min window (matching `startOrJoinRun` merge logic). Skips run creator, private runs, users without pushToken. Uses `sendExpoPush` + `checkAndSetCooldown` from `notificationHelpers.ts`. Cooldown key: `scheduleRunCreated_{runId}` (24h TTL). Notification: "🏀 A run just started at {gymName}" / "You planned to be here at {timeLabel}. Tap to join the run." Data payload: `{ type: 'run_created_for_schedule', runId, gymId }`. Uses existing composite index `(gymId, status, scheduledTime)` — no new index needed. |
+| `runcheck-backend/functions/src/index.ts` | Added N-07 export block for `onRunCreatedNotifyScheduledVisitors` with inline comment explaining ±60-min rationale, exclusion rules, cooldown key, and known V1 follower-overlap limitation. |
+
+**⚠️ Deploy required:** `firebase deploy --only functions:onRunCreatedNotifyScheduledVisitors`
 
 ---
 

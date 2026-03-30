@@ -615,6 +615,42 @@ Shared helper: `notificationHelpers.ts` — `sendExpoPush()` (Expo Push API via 
 - Daily notification cap across all followed-gym alerts.
 - Follower query pagination for gyms with 500+ followers (currently loads all into memory).
 
+### Scheduled Visitor Run Notifications (Phase 2, added 2026-03-29)
+
+| Function | File | Role |
+|----------|------|------|
+| `onRunCreatedNotifyScheduledVisitors` | `onRunCreatedNotifyScheduledVisitors.ts` | **Firestore onCreate** on `runs/{runId}`. Notifies users who have an active scheduled visit at the same gym within ±60 min of the run's `startTime`. |
+
+**Trigger:** `onDocumentCreated('runs/{runId}')`
+
+**Matching logic:**
+- `schedules.gymId === run.gymId` (exact match)
+- `schedules.status === 'scheduled'` (not cancelled / attended / no_show)
+- `schedules.scheduledTime` within ±60 min of `run.startTime`
+- The ±60-min window intentionally mirrors the `startOrJoinRun` merge rule — every user whose visit falls inside the merge window is notified
+
+**Firestore query:** `schedules where gymId == X AND status == 'scheduled' AND scheduledTime >= (startTime − 60min) AND scheduledTime <= (startTime + 60min)`
+Served by the existing composite index `(gymId ASC, status ASC, scheduledTime ASC)` in `firestore.indexes.json`. **No new index required.**
+
+**Exclusions:**
+- Run creator (`run.createdBy` / `run.creatorId`) — they just started it
+- Private runs (`run.isPrivate === true`) — same guard as `notifyFollowersRunCreated`
+- Users with no `pushToken`
+- Stale runs: `startTime` more than 10 min in the past (same cold-start grace window as `notifyFollowersRunCreated`)
+
+**Deduplication:** Cooldown key `scheduleRunCreated_{runId}` on `users/{uid}.notifCooldowns`, 24h TTL.
+
+**Notification copy:**
+- Title: `"🏀 A run just started at {gymName}"`
+- Body: `"You planned to be here at {timeLabel}. Tap to join the run."`
+- Data payload: `{ type: 'run_created_for_schedule', runId, gymId }`
+
+**Time formatting:** Uses `formatRunTime()` helper (same logic as `notifyFollowersRunCreated`): "Today at 6:00 PM" / "Tomorrow at 6:00 PM" / "Tue, Mar 28 at 6:00 PM". Timezone: America/Chicago.
+
+**⚠️ Known V1 limitation — duplicate notifications:** A user who both follows the gym AND has a scheduled visit will receive two notifications on run creation — one from `notifyFollowersRunCreated` (key `followRunCreated_{runId}`) and one from this function (key `scheduleRunCreated_{runId}`). These are independent cooldown keys; both fire. Acceptable for V1 (small user base, rare overlap). See PARKING_LOT.md: "Unified run-created notification dedup (followRunCreated + scheduleRunCreated)".
+
+**Deploy:** `firebase deploy --only functions:onRunCreatedNotifyScheduledVisitors`
+
 ---
 
 ## Points & Ranks

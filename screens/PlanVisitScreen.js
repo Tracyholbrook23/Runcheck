@@ -52,7 +52,7 @@ import { useSchedules, useGyms, useProfile, useLivePresenceMap, useLocation } fr
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { calculateDistanceMeters } from '../utils/locationUtils';
-import { subscribeToAllUpcomingRuns, startOrJoinRun, joinExistingRun } from '../services/runService';
+import { subscribeToAllUpcomingRuns, startOrJoinRun, joinExistingRun, leaveRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
 import { addDoc, updateDoc, collection, serverTimestamp, Timestamp, query, where, limit, getDocs, deleteDoc, doc } from 'firebase/firestore';
 
@@ -154,6 +154,22 @@ export default function PlanVisitScreen({ navigation }) {
   const [gymCityFilter, setGymCityFilter] = useState(null);
   const [sortByNearestPlan, setSortByNearestPlan] = useState(false);
   const [gymFilterSheetVisible, setGymFilterSheetVisible] = useState(false);
+
+  // ── Runs Being Planned filters ─────────────────────────────────────────────
+  const [runFilterSheetVisible, setRunFilterSheetVisible] = useState(false);
+  // Distance cap in miles. null = no cap (any distance).
+  // Default to null so users without location permission see runs immediately.
+  // Auto-applies 25 mi once location is granted for the first time.
+  const [runDistanceFilter, setRunDistanceFilter] = useState(null);
+  const didAutoApplyDistance = React.useRef(false);
+  useEffect(() => {
+    if (userLocation && !didAutoApplyDistance.current && runDistanceFilter === null) {
+      didAutoApplyDistance.current = true;
+      setRunDistanceFilter(25);
+    }
+  }, [userLocation]);
+  // Level filter. null = show all levels.
+  const [runLevelFilter, setRunLevelFilter] = useState(null);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
@@ -250,6 +266,65 @@ export default function PlanVisitScreen({ navigation }) {
     return unsubscribe;
   }, []);
 
+  // ── Derived sets for relevance ranking ───────────────────────────────────
+  const METERS_PER_MILE = 1609.34;
+  const friendIdSet = useMemo(() => new Set(profile?.friends ?? []), [profile]);
+  const followedGymIdSet = useMemo(() => new Set(profile?.followedGyms ?? []), [profile]);
+
+  // ── Filtered + relevance-sorted community runs ───────────────────────────
+  // Priority order: matching visit → friend's run → followed/home gym → nearest
+  const filteredAndSortedRuns = useMemo(() => {
+    let runs = communityRuns;
+
+    // 1. Distance cap — skip if no location or filter is "Any"
+    if (runDistanceFilter !== null && userLocation) {
+      runs = runs.filter((run) => {
+        const gym = gyms.find((g) => g.id === run.gymId);
+        if (!gym?.location) return true; // no coords — include to be safe
+        return calculateDistanceMeters(userLocation, gym.location) / METERS_PER_MILE <= runDistanceFilter;
+      });
+    }
+
+    // 2. Level filter
+    if (runLevelFilter) {
+      runs = runs.filter((run) => (run.runLevel ?? 'mixed') === runLevelFilter);
+    }
+
+    // 3. Relevance sort — higher score floats to the top
+    return [...runs].sort((a, b) => {
+      const score = (run) => {
+        let s = 0;
+        // Matching scheduled visit for this run — most relevant
+        const hasVisit = schedules.some((sch) => {
+          if (sch.gymId !== run.gymId) return false;
+          const st = sch.scheduledTime?.toDate?.();
+          const rt = run.startTime?.toDate?.();
+          if (!st || !rt) return false;
+          return Math.abs(st.getTime() - rt.getTime()) <= 60 * 60 * 1000;
+        });
+        if (hasVisit) s += 100;
+        // Friend started this run
+        if (run.createdBy && friendIdSet.has(run.createdBy)) s += 50;
+        // Gym is followed or is home court
+        if (followedGymIdSet.has(run.gymId) || run.gymId === profile?.homeCourtId) s += 25;
+        // Proximity bonus — closer gyms score slightly higher (max ~10 pts)
+        if (userLocation) {
+          const gym = gyms.find((g) => g.id === run.gymId);
+          if (gym?.location) {
+            const miles = calculateDistanceMeters(userLocation, gym.location) / METERS_PER_MILE;
+            s += Math.max(0, 10 - miles / 3);
+          }
+        }
+        return s;
+      };
+      return score(b) - score(a);
+    });
+  }, [
+    communityRuns, runDistanceFilter, runLevelFilter,
+    userLocation, gyms, schedules,
+    friendIdSet, followedGymIdSet, profile,
+  ]);
+
   /**
    * formatRunTime — Formats a run's Firestore Timestamp for display.
    * Context-aware: "Today 6:30 PM", "Tomorrow 9:00 AM", "Mon, Jan 13 7:00 PM".
@@ -340,51 +415,103 @@ export default function PlanVisitScreen({ navigation }) {
    *
    * @param {object} schedule — Schedule document from Firestore with `id` and `gymName`.
    */
-  const handleCancelSchedule = async (schedule) => {
-    Alert.alert(
-      'Cancel Visit',
-      `Cancel your planned visit to ${schedule.gymName}?`,
-      [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Cancel Visit',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await cancelSchedule(schedule.id);
+  /**
+   * cancelVisitOnly — shared helper that cancels the schedule doc and
+   * removes the corresponding activity feed entry. Called by both cancel
+   * paths inside handleCancelSchedule.
+   */
+  const cancelVisitOnly = async (schedule) => {
+    await cancelSchedule(schedule.id);
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      if (schedule.activityId) {
+        deleteDoc(doc(db, 'activity', schedule.activityId))
+          .catch((err) => { if (__DEV__) console.error('Activity cleanup error (cancel plan):', err); });
+      } else {
+        getDocs(
+          query(
+            collection(db, 'activity'),
+            where('userId', '==', uid),
+            where('gymId',  '==', schedule.gymId),
+            where('action', '==', 'planned a visit to'),
+            limit(1)
+          )
+        )
+          .then((snap) =>
+            Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id))))
+          )
+          .catch((err) => { if (__DEV__) console.error('Activity cleanup error (cancel plan):', err); });
+      }
+    }
+  };
 
-              // Remove the corresponding activity feed event — fire and forget.
-              // Fast path: if the schedule doc has an activityId we delete that
-              // exact document. Fallback: query-based delete limited to 1 result
-              // so only the most recent matching event is removed.
-              const uid = auth.currentUser?.uid;
-              if (uid) {
-                if (schedule.activityId) {
-                  deleteDoc(doc(db, 'activity', schedule.activityId))
-                    .catch((err) => { if (__DEV__) console.error('Activity cleanup error (cancel plan):', err); });
-                } else {
-                  getDocs(
-                    query(
-                      collection(db, 'activity'),
-                      where('userId', '==', uid),
-                      where('gymId',  '==', schedule.gymId),
-                      where('action', '==', 'planned a visit to'),
-                      limit(1)
-                    )
-                  )
-                    .then((snap) =>
-                      Promise.all(snap.docs.map((d) => deleteDoc(doc(db, 'activity', d.id))))
-                    )
-                    .catch((err) => { if (__DEV__) console.error('Activity cleanup error (cancel plan):', err); });
-                }
+  /**
+   * handleCancelSchedule — Prompts the user then cancels a scheduled visit.
+   *
+   * If the user has already joined a matching run for this visit, they are
+   * offered the choice to leave that run at the same time. Cancelling a visit
+   * without leaving the run leaves them confirmed for a game they no longer
+   * plan to attend, which is a reliability/trust issue.
+   *
+   * @param {object} schedule    — Schedule document from Firestore.
+   * @param {object|null} matchingRun — The run matching this visit slot, if any.
+   * @param {boolean} isInRun   — Whether the user has joined that run.
+   */
+  const handleCancelSchedule = async (schedule, matchingRun, isInRun) => {
+    if (matchingRun && isInRun) {
+      // User is in the run — give them a choice.
+      Alert.alert(
+        'Cancel Visit',
+        `You're also in the run at ${schedule.gymName}. Do you want to leave the run too?`,
+        [
+          { text: 'Keep Everything', style: 'cancel' },
+          {
+            text: 'Cancel Visit Only',
+            onPress: async () => {
+              try {
+                await cancelVisitOnly(schedule);
+              } catch (error) {
+                Alert.alert('Error', error.message);
               }
-            } catch (error) {
-              Alert.alert('Error', error.message);
-            }
+            },
           },
-        },
-      ]
-    );
+          {
+            text: 'Cancel Visit & Leave Run',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await Promise.all([
+                  cancelVisitOnly(schedule),
+                  leaveRun(matchingRun.id),
+                ]);
+              } catch (error) {
+                Alert.alert('Error', error.message);
+              }
+            },
+          },
+        ]
+      );
+    } else {
+      // No matching run — original single-confirm flow.
+      Alert.alert(
+        'Cancel Visit',
+        `Cancel your planned visit to ${schedule.gymName}?`,
+        [
+          { text: 'Keep', style: 'cancel' },
+          {
+            text: 'Cancel Visit',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await cancelVisitOnly(schedule);
+              } catch (error) {
+                Alert.alert('Error', error.message);
+              }
+            },
+          },
+        ]
+      );
+    }
   };
 
   if (loading) {
@@ -432,13 +559,17 @@ export default function PlanVisitScreen({ navigation }) {
                     );
                     // Is there already a run at this gym within ±60 min of this slot?
                     // Uses communityRuns already subscribed in memory — no extra reads.
-                    const hasExistingRun = communityRuns.some((run) => {
+                    const matchingRun = communityRuns.find((run) => {
                       if (run.gymId !== schedule.gymId) return false;
                       const runTime = run.startTime?.toDate?.();
                       const schedTime = schedule.scheduledTime?.toDate?.();
                       if (!runTime || !schedTime) return false;
                       return Math.abs(runTime.getTime() - schedTime.getTime()) <= 60 * 60 * 1000;
                     });
+                    const hasExistingRun = !!matchingRun;
+                    // True when the user has already joined the matching run for this visit.
+                    // Used to show "In the Run" state instead of the momentum badge / Start Run.
+                    const isInMatchingRun = matchingRun ? joinedRunIds.has(matchingRun.id) : false;
                     return (
                       <View key={schedule.id} style={styles.intentCard}>
                         <GymThumbnail
@@ -455,7 +586,34 @@ export default function PlanVisitScreen({ navigation }) {
                               {scheduleGym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
                             </Text>
                           )}
-                          {otherCount >= 1 && (
+                          {isInMatchingRun ? (
+                            // Already joined — green confirmation state.
+                            <View style={styles.inRunBadge}>
+                              <Ionicons name="checkmark-circle" size={11} color="#22C55E" style={{ marginRight: 3 }} />
+                              <Text style={styles.inRunBadgeText}>You're in the run</Text>
+                            </View>
+                          ) : matchingRun ? (
+                            // A run EXISTS for this visit slot — make the badge tappable
+                            // so the user can jump straight to it. This is the key
+                            // connection between "my visit" and "the actual run."
+                            <TouchableOpacity
+                              style={[styles.coPlannerBadge, styles.coPlannerBadgeHigh, styles.coPlannerBadgeTappable]}
+                              activeOpacity={0.7}
+                              onPress={() =>
+                                navigation.getParent()?.navigate('Runs', {
+                                  screen: 'RunDetails',
+                                  params: { gymId: matchingRun.gymId, gymName: matchingRun.gymName, players: 0 },
+                                })
+                              }
+                            >
+                              <Ionicons name="basketball-outline" size={11} color={colors.primary} style={{ marginRight: 3 }} />
+                              <Text style={styles.coPlannerBadgeText}>
+                                A run is forming for your visit — tap to join
+                              </Text>
+                              <Ionicons name="chevron-forward" size={10} color={colors.primary} style={{ marginLeft: 2 }} />
+                            </TouchableOpacity>
+                          ) : otherCount >= 1 ? (
+                            // No run yet — passive momentum signal.
                             <View style={[
                               styles.coPlannerBadge,
                               otherCount >= 3 && styles.coPlannerBadgeHigh,
@@ -474,10 +632,10 @@ export default function PlanVisitScreen({ navigation }) {
                                   : '1 other planning to play here'}
                               </Text>
                             </View>
-                          )}
+                          ) : null}
                         </View>
                         <View style={styles.cardActionColumn}>
-                          {otherCount >= 2 && !hasExistingRun && (
+                          {otherCount >= 2 && !hasExistingRun && !isInMatchingRun && (
                             <TouchableOpacity
                               style={styles.cardStartRunButton}
                               disabled={startingRun}
@@ -495,7 +653,7 @@ export default function PlanVisitScreen({ navigation }) {
                           )}
                           <TouchableOpacity
                             style={styles.cancelButton}
-                            onPress={() => handleCancelSchedule(schedule)}
+                            onPress={() => handleCancelSchedule(schedule, matchingRun, isInMatchingRun)}
                           >
                             <Text style={styles.cancelButtonText}>Cancel</Text>
                           </TouchableOpacity>
@@ -505,14 +663,9 @@ export default function PlanVisitScreen({ navigation }) {
                   })}
                 </View>
               ) : (
-                <View style={styles.emptyState}>
-                  <View style={styles.emptyIconWrap}>
-                    <Ionicons name="calendar-outline" size={36} color={colors.textMuted} />
-                  </View>
-                  <Text style={styles.emptyText}>No visits planned yet</Text>
-                  <Text style={styles.emptySubtext}>
-                    Schedule a visit so other players know you're coming
-                  </Text>
+                <View style={styles.emptyStateCompact}>
+                  <Ionicons name="calendar-outline" size={18} color={colors.textMuted} style={{ marginRight: 8 }} />
+                  <Text style={styles.emptyStateCompactText}>No visits planned yet</Text>
                 </View>
               )}
 
@@ -521,20 +674,50 @@ export default function PlanVisitScreen({ navigation }) {
                 <View style={styles.runsSectionHeader}>
                   <Ionicons name="basketball-outline" size={15} color={colors.primary} style={{ marginRight: 5 }} />
                   <Text style={styles.sectionTitle}>Runs Being Planned</Text>
+                  {filteredAndSortedRuns.length > 0 && (
+                    <View style={styles.runCountBadge}>
+                      <Text style={styles.runCountBadgeText}>{filteredAndSortedRuns.length}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity
+                    style={[styles.runsFilterButton, (runDistanceFilter !== null || runLevelFilter !== null) && styles.runsFilterButtonActive]}
+                    onPress={() => setRunFilterSheetVisible(true)}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons
+                      name="options-outline"
+                      size={13}
+                      color={(runDistanceFilter !== null || runLevelFilter !== null) ? '#fff' : 'rgba(255,255,255,0.7)'}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={[styles.runsFilterButtonText, (runDistanceFilter !== null || runLevelFilter !== null) && styles.runsFilterButtonTextActive]}>
+                      Filter{(runDistanceFilter !== null ? 1 : 0) + (runLevelFilter !== null ? 1 : 0) > 0
+                        ? ` · ${(runDistanceFilter !== null ? 1 : 0) + (runLevelFilter !== null ? 1 : 0)}`
+                        : ''}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
-                {communityRuns.length > 0 ? (
-                  communityRuns.map((run) => {
+
+                {filteredAndSortedRuns.length > 0 ? (
+                  filteredAndSortedRuns.map((run) => {
                     const runGym = gyms.find((g) => g.id === run.gymId);
                     const isJoined = joinedRunIds.has(run.id);
                     // "Your Visit" badge: user has a schedule at this gym within
-                    // ±60 min of this run. V1: exact slot match; future: clustering.
-                    const hasMatchingVisit = schedules.some((schedule) => {
+                    // ±60 min of this run. Using find (not some) so we can also
+                    // derive the planner count via the schedule's timeSlot key.
+                    const matchingVisitSchedule = schedules.find((schedule) => {
                       if (schedule.gymId !== run.gymId) return false;
                       const schedTime = schedule.scheduledTime?.toDate?.();
                       const runTime = run.startTime?.toDate?.();
                       if (!schedTime || !runTime) return false;
                       return Math.abs(schedTime.getTime() - runTime.getTime()) <= 60 * 60 * 1000;
                     });
+                    const hasMatchingVisit = !!matchingVisitSchedule;
+                    // Total planners at this gym/time slot — used to signal momentum
+                    // on the run card for users who haven't joined yet.
+                    const runPlannerCount = matchingVisitSchedule
+                      ? (runGym?.scheduleCounts?.[matchingVisitSchedule.timeSlot] ?? 0)
+                      : 0;
                     return (
                       <TouchableOpacity
                         key={run.id}
@@ -583,6 +766,9 @@ export default function PlanVisitScreen({ navigation }) {
                               {run.participantCount === 1
                                 ? '1 player going'
                                 : `${run.participantCount} players going`}
+                              {runPlannerCount > run.participantCount
+                                ? ` · ${runPlannerCount} planning`
+                                : ''}
                             </Text>
                           </View>
                           {hasMatchingVisit && (
@@ -647,11 +833,21 @@ export default function PlanVisitScreen({ navigation }) {
                       </TouchableOpacity>
                     );
                   })
+                ) : communityRuns.length > 0 ? (
+                  // Runs exist but all filtered out — nudge user to adjust filters
+                  <View style={styles.runsEmptyState}>
+                    <Text style={styles.runsEmptyText}>No runs match your filters</Text>
+                    <TouchableOpacity
+                      onPress={() => { setRunDistanceFilter(null); setRunLevelFilter(null); }}
+                    >
+                      <Text style={styles.runsEmptyAction}>Clear filters</Text>
+                    </TouchableOpacity>
+                  </View>
                 ) : (
                   <View style={styles.runsEmptyState}>
                     <Text style={styles.runsEmptyText}>No runs planned yet</Text>
                     <Text style={styles.runsEmptySubtext}>
-                      When someone starts a run, it'll show up here
+                      Schedule a visit — when enough players plan the same time, a run can form
                     </Text>
                   </View>
                 )}
@@ -664,6 +860,93 @@ export default function PlanVisitScreen({ navigation }) {
             </ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+
+        {/* ── Runs Being Planned — Filter Sheet ──────────────────────────── */}
+        <Modal
+          visible={runFilterSheetVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setRunFilterSheetVisible(false)}
+        >
+          <Pressable style={styles.sheetBackdrop} onPress={() => setRunFilterSheetVisible(false)} />
+          <View style={styles.sheetContainer}>
+            <View style={styles.sheetHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Filter Runs</Text>
+              <TouchableOpacity onPress={() => setRunFilterSheetVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={isDark ? '#8E8E93' : '#6B7280'} />
+              </TouchableOpacity>
+            </View>
+
+            {/* ── Distance ── */}
+            <Text style={styles.sheetSectionLabel}>Distance</Text>
+            <View style={styles.sheetPillRow}>
+              {[
+                { label: '10 mi', value: 10 },
+                { label: '25 mi', value: 25 },
+                { label: '50 mi', value: 50 },
+              ].map(({ label, value }) => {
+                const active = runDistanceFilter === value;
+                return (
+                  <TouchableOpacity
+                    key={label}
+                    style={[styles.sheetPill, active && styles.sheetPillActive]}
+                    onPress={() => {
+                      if (!userLocation) getCurrentLocation().catch(() => {});
+                      setRunDistanceFilter(active ? null : value);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="location-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />
+                    <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* ── Run Level ── */}
+            <Text style={styles.sheetSectionLabel}>Run Level</Text>
+            <View style={styles.sheetPillRow}>
+              {[
+                { label: '😊 Casual',      value: 'casual',      color: '#22C55E' },
+                { label: '🤝 Balanced',    value: 'mixed',       color: '#94A3B8' },
+                { label: '🔥 Competitive', value: 'competitive', color: '#EF4444' },
+              ].map(({ label, value, color }) => {
+                const active = runLevelFilter === value;
+                return (
+                  <TouchableOpacity
+                    key={value}
+                    style={[styles.sheetPill, active && { backgroundColor: color, borderColor: color }]}
+                    onPress={() => setRunLevelFilter(active ? null : value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* ── Clear All ── */}
+            {(runDistanceFilter !== null || runLevelFilter !== null) && (
+              <TouchableOpacity
+                style={styles.sheetClearBtn}
+                onPress={() => { setRunDistanceFilter(null); setRunLevelFilter(null); setRunFilterSheetVisible(false); }}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sheetClearBtnText}>Clear All Filters</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.sheetDoneButton}
+              onPress={() => setRunFilterSheetVisible(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.sheetDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+
       </SafeAreaView>
       </ImageBackground>
     );
@@ -942,6 +1225,7 @@ export default function PlanVisitScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </Modal>
+
       </SafeAreaView>
       </ImageBackground>
     );
@@ -1563,6 +1847,67 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
     marginTop: 3,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.md,
+  },
+  runsEmptyAction: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+    marginTop: 8,
+  },
+  // ── Run count badge in section header ─────────────────────────────────────
+  runCountBadge: {
+    marginLeft: 6,
+    backgroundColor: colors.primary + '20',
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  runCountBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  // ── Runs Being Planned — Filter button ───────────────────────────────────
+  runsFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  runsFilterButtonActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  runsFilterButtonText: {
+    fontSize: FONT_SIZES.xs,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  runsFilterButtonTextActive: {
+    color: '#fff',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  // ── Compact empty visits state ─────────────────────────────────────────────
+  emptyStateCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    backgroundColor: colors.surface,
+    borderRadius: RADIUS.md,
+    marginBottom: SPACING.md,
+    ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+  },
+  emptyStateCompactText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
   },
   emptyState: {
     backgroundColor: colors.surface,
@@ -1938,6 +2283,10 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: 'rgba(255,255,255,0.90)',
     fontWeight: FONT_WEIGHTS.medium,
   },
+  // Tappable variant — used when a real run exists for this visit slot
+  coPlannerBadgeTappable: {
+    alignSelf: 'flex-start',
+  },
   // High-momentum pill — subtle orange-tinted background for 3+ co-planners
   coPlannerBadgeHigh: {
     backgroundColor: 'rgba(255,120,0,0.10)',
@@ -1946,6 +2295,23 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     borderRadius: 4,
     paddingVertical: 2,
     paddingHorizontal: 5,
+  },
+  // "You're in the run" badge — shown on visit card when user has already joined
+  inRunBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    backgroundColor: 'rgba(34,197,94,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.25)',
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 5,
+  },
+  inRunBadgeText: {
+    fontSize: 11,
+    color: '#22C55E',
+    fontWeight: FONT_WEIGHTS.medium,
   },
   // "Your Visit" badge on Step 1 run cards (user has a schedule near this run)
   yourVisitBadge: {

@@ -121,7 +121,7 @@ export const useReliability = (userId = null) => {
   // The real score continues to be tracked in the backend — only the displayed
   // value is affected.
   const meetsThreshold = (reliability?.totalAttended ?? 0) >= RELIABILITY_THRESHOLD;
-  const displayScore = meetsThreshold ? score : INITIAL_SCORE;
+  const displayScore = meetsThreshold ? Math.max(20, score) : INITIAL_SCORE;
   const displayTier = getReliabilityTier(displayScore);
 
   return {

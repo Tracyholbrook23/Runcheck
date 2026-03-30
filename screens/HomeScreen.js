@@ -60,6 +60,7 @@ import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { joinExistingRun } from '../services/runService';
 
 // Instagram community link — used by both the header icon and the footer card.
 const INSTAGRAM_URL = 'https://www.instagram.com/run.check?igsh=dWdieWZteXlvd21k&utm_source=qr';
@@ -142,7 +143,8 @@ const HomeScreen = ({ navigation }) => {
   // Community feed visibility — persisted to Firestore, defaults to shown
   const showCommunityFeed = profile?.preferences?.showCommunityFeed ?? true;
   const { unreadCount: dmUnreadCount } = useConversations();
-  const { runChatUnreadCount } = useMyRunChats();
+  const { runChats, runChatUnreadCount } = useMyRunChats();
+  const joinedRunIds = useMemo(() => new Set(runChats.map((c) => c.runId)), [runChats]);
   const totalUnreadCount = dmUnreadCount + runChatUnreadCount;
 
   // Resolve home court gym object for quick-action card
@@ -170,6 +172,8 @@ const HomeScreen = ({ navigation }) => {
   const [activityFeed, setActivityFeed] = useState([]);
   const [friendIds, setFriendIds] = useState([]);
   const [fetchError, setFetchError] = useState(false);
+  // Which runId is currently being joined from the activity feed (null = none).
+  const [joiningRunId, setJoiningRunId] = useState(null);
 
   // User's upcoming scheduled visits — reused from PlanVisitScreen's hook.
   // Derive todaysPlan: the soonest scheduled visit today (past or future both show,
@@ -510,6 +514,14 @@ const HomeScreen = ({ navigation }) => {
       </View>
     );
 
+    // Show "Join" CTA when: run activity, run exists, user has a visit at this gym,
+    // and user hasn't already joined this run.
+    const canJoin =
+      isRunActivity &&
+      !!item.runId &&
+      !joinedRunIds.has(item.runId) &&
+      schedules.some((s) => s.gymId === item.gymId);
+
     return (
       <TouchableOpacity key={item.id} activeOpacity={0.75} onPress={handleCardPress}>
         <BlurView intensity={40} tint="dark" style={styles.activityRow}>
@@ -528,7 +540,33 @@ const HomeScreen = ({ navigation }) => {
             </Text>
             <Text style={styles.activityTime}>{getRelativeTime(item.createdAt)}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+          {canJoin ? (
+            <TouchableOpacity
+              style={styles.feedJoinButton}
+              disabled={joiningRunId === item.runId}
+              activeOpacity={0.7}
+              onPress={async (e) => {
+                // Prevent the card's onPress from also firing.
+                e.stopPropagation?.();
+                setJoiningRunId(item.runId);
+                try {
+                  await joinExistingRun(item.runId, item.gymId, item.gymName);
+                  navigation.getParent()?.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: { gymId: item.gymId, gymName: item.gymName, players: 0 },
+                  });
+                } catch (err) {
+                  if (__DEV__) console.warn('[HomeScreen] joinExistingRun failed:', err?.message);
+                } finally {
+                  setJoiningRunId(null);
+                }
+              }}
+            >
+              <Text style={styles.feedJoinButtonText}>Join</Text>
+            </TouchableOpacity>
+          ) : (
+            <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+          )}
         </BlurView>
       </TouchableOpacity>
     );
@@ -561,6 +599,14 @@ const HomeScreen = ({ navigation }) => {
       navigation.push('UserProfile', { userId: item.userId });
     };
 
+    // Same Join CTA logic as renderActivityRow — friends' run starts are equally actionable.
+    const isRunActivity = item.action === 'started a run at';
+    const canJoin =
+      isRunActivity &&
+      !!item.runId &&
+      !joinedRunIds.has(item.runId) &&
+      schedules.some((s) => s.gymId === item.gymId);
+
     return (
       <TouchableOpacity key={item.id} activeOpacity={0.75} onPress={navigateToGym}>
         <BlurView intensity={40} tint="dark" style={styles.activityRow}>
@@ -583,7 +629,32 @@ const HomeScreen = ({ navigation }) => {
               {timeLabel}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+          {canJoin ? (
+            <TouchableOpacity
+              style={styles.feedJoinButton}
+              disabled={joiningRunId === item.runId}
+              activeOpacity={0.7}
+              onPress={async (e) => {
+                e.stopPropagation?.();
+                setJoiningRunId(item.runId);
+                try {
+                  await joinExistingRun(item.runId, item.gymId, item.gymName);
+                  navigation.getParent()?.navigate('Runs', {
+                    screen: 'RunDetails',
+                    params: { gymId: item.gymId, gymName: item.gymName, players: 0 },
+                  });
+                } catch (err) {
+                  if (__DEV__) console.warn('[HomeScreen] joinExistingRun (friend) failed:', err?.message);
+                } finally {
+                  setJoiningRunId(null);
+                }
+              }}
+            >
+              <Text style={styles.feedJoinButtonText}>Join</Text>
+            </TouchableOpacity>
+          ) : (
+            <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.3)" />
+          )}
         </BlurView>
       </TouchableOpacity>
     );
@@ -2215,6 +2286,19 @@ actionCard: {
   },
   activityTimeJustNow: {
     color: 'rgba(255,255,255,0.85)',
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  feedJoinButton: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    backgroundColor: colors.primary + '20',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  feedJoinButtonText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
     fontWeight: FONT_WEIGHTS.semibold,
   },
 

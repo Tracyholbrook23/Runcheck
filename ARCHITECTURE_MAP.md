@@ -186,7 +186,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `screens/CreatePrivateRunScreen.js` | **UI-only Premium teaser** for Private Run and Paid Run features. Interactive form with payout calculator. CTA shows "Coming Soon" modal → navigates to PremiumScreen. No Firestore writes. |
 | `screens/LeaderboardScreen.js` | Community leaderboard |
 | `screens/CheckInScreen.js` | GPS check-in flow |
-| `screens/PlanVisitScreen.js` | Schedule a future gym visit |
+| `screens/PlanVisitScreen.js` | Schedule a future gym visit. Co-planner signal layer: derives `coPlannersCount` from `gyms.scheduleCounts` (in-memory, no extra reads). Tiered signal badges (1 other / 2 others / 3+ "Run forming"). Start Run shortcut on visit cards when `otherCount >= 2 && !hasExistingRun`. Step 4 confirmation with 5-state contextual copy (0/1/2/3+ co-planners + existing run). "Join Run" CTA on run cards when `hasMatchingVisit && !isJoined` (uses `joinExistingRun` — not `startOrJoinRun`). |
 | `screens/GymMapScreen.js` | Map view of nearby gyms |
 | `screens/GymReviewsScreen.js` | Reviews for a specific gym |
 | `screens/GymsScreen.js` | Gym listing (possible Zone 1 overlap — see below) |
@@ -463,7 +463,7 @@ The following files serve multiple zones and should be treated carefully when ma
 |------|-------|----------------|
 | `services/runService.js` | Zone 1 + Zone 2 | Writes activity docs as a side effect of run creation/join |
 | `screens/HomeScreen.js` | Zone 2 + Zone 4 | Owns the activity feed query (Zone 2) AND the main dashboard shell (Zone 4) |
-| `screens/PlanVisitScreen.js` | Zone 1 + Zone 4 | Subscribes to `subscribeToAllUpcomingRuns` (Zone 1) for "Runs Being Planned" section; navigates to RunDetailsScreen. Primary home is Zone 4. |
+| `screens/PlanVisitScreen.js` | Zone 1 + Zone 4 | Subscribes to `subscribeToAllUpcomingRuns` (Zone 1) for "Runs Being Planned" section; navigates to RunDetailsScreen. Also uses `joinExistingRun` (Zone 1) for the "Join Run" CTA on matching visit run cards. Uses `startOrJoinRun` (Zone 1) for the Step 4 and visit-card "Start Run" shortcuts. Visit scheduling signals now directly influence run discovery UX. Primary home is Zone 4. |
 | `services/presenceService.js` | Zone 2 + Zone 5 | Writes activity docs (Zone 2) AND owns check-in/check-out logic (Zone 5 / shared) |
 | `hooks/useGymPresences.js` | Zone 1 + Zone 4 | Used by RunDetailsScreen (Zone 1) and presence display in HomeScreen (Zone 4) |
 | `hooks/useGymSchedules.js` | Zone 1 + Zone 4 | Used by RunDetailsScreen (Zone 1) for scheduled visit counts |
@@ -496,8 +496,10 @@ The following files serve multiple zones and should be treated carefully when ma
 | `functions/src/notifyRunStartingSoon.ts` | Scheduled Cloud Function (every 5 min). Run start reminders → all participants. |
 | `functions/src/onRunParticipantJoined.ts` | Firestore onCreate trigger on `runParticipants/{docId}`. Participant joined → run creator. |
 | `functions/src/onParticipantCountMilestone.ts` | Firestore onUpdate trigger on `runs/{runId}`. Milestone crossed (5/10/20 players) → run creator. |
+| `functions/src/notifyFollowersRunCreated.ts` | Firestore onCreate trigger on `runs/{runId}`. Run created → all gym followers (except creator). Cooldown key `followRunCreated_{runId}`, 24h TTL. |
+| `functions/src/onRunCreatedNotifyScheduledVisitors.ts` | Firestore onCreate trigger on `runs/{runId}`. Run created → users with a matching scheduled visit at the same gym within ±60 min. Uses existing `(gymId, status, scheduledTime)` composite index. Cooldown key `scheduleRunCreated_{runId}`, 24h TTL. Added 2026-03-29. |
 
 ---
 
-_Last updated: 2026-03-26 (Added `utils/sanitize.js` to Zone 3 utility layer. Added `scripts/repairReliabilityScores.js` to Zone 5 migration scripts. Previous: 2026-03-24 — Added `muteConversation`, `unmuteConversation`, `getConversationMuteState` to dmService.js role description. Previous: 2026-03-23 — Weekly cleanup: added OnboardingRegionScreen, ClaimUsernameScreen, EditProfileScreen, MessagesScreen, DMConversationScreen to zone listings. Added `usernames/` and `conversations/` collections to Zone 3. Added `dmService.js` to Zone 3 service layer.)_
+_Last updated: 2026-03-29 (Updated PlanVisitScreen role description — co-planner signal layer, Start Run shortcut, Join Run CTA, joinExistingRun usage. Updated PlanVisitScreen Zone Overlap entry to document joinExistingRun and startOrJoinRun dual usage. Added `notifyFollowersRunCreated.ts` and `onRunCreatedNotifyScheduledVisitors.ts` to Phase 1 Push Notification Backend Files table. Previous: 2026-03-26 — Added `utils/sanitize.js` to Zone 3 utility layer. Added `scripts/repairReliabilityScores.js` to Zone 5 migration scripts.)_
 _Zones determined by: file name patterns, service dependency analysis, screen comment headers, and BACKEND_MEMORY.md data model._
