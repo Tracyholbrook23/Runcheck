@@ -1,5 +1,5 @@
 # RunCheck — Backend Memory Snapshot
-_Last updated: 2026-03-26 (2026-03-26 session B: backend fully deployed and verified — all Cloud Functions including Phase 2 push notifications (notifyFollowersRunCreated, notifyFollowersPresenceMilestone, onGymPresenceUpdated, detectRunNoShows, onScheduleWrite) confirmed live; Firestore rules deployed and verified matching local file; serviceAccountKey.json confirmed not in git history — no rotation required. 2026-03-26 session A: hooks updated with InteractionManager deferred subscriptions. 2026-03-25: added repairReliabilityScores.js admin script, Phase 2 CF notifyFollowersPresenceMilestone + onGymPresenceUpdated. 2026-03-24: added adminActions collection, isRemoved fields on DM messages, messageContext on reports, blockedUsers on users, mutedBy on conversations, skillLevel+gymName on runParticipants; added removeDmMessage CF, onDmMessageCreated CF; updated dmService with block/mute functions; updated moderationHelpers with enforceRemoveDmMessage)_
+_Last updated: 2026-03-30 — weekly cleanup (2026-03-26 session B: backend fully deployed and verified — all Cloud Functions including Phase 2 push notifications (notifyFollowersRunCreated, notifyFollowersPresenceMilestone, onGymPresenceUpdated, detectRunNoShows, onScheduleWrite) confirmed live; Firestore rules deployed and verified matching local file; serviceAccountKey.json confirmed not in git history — no rotation required. 2026-03-26 session A: hooks updated with InteractionManager deferred subscriptions. 2026-03-25: added repairReliabilityScores.js admin script, Phase 2 CF notifyFollowersPresenceMilestone + onGymPresenceUpdated. 2026-03-24: added adminActions collection, isRemoved fields on DM messages, messageContext on reports, blockedUsers on users, mutedBy on conversations, skillLevel+gymName on runParticipants; added removeDmMessage CF, onDmMessageCreated CF; updated dmService with block/mute functions; updated moderationHelpers with enforceRemoveDmMessage)_
 
 ## Overview
 Firebase-only backend. No custom server. Logic lives in:
@@ -84,9 +84,14 @@ Firebase-only backend. No custom server. Logic lives in:
 ```js
 {
   name, address, city, state,
+  zip: string | undefined,       // added 2026-03-29 (Batch 2 gyms); absent on original 9
   type: 'indoor' | 'outdoor',
   accessType: 'paid' | 'free',
+  status: 'active' | 'hidden' | 'archived',  // added 2026-03-15 via seedProductionGyms.js validation
   notes, imageUrl,
+  placeId: string | undefined,   // Google Places ID — populated by enrichGymsWithPlaces.js pipeline
+  website: string | undefined,   // official website — populated by enrichGymsWithPlaces.js pipeline
+  photoGallery: string[] | undefined,  // up to 3 Firebase Storage URLs — populated by downloadGymPhotos.js
   location: { latitude, longitude },
   checkInRadiusMeters: number,   // default: 100
   currentPresenceCount: number,  // ⚠️ stale counter — do NOT use for UI, use real-time presences
@@ -95,6 +100,8 @@ Firebase-only backend. No custom server. Logic lives in:
   createdAt, updatedAt: Timestamp,
 }
 ```
+> **Admin-only writes**: `seedProductionGyms.js` (Runcheck repo root) is the single source of truth. Uses `set(..., { merge: true })` — safe to re-run. System-managed fields (`currentPresenceCount`, `scheduleCounts`) are never included in seed data. Enrichment fields (`placeId`, `website`, `imageUrl`, `photoGallery`) are populated by the `runcheck-backend/scripts/` pipeline: `enrichGymsWithPlaces.js` → `downloadGymPhotos.js` → `seedGyms.js`.
+> **Gym count as of 2026-03-29**: 19 total (9 original fully enriched, 10 Batch 2 pending enrichment).
 
 ### `presence/{uid}_{gymId}`   ← compound doc ID
 ```js
@@ -419,10 +426,7 @@ Firestore rules for `conversations` collection **deployed 2026-03-25, verified m
 - **`subscribeToUserPresence(odId, callback)`** → watches user's own active presence
 - **`expireStalePresences()`** → client-side cleanup job (temporary; Cloud Function needed)
 - **`getPresenceId(uid, gymId)`** → `"${uid}_${gymId}"`
-- ⚠️ GPS distance check is **commented out** — must re-enable before launch:
-  ```js
-  // if (distanceFromGym > checkInRadius) { throw new Error(...) }
-  ```
+- ✅ GPS distance check **re-enabled** (2026-03-27) — both client-side gate in `usePresence.js` and service-layer gate in `presenceService.js` are active. Dev bypass (`EXPO_PUBLIC_DEV_SKIP_GPS`) is untouched.
 
 
 ### `dmService.js`
@@ -673,7 +677,7 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 
 ## Business Rules (key ones)
 - One active presence per user at a time (compound doc ID enforces this)
-- GPS check-in radius: 100m default (per gym configurable) — **currently disabled for testing**
+- GPS check-in radius: 100m default (per gym configurable) — **re-enabled 2026-03-27** (both `usePresence.js` and `presenceService.js`)
 - Auto-expire: 120 min default (per gym configurable)
 - Max 5 active scheduled sessions per user
 - Schedule grace period: 60 min (user can check in up to 60 min after scheduled time and have it count)
@@ -706,7 +710,7 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 ---
 
 ## Known Issues / TODO (Backend)
-1. **GPS enforcement is off** — re-enable the commented-out distance check in `presenceService.checkIn` before launch
+1. **~~GPS enforcement is off~~** — ✅ RESOLVED 2026-03-27. Re-enabled in both `usePresence.js` and `presenceService.js`.
 2. **Auto-expiry is client-side only** — need Cloud Function to expire presences server-side without deducting points (call `checkOut(isManual=false)`)
 3. **`gym.currentPresenceCount` lags real-time** — it's a denormalized counter updated by transactions; not filtered by `expiresAt`. The UI must NOT use it for display — always use `useLivePresenceMap` / `subscribeToGymPresences`. All screens now use the correct source. (`PlanVisitScreen` was the last remaining violation; fixed 2026-03-13 — replaced with `countMap[gym.id]` from `useLivePresenceMap`.)
 4. **`activity` index** — confirm composite Firestore index exists for `createdAt DESC` inequality query on HomeScreen feed
@@ -718,6 +722,8 @@ RANKS = [Bronze (0), Silver (200), Gold (600), Platinum (1500), Diamond (3500), 
 
 11. **~~`conversations` Firestore rules not written~~** — ✅ RESOLVED. Deployed 2026-03-25, verified match 2026-03-26. Participant-only reads/writes enforced via `participantIds` array. DM messages gated by parent doc lookup + `isNotSuspended()` on create.
 13. **~~`usernames` Firestore rules not written~~** — ✅ RESOLVED. Deployed 2026-03-25, verified match 2026-03-26. Create requires `uid == request.auth.uid`; update and delete blocked.
+
+14. **`onRunCreatedNotifyScheduledVisitors` NOT DEPLOYED** — Cloud Function was written 2026-03-29 and is live in the repo but has NOT been deployed. It is currently inert. Run: `cd ~/Desktop/runcheck-backend && firebase deploy --only functions:onRunCreatedNotifyScheduledVisitors`. This is also flagged on LAUNCH_CHECKLIST.
 
 9. **`notifCooldowns` map will grow unboundedly** — Phase 1 notifications store cooldown keys as a map on `users/{uid}.notifCooldowns`. Each key is unique per run (e.g. `runReminder_{runId}`, `participantJoined_{runId}`, `runMilestone_{runId}_5`). Power users who join hundreds of runs over time will accumulate a large map, approaching Firestore's 1 MB doc limit. **Migration plan:** Move to `users/{uid}/notifCooldowns/{key}` subcollection (one doc per cooldown key, `setAt: Timestamp`). Only `checkAndSetCooldown` in `notificationHelpers.ts` needs to change. Add a Firestore TTL policy on the subcollection to auto-delete docs after 48h. **Do this before serious marketing / ~500+ active users.**
 

@@ -2,6 +2,4 @@
   <color name="splashscreen_background">#1A1A2E</color>
   <color name="iconBackground">#FFFFFF</color>
   <color name="colorPrimary">#023c69</color>
-  <color name="colorPrimaryDark">#1A1A2E</color>
-  <color name="notification_icon_color">#E94E1B</color>
 </resources>

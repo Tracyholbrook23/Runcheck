@@ -17,13 +17,19 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.runcheck.app",
+      "buildNumber": "2",
       "runtimeVersion": "1.0.0",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "comgooglemaps"
         ],
-        "NSUserNotificationUsageDescription": "RunCheck sends notifications for runs at your gyms and activity from players you follow."
+        "NSUserNotificationUsageDescription": "RunCheck sends notifications for runs at your gyms and activity from players you follow.",
+        "NSCameraUsageDescription": "RunCheck uses your camera to record and share game clips.",
+        "NSMicrophoneUsageDescription": "RunCheck uses your microphone to record audio with your game clips.",
+        "NSPhotoLibraryUsageDescription": "RunCheck uses your photo library to let you share images on your profile.",
+        "NSPhotoLibraryAddUsageDescription": "RunCheck saves your recorded game clips to your camera roll.",
+        "NSLocationWhenInUseUsageDescription": "RunCheck uses your location to find nearby gyms and prompt you to check in when you arrive."
       }
     },
     "android": {
@@ -37,30 +43,18 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
       ],
       "runtimeVersion": "1.0.0"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "RunCheck uses your location to verify check-ins at gyms near you.",
-          "locationAlwaysAndWhenInUsePermission": "Allow RunCheck to use your location to check in at nearby gyms."
-        }
-      ],
-      "@react-native-community/datetimepicker",
-      "expo-video",
-      [
-        "expo-notifications",
-        {
-          "color": "#E94E1B"
-        }
-      ]
-    ],
     "extra": {
       "eas": {
         "projectId": "bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d"

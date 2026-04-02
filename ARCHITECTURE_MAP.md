@@ -292,6 +292,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 | `functions/src/suspendUser.ts` | Admin callable: suspend a user (escalating) |
 | `functions/src/unsuspendUser.ts` | Admin callable: unsuspend a user |
 | `functions/src/unhideClip.ts` | Admin callable: unhide a clip |
+| `functions/src/removeDmMessage.ts` | Admin callable: soft-delete a DM message (`isRemoved: true`). Calls `enforceRemoveDmMessage` → optionally `resolveRelatedReport`. Writes to `adminActions/{autoId}`. Added 2026-03-24. |
 
 ### Hook Layer
 | File | Role |
@@ -449,7 +450,7 @@ Zone assignments are based on file content, service dependencies, and the data m
 ### Key Constraints
 - Cloud Functions own all reliability writes — do not call deprecated methods from the client
 - `serviceAccountKey.json` is for migration scripts only — never import in app code
-- GPS distance check in `presenceService.checkIn` is currently commented out — do not remove the comment without an explicit task
+- GPS distance check in `presenceService.checkIn` is **re-enabled** as of 2026-03-27 (both `usePresence.js` and `presenceService.js`). Dev bypass `EXPO_PUBLIC_DEV_SKIP_GPS` is still available.
 - **Gym writes are admin-only** — the client app is read-only for the `gyms` collection. All gym data changes go through `seedProductionGyms.js`. Firestore rules block client `create` and `delete`; `update` is restricted to system-managed counter fields only.
 - **Gym images are migrating to Firebase Storage** — path convention: `gymImages/{gymId}.jpg`. Storage rules: public read, write blocked (admin uploads via console/gsutil). The seed script warns on non-Firebase-hosted imageUrls.
 

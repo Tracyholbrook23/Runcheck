@@ -1,3 +1,17 @@
 ios/Pods
 ios_old_1772773868
 node_modules
+dist
+.expo 2
+.expo
+ios/RunCheck 2.xcodeproj
+ios/build
+android/.gradle
+android/build
+android/.cxx
+modules/video-trimmer/android
+__tests__
+scripts
+docs
+design
+seedProductionGyms.js

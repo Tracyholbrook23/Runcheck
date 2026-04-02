@@ -100,31 +100,64 @@ Always reconcile: compare what was planned at session start vs. what actually ha
 
 ---
 
-## Quick Handoff — Start Here (2026-03-28 session end)
+## Quick Handoff — Start Here (2026-04-02 session end)
 
-**What was fixed 2026-03-27:**
-- AdminAllClipsScreen composite index errors (isHidden+hiddenAt, isDeletedByUser+deletedAt)
-- expireClips.ts: raw file deletion guard prevents permanently broken clips
-- storagePath vs finalStoragePath: reverted incorrect client-side changes across 7 files — storagePath is always authoritative
-- Age validation: COPPA-compliant (13–100), integer stored in Firestore
-- OnboardingHomeCourtScreen: location button, search bar, request-gym row, distance labels
-- RequestGym navigation error from onboarding: registered in root stack
-- ProfileStack dark-mode back button: added screenOptions NAV_HEADER
+**What was done 2026-04-02 — GPS enforcement fixed, race condition patched:**
 
-**Root causes discovered:**
-- finalStoragePath is written at finalization as a reserved path but may point to a non-existent file if processor failed. storagePath is always the live playback field.
-- expireClips was deleting raw files for clips where raw was the only copy (storagePath === rawStoragePath). Now guarded.
-
-**Deployed 2026-03-28:**
-- ✅ `firebase deploy --only firestore:indexes` — isHidden+hiddenAt and isDeletedByUser+deletedAt indexes live
-- ✅ `firebase deploy --only functions:expireClips` — raw deletion guard live
-- ✅ Firestore manual fix — `gymClips/presence_cowboys-fit-pflugerville_SMQUyWWMUOZpBHYN7pWlt15b6CB3` set `isHidden = true`
+- **GPS check-in enforcement confirmed working**: Root cause was `EXPO_PUBLIC_DEV_SKIP_GPS=true` baked into production bundle. Changed to `false` in `.env`. Additionally added `__DEV__ &&` guard to `locationUtils.js` so fake Cowboys Fit coordinates can physically never be used in a production build — regardless of env variable state. Pushed via OTA with `--clear-cache`.
+- **Negative presence count race condition fixed**: `markPresenceExpired` in `presenceService.js` was non-atomic. Replaced with `runTransaction` + status guard to prevent double-decrement between client and Cloud Function. Included in same OTA push.
+- **GPS diagnostic alert added and removed**: Temporary `Alert.alert` added to `usePresence.js` `checkIn` to show GPS debug values. Confirmed flag=false, real location used. Alert removed in final clean OTA push.
 
 **What still needs action:**
-1. Fresh iOS build (~April 1 when EAS quota resets) — current TestFlight binary missing OTA channel header
-2. Full real-device QA pass after fresh build: onboarding flow, AdminAllClipsScreen Hidden/Deleted tabs, ClipPlayerScreen buffering states
+1. **Full real-device QA pass** — check-in flow, notifications, location, clips, all core screens
+2. **App Store screenshots** — iPhone 15 Pro / 16 Max sizes (last unchecked launch checklist item)
+3. **Wire ToS URL** in `SettingsScreen.js` (pure JS change, OTA)
+4. **Run enrichment pipeline** on Batches 2–6 gyms
+5. **Verify Batch 2–6 gym coordinates** via Google Maps pin-drop
 
-**First recommended task next session:**
-Wait for EAS quota reset (~April 1), trigger fresh iOS build, then do full real-device QA pass.
+---
 
-_Last updated: 2026-03-28_
+**What was done 2026-04-01 — Production iOS build shipped, app live on device:**
+
+- **Cloud Function deployed**: `onRunCreatedNotifyScheduledVisitors` — notifies users with scheduled visits when a run is created at their gym. Unblocked by clean `npm install` in `functions/` to resolve mime/express version conflict.
+- **app.json overhauled for production**:
+  - Entire `plugins` array removed (config-plugins version mismatch was breaking local builds)
+  - All required iOS App Store permission strings added directly to `ios.infoPlist` (no plugin needed): NSCameraUsageDescription, NSMicrophoneUsageDescription, NSPhotoLibraryUsageDescription, NSPhotoLibraryAddUsageDescription, NSLocationWhenInUseUsageDescription
+  - `buildNumber: "2"` added after first EAS submission failed with "build number already used"
+- **eas.json updated**: `autoIncrement: true` added to production profile — future builds will never hit the build number conflict again
+- **Project artifacts cleaned up** — `.easignore` expanded significantly, duplicate files removed:
+  - Deleted: `dist/`, `ios/RunCheck 2.xcodeproj`, `.expo 2/`, all `ios/* 2` duplicate files
+  - Added to `.easignore`: `.expo`, `ios/build`, `android/.gradle`, `android/build`, `android/.cxx`, `modules/video-trimmer/android`, `__tests__`, `scripts`, `docs`, `design`, `seedProductionGyms.js`
+- **EAS production iOS build succeeded**: Build ID `eaee52e1-12e5-4408-8ac1-e927d69a6853`, uploaded at 12.3 MB
+- **App is now live on device via TestFlight** ✅
+
+**Verified before build (all clear):**
+- OTA chain: `updates.url` + `runtimeVersion` + `channel: "production"` all wired correctly ✅
+- Location: foreground-only (`requestForegroundPermissionsAsync`) — `NSLocationWhenInUseUsageDescription` sufficient ✅
+- Notifications: standard visible push only, no silent push, no UIBackgroundModes needed ✅
+- All App Store required permission strings present ✅
+
+**Known limitations accepted for v1.0:**
+- No `plugins` array — Android notification branding (color/icon) not configured. Notifications work but show generic styling on Android.
+- `UIBackgroundModes` not set — acceptable since RunCheck uses standard visible push only.
+
+**What still needs action (from 2026-04-01):**
+1. **Full real-device QA pass** — check-in flow, notifications, location, clips, all core screens on the new TestFlight build
+2. **App Store screenshots** — iPhone 15 Pro / 16 Max sizes (last unchecked launch checklist item)
+3. **Wire ToS URL** in `SettingsScreen.js` (pure JS change, can ship via OTA: `eas update --channel production`)
+4. **Run enrichment pipeline** on Batches 2–6 gyms: `cd ~/runcheck-backend && node scripts/enrichGymsWithPlaces.js && node scripts/downloadGymPhotos.js && node scripts/selectBestGymPhoto.js && node scripts/seedGyms.js`
+5. **Verify Batch 2–6 gym coordinates** via Google Maps pin-drop — current coords are best-effort estimates
+6. **LAUNCH_CHECKLIST.md** — manually check off: Cloud Functions item ✅, EAS production build ✅
+
+**OTA update flow (no new build needed for JS changes):**
+```
+eas update --channel production
+```
+
+**If a new native build is ever needed:**
+```
+eas build --platform ios --profile production
+```
+Build number will auto-increment. No manual edits needed.
+
+_Last updated: 2026-04-02_

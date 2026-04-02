@@ -224,14 +224,20 @@ A `validateGymData.js` script (or a `--dry-run` flag on the seed script) that ru
 
 5. **Add the coordinate-selection rule to the seed script header comment.** Future-you (or any contributor) should see the instruction "get coordinates from Google Maps pin drop, not from a geocoder" right where the data lives.
 
-### Phase 2: Add new gyms (do next)
+### Phase 2: Add new gyms ✅ COMPLETE (2026-03-29)
 
 **Goal:** Scale from 5 to N gyms safely using the improved seed script.
 
-1. Follow the onboarding workflow from Section D for each new gym.
-2. Run `node seedProductionGyms.js --validate` first.
-3. Run `node seedProductionGyms.js` to write.
-4. Verify each new gym in the app.
+**Done:** 19 gyms total in Firestore as of 2026-03-29. Original 9 fully enriched (placeId, website, imageUrl, photoGallery). Batch 2 (10 gyms) seeded with core fields — enrichment pipeline still needs to run for photos.
+
+**Batch 2 pending enrichment** (`cd ~/Desktop/runcheck-backend`):
+```bash
+node scripts/enrichGymsWithPlaces.js   # → enrichedGyms.json
+node scripts/downloadGymPhotos.js      # → enrichedGymsWithImages.json + Firebase Storage
+node scripts/seedGyms.js               # → writes placeId/website/imageUrl/photoGallery to Firestore
+```
+
+**Also needed:** Pin-drop coordinate verification for all 10 Batch 2 gyms (current coords are best-effort estimates from training data — verify each one in Google Maps).
 
 ### Phase 3: Gym request collection (do when ready for user-facing feature)
 
