@@ -53,8 +53,8 @@ export const getCurrentLocation = async () => {
     console.log('[GPS] DEV_SKIP_GPS =', process.env.EXPO_PUBLIC_DEV_SKIP_GPS);
   }
 
-  if (isDevGps()) {
-    if (__DEV__) console.warn('[GPS] Dev mode — using fake Cowboys Fit location');
+  if (__DEV__ && isDevGps()) {
+    console.warn('[GPS] Dev mode — using fake Cowboys Fit location');
     return DEV_LOCATION;
   }
 

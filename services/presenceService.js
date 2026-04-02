@@ -448,22 +448,42 @@ export const checkOut = async (isManual = true) => {
 const markPresenceExpired = async (presenceId, gymId) => {
   try {
     const presenceRef = doc(db, 'presence', presenceId);
-    const presenceDoc = await getDoc(presenceRef);
+    const gymRef = doc(db, 'gyms', gymId);
 
-    if (presenceDoc.exists() && presenceDoc.data().status === PRESENCE_STATUS.ACTIVE) {
-      const data = presenceDoc.data();
+    // Track whether this call actually did the expiry work, so we only
+    // run side-effects (user clear, activity cleanup) when we won the race.
+    let expiredData = null;
 
-      await updateDoc(presenceRef, {
+    // Atomic transaction: status check + presence update + gym count decrement
+    // happen together. If the Cloud Function (or another client) already set
+    // status away from 'active', the transaction is a no-op — preventing the
+    // double-decrement that caused negative currentPresenceCount values.
+    await runTransaction(db, async (transaction) => {
+      const presenceDoc = await transaction.get(presenceRef);
+
+      // Guard: already processed by Cloud Function or another client — skip.
+      if (!presenceDoc.exists() || presenceDoc.data().status !== PRESENCE_STATUS.ACTIVE) {
+        return;
+      }
+
+      expiredData = presenceDoc.data();
+
+      transaction.update(presenceRef, {
         status: PRESENCE_STATUS.EXPIRED,
       });
 
-      // Update gym count
-      await updateGymPresenceCount(gymId, -1);
+      transaction.update(gymRef, {
+        currentPresenceCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+    });
 
+    // Side-effects: only run when this call won the race and did the expiry.
+    if (expiredData) {
       // Clear user's activePresence — only permitted when the current user IS the owner
       // (Firestore rules enforce isSelf; other users expiring a stale presence can't write here)
-      if (auth.currentUser?.uid === data.odId) {
-        const userRef = doc(db, 'users', data.odId);
+      if (auth.currentUser?.uid === expiredData.odId) {
+        const userRef = doc(db, 'users', expiredData.odId);
         const userDoc = await getDoc(userRef);
         if (userDoc.exists() && userDoc.data().activePresence?.gymId === gymId) {
           await updateDoc(userRef, { activePresence: null });
@@ -476,11 +496,11 @@ const markPresenceExpired = async (presenceId, gymId) => {
       // (Firestore rules enforce resource.data.userId == request.auth.uid).
       // When another user expires a stale presence, skip the activity cleanup —
       // it's non-critical display data and will age out naturally.
-      if (auth.currentUser?.uid === data.odId) {
+      if (auth.currentUser?.uid === expiredData.odId) {
         getDocs(
           query(
             collection(db, 'activity'),
-            where('userId', '==', data.odId),
+            where('userId', '==', expiredData.odId),
             where('gymId',  '==', gymId),
             where('action', '==', 'checked in at'),
             limit(1)
