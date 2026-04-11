@@ -41,11 +41,12 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 // ── App constants ──────────────────────────────────────────────────────────
 const APP_VERSION = '1.0.0';
-const SUPPORT_EMAIL = 'runcheckapp@gmail.com';
+const SUPPORT_EMAIL = 'hello@theruncheck.app';
 const APP_STORE_URL = 'https://apps.apple.com/app/runcheck/id000000000'; // update with real ID
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.runcheck'; // update if needed
-const PRIVACY_URL = 'https://gray-marlin-55c.notion.site/RunCheck-Privacy-Policy-3280818539eb80168b7cc7dd061f3d09';
-const TERMS_URL = 'https://runcheckapp.com/terms';     // update with real URL
+const WEBSITE_URL = 'https://www.theruncheck.app';
+const PRIVACY_URL = 'https://www.theruncheck.app/privacy';
+const TERMS_URL = 'https://www.theruncheck.app/terms';
 
 /**
  * SettingsScreen — Account settings and actions.
@@ -411,6 +412,26 @@ export default function SettingsScreen({ navigation }) {
       {/* ── ABOUT ──────────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>About</Text>
       <View style={styles.card}>
+
+        {/* Website */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={() => handleOpenURL(WEBSITE_URL)}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#0A84FF22' }]}>
+              <Ionicons name="globe-outline" size={18} color="#0A84FF" />
+            </View>
+            <View>
+              <Text style={styles.menuLabel}>Visit Our Website</Text>
+              <Text style={styles.settingHint}>theruncheck.app</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
 
         {/* Privacy Policy */}
         <TouchableOpacity
