@@ -388,7 +388,7 @@ function RunChatRow({ item, uid, colors, navigation }) {
               ]}
               numberOfLines={1}
             >
-              Group chat
+              {item.lastMessage?.text || 'Group chat'}
             </Text>
             {isUnread && (
               <View style={[styles.unreadDot, { backgroundColor: colors.primary }]} />
@@ -488,8 +488,79 @@ function SearchBar({ value, onChangeText, onClear, colors }) {
 export default function MessagesScreen({ navigation }) {
   const { colors } = useTheme();
   const uid = auth.currentUser?.uid;
-  const { conversations, loading: dmsLoading } = useConversations();
-  const { runChats, loading: runChatsLoading } = useMyRunChats();
+  const { conversations: conversations_raw, loading: dmsLoading } = useConversations();
+  const { runChats: rawRunChats, loading: runChatsLoading } = useMyRunChats();
+
+  // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
+  // Flip to false before shipping. Leaves real DMs intact, mocks run chats only.
+  const SCREENSHOT_MODE = true;
+
+  const t = (hoursFromNow) => {
+    const d = new Date(Date.now() + hoursFromNow * 3600000);
+    return { toDate: () => d, toMillis: () => d.getTime() };
+  };
+
+  const MOCK_RUN_CHATS = [
+    {
+      runId:          'mcr1',
+      gymId:          'austin-sports-center-central',
+      gymName:        'Austin Sports Center - Central',
+      gymImageUrl:    'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/austin-sports-center-central/2.jpg',
+      startTime:      t(1.5),
+      lastMessage:    { text: 'Anyone need a 5th? I can be there in 10' },
+      lastActivityAt: { toMillis: () => Date.now() - 4  * 60000, toDate: () => new Date(Date.now() - 4  * 60000) },
+      unread:         true,
+    },
+    {
+      runId:          'mcr5',
+      gymId:          'gregory-gymnasium-austin',
+      gymName:        'Gregory Gymnasium',
+      gymImageUrl:    'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/gregory-gymnasium-austin/5.jpg',
+      startTime:      t(3),
+      lastMessage:    { text: 'Full court is open, come through 🔥' },
+      lastActivityAt: { toMillis: () => Date.now() - 18 * 60000, toDate: () => new Date(Date.now() - 18 * 60000) },
+      unread:         true,
+    },
+    {
+      runId:          'mcr2',
+      gymId:          'clay-madsen-round-rock',
+      gymName:        'Clay Madsen Recreation Center',
+      gymImageUrl:    'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/clay-madsen-round-rock/1.jpg',
+      startTime:      t(26),
+      lastMessage:    { text: 'See y\'all tomorrow night 💪' },
+      lastActivityAt: { toMillis: () => Date.now() - 2  * 3600000, toDate: () => new Date(Date.now() - 2  * 3600000) },
+      unread:         false,
+    },
+    {
+      runId:          'mcr3',
+      gymId:          'hutto-family-ymca',
+      gymName:        'Hutto Family YMCA',
+      gymImageUrl:    'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/hutto-family-ymca/4.jpg',
+      startTime:      t(4),
+      lastMessage:    { text: 'Run starts at 7, don\'t be late' },
+      lastActivityAt: { toMillis: () => Date.now() - 5  * 3600000, toDate: () => new Date(Date.now() - 5  * 3600000) },
+      unread:         false,
+    },
+  ];
+
+  const runChats = SCREENSHOT_MODE ? MOCK_RUN_CHATS : rawRunChats;
+
+  // Patch specific DM preview texts for screenshots without touching Firestore
+  const MOCK_DM_OVERRIDES = {
+    'Captain Jack': "you're super tough bro",
+    'Monty Harry':  'you tryna hoop later at Cowboy Fit',
+  };
+
+  const conversations = SCREENSHOT_MODE
+    ? (conversations_raw || []).map((conv) => {
+        const otherUid = Object.keys(conv.participants || {}).find((id) => id !== uid);
+        const otherName = conv.participants?.[otherUid]?.name;
+        const override = otherName ? MOCK_DM_OVERRIDES[otherName] : null;
+        if (!override) return conv;
+        return { ...conv, lastMessage: { ...(conv.lastMessage || {}), text: override } };
+      })
+    : conversations_raw;
+  // ────────────────────────────────────────────────────────────────────────────
 
   const [searchQuery, setSearchQuery] = useState('');
   const [playerResults, setPlayerResults] = useState([]);

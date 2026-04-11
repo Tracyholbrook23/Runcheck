@@ -296,6 +296,8 @@ export default function ViewRunsScreen({ navigation, route }) {
   const [accessFilter, setAccessFilter] = useState(null);     // null | 'free' | 'membership'
   const [cityFilter, setCityFilter] = useState(null);         // null | city string
   const [runLevelFilter, setRunLevelFilter] = useState(null); // null | 'casual' | 'mixed' | 'competitive'
+  const [crewFilter, setCrewFilter] = useState(null);         // null | uid string — filter by crew member
+  const [ageGroupFilter, setAgeGroupFilter] = useState(null); // null | '18-25' | '26-35' | '36+'
   const [allUpcomingRuns, setAllUpcomingRuns] = useState([]); // live runs across all gyms for level filter
   const [sortByNearest, setSortByNearest] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
@@ -335,7 +337,117 @@ export default function ViewRunsScreen({ navigation, route }) {
   // ── Live player counts ────────────────────────────────────────────────────
   // Canonical app-wide presence counts — shared hook, single Firestore subscription.
   // Uses status == 'ACTIVE' filter (matches presenceService) and deduplicates by odId.
-  const { countMap: liveCountMap } = useLivePresenceMap();
+  const { countMap: rawCountMap } = useLivePresenceMap();
+
+  // ─── SCREENSHOT MODE ───────────────────────────────────────────────────────
+  // Flip to true before screenshots, back to false before shipping.
+  const SCREENSHOT_MODE = true;
+
+  const MOCK_CREW = [
+    { uid: 'mf1',  name: 'Malik_ATX',   photoURL: 'https://randomuser.me/api/portraits/men/36.jpg'   },
+    { uid: 'mf2',  name: 'Tay_Buckets', photoURL: 'https://randomuser.me/api/portraits/men/52.jpg'   },
+    { uid: 'mf3',  name: 'JordanH',     photoURL: 'https://randomuser.me/api/portraits/men/32.jpg'   },
+    { uid: 'mf4',  name: 'DreDay23',    photoURL: 'https://randomuser.me/api/portraits/men/44.jpg'   },
+    { uid: 'mf5',  name: 'LongHorn1',   photoURL: 'https://randomuser.me/api/portraits/men/12.jpg'   },
+    { uid: 'mf6',  name: 'SwishKid',    photoURL: 'https://randomuser.me/api/portraits/men/29.jpg'   },
+    { uid: 'mf7',  name: 'TopLock',     photoURL: 'https://randomuser.me/api/portraits/men/57.jpg'   },
+    { uid: 'mf8',  name: 'WingSpan',    photoURL: 'https://randomuser.me/api/portraits/women/31.jpg' },
+    { uid: 'mf9',  name: 'PickNRoll',   photoURL: 'https://randomuser.me/api/portraits/men/11.jpg'   },
+    { uid: 'mf10', name: 'Deja_Runs',   photoURL: 'https://randomuser.me/api/portraits/women/28.jpg' },
+  ];
+
+  const MOCK_COUNT_MAP = {
+    'austin-sports-center-central':         20,
+    'clay-madsen-round-rock':               18,
+    'ut-rec-sports-center-austin':          17,
+    'gregory-gymnasium-austin':             15,
+    'pan-american-recreation-center':       16,
+    'ymca-northwest-austin':                13,
+    'metz-recreation-center':               11,
+    'montopolis-rec-center-austin':         10,
+    'dittmar-recreation-center':             9,
+    'northwest-recreation-center-austin':    8,
+    'lifetime-austin-north':                 6,
+    'golds-gym-hesters-crossing':            5,
+    'la-fitness-cedar-park':                 4,
+    'austin-sports-center-north':            3,
+    'cowboys-fit-pflugerville':             14,
+    'veterans-park-round-rock':              7,
+    'ymca-round-rock':                      12,
+    'cedar-park-recreation-center':          2,
+    'east-communities-ymca-austin':          3,
+    'south-austin-recreation-center':        1,
+    'eastwoods-park':                        6,
+    'alamo-pocket-park':                     4,
+    // Additional gyms
+    'austin-recreation-center-shoal-creek':  9,
+    'bee-cave-central-park-gym':             5,
+    'brushy-creek-community-center':        11,
+    'brushy-creek-sports-park-cedar-park':   8,
+    'buttermilk-neighborhood-park':          3,
+    'cat-hollow-park-round-rock':            7,
+    'cedar-park-ymca':                      14,
+    'chandler-creek-park-round-rock':        4,
+    'chasco-family-ymca-round-rock':        13,
+    'creekside-park-cedar-park':             2,
+    'del-valle-recreation-center':           6,
+    'dell-way-park-round-rock':              3,
+    'dottie-jordan-outdoor':                 5,
+    'dottie-jordan-recreation-center':      10,
+    'dove-springs-recreation-center':        7,
+    'fitness-connection-austin-north':       9,
+    'fritz-park-hutto':                      4,
+    'frontier-park-round-rock':              6,
+    'georgetown-recreation-center':         12,
+    'givens-rec-outdoor':                    5,
+    'givens-recreation-center-austin':       8,
+    'green-slopes-park-round-rock':          2,
+    'gus-garcia-recreation-center':         11,
+    'hancock-rec-center-outdoor':            4,
+    'heatherwilde-park-pflugerville':        3,
+    'highland-park-pflugerville':            5,
+    'hoa-harris-branch-basketball-court':    7,
+    'house-of-gainz-austin':                 6,
+    'hutto-community-park':                  4,
+    'hutto-family-ymca':                    10,
+    'kyle-recreation-center':               8,
+    'la-fitness-aw-grimes-round-rock':       9,
+    'la-fitness-research-blvd':              7,
+    'la-fitness-rm620-round-rock':           6,
+    'la-fitness-south-austin':              11,
+    'la-fitness-south-lamar':               13,
+    'lake-creek-park-round-rock':            4,
+    'lakeway-activity-center':               6,
+    'lifetime-south-austin':               16,
+    'milburn-park-cedar-park':               3,
+    'nelson-ranch-park-cedar-park':          2,
+    'north-austin-ymca':                    15,
+    'northeast-metro-park-rec-center':       8,
+    'northwest-district-park':               5,
+    'northwest-family-ymca-austin':         14,
+    'old-settlers-park-round-rock':          9,
+    'parque-zaragoza-recreation-center':     7,
+    'pfluger-park-pflugerville':             5,
+    'pflugerville-recreation-center':       11,
+    'rosewood-recreation-center-austin':     8,
+    'round-rock-sports-center':             17,
+    'sendero-springs-park-round-rock':       3,
+    'settlement-park-round-rock':            4,
+    'shipe-neighborhood-park':               2,
+    'south-austin-rec-outdoor':              6,
+    'southwest-family-ymca-austin':         12,
+    'turner-roberts-recreation-center':      7,
+    'twin-lakes-ymca-cedar-park':           10,
+    'virginia-brown-recreation-center':      5,
+    'wells-branch-recreation-center':        9,
+    'west-austin-recreation-center':         8,
+    'ymca-downtown-austin':                 18,
+    'ymca-four-points-austin':              11,
+    'ymca-hays-communities-buda':            6,
+  };
+
+  const liveCountMap = SCREENSHOT_MODE ? MOCK_COUNT_MAP : rawCountMap;
+  // ──────────────────────────────────────────────────────────────────────────
 
   /**
    * getRunStatusLabel — Maps a live player count to a run-quality label,
@@ -785,13 +897,16 @@ export default function ViewRunsScreen({ navigation, route }) {
             {/* Sheet handle */}
             <View style={styles.sheetHandle} />
 
-            {/* Header */}
+            {/* Header — pinned above scroll */}
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Filter By</Text>
               <TouchableOpacity onPress={() => setFilterSheetVisible(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={20} color={isDark ? '#8E8E93' : '#6B7280'} />
               </TouchableOpacity>
             </View>
+
+            {/* Scrollable filter content */}
+            <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
 
             {/* ── Court Type ── */}
             <Text style={styles.sheetSectionLabel}>Court Type</Text>
@@ -888,6 +1003,82 @@ export default function ViewRunsScreen({ navigation, route }) {
               })}
             </View>
 
+            {/* ── My Crew ── */}
+            {SCREENSHOT_MODE && (
+              <>
+                <Text style={styles.sheetSectionLabel}>My Crew</Text>
+                <Text style={[styles.sheetToggleSub, { marginBottom: 10, marginTop: -4 }]}>
+                  Show gyms where your crew is playing
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={{ marginBottom: 16 }}
+                  contentContainerStyle={{ gap: 14, paddingHorizontal: 2 }}
+                >
+                  {MOCK_CREW.map((member) => {
+                    const active = crewFilter === member.uid;
+                    return (
+                      <TouchableOpacity
+                        key={member.uid}
+                        onPress={() => setCrewFilter(active ? null : member.uid)}
+                        activeOpacity={0.75}
+                        style={{ alignItems: 'center', gap: 5 }}
+                      >
+                        <View style={{
+                          width: 52, height: 52, borderRadius: 26,
+                          borderWidth: 2.5,
+                          borderColor: active ? colors.primary : 'transparent',
+                          padding: 2,
+                        }}>
+                          <Image
+                            source={{ uri: member.photoURL }}
+                            style={{ width: 44, height: 44, borderRadius: 22 }}
+                          />
+                        </View>
+                        <Text style={{
+                          fontSize: 10,
+                          color: active ? colors.primary : colors.textMuted,
+                          fontWeight: active ? '600' : '400',
+                          maxWidth: 52,
+                          textAlign: 'center',
+                        }} numberOfLines={1}>
+                          {member.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+
+            {/* ── Age Group ── */}
+            {SCREENSHOT_MODE && (
+              <>
+                <Text style={styles.sheetSectionLabel}>Age Group</Text>
+                <View style={styles.sheetPillRow}>
+                  {[
+                    { key: '18-25', label: '18 – 25' },
+                    { key: '26-35', label: '26 – 35' },
+                    { key: '36+',   label: '36 +' },
+                  ].map(({ key, label }) => {
+                    const active = ageGroupFilter === key;
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        style={[styles.sheetPill, active && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }]}
+                        onPress={() => setAgeGroupFilter(active ? null : key)}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons name="people-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />
+                        <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
             {/* ── Sort By ── */}
             <Text style={styles.sheetSectionLabel}>Sort By</Text>
             <TouchableOpacity
@@ -916,6 +1107,8 @@ export default function ViewRunsScreen({ navigation, route }) {
                   setAccessFilter(null);
                   setCityFilter(null);
                   setRunLevelFilter(null);
+                  setCrewFilter(null);
+                  setAgeGroupFilter(null);
                   setSortByNearest(false);
                   setFilterSheetVisible(false);
                 }}
@@ -924,6 +1117,8 @@ export default function ViewRunsScreen({ navigation, route }) {
                 <Text style={styles.sheetClearBtnText}>Clear All Filters</Text>
               </TouchableOpacity>
             )}
+
+            </ScrollView>
           </View>
         </Modal>
       </View>

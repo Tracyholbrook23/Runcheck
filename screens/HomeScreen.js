@@ -199,10 +199,91 @@ const HomeScreen = ({ navigation }) => {
 
   // Canonical app-wide presence map — single source of truth for all live counts.
   // Replaces the previous inline onSnapshot subscription on this screen.
-  const { presenceMap: livePresenceMap, countMap: liveCountMap } = useLivePresenceMap();
+  const { presenceMap: rawPresenceMap, countMap: rawCountMap } = useLivePresenceMap();
+
+  // ─── SCREENSHOT MODE ──────────────────────────────────────────────────────
+  // Set SCREENSHOT_MODE = true before taking app store screenshots, then flip
+  // back to false before shipping. Injects fake presence + activity data so
+  // Live Runs and the activity feed look populated without touching Firestore.
+  const SCREENSHOT_MODE = true;
+
+  const MOCK_PRESENCE_MAP = {
+    'austin-sports-center-central': [
+      { odId: 'mock1', userName: 'JordanH',   userAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 22 * 60000) } },
+      { odId: 'mock2', userName: 'DreDay23',  userAvatar: 'https://randomuser.me/api/portraits/men/44.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 18 * 60000) } },
+      { odId: 'mock3', userName: 'KingCourt', userAvatar: 'https://randomuser.me/api/portraits/men/55.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 14 * 60000) } },
+      { odId: 'mock4', userName: 'TreyCold',  userAvatar: 'https://randomuser.me/api/portraits/men/68.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 11 * 60000) } },
+      { odId: 'mock5', userName: 'LaceUp5',   userAvatar: 'https://randomuser.me/api/portraits/women/21.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 9 * 60000) } },
+      { odId: 'mock6', userName: 'CourtViz',  userAvatar: 'https://randomuser.me/api/portraits/men/76.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 7 * 60000) } },
+      { odId: 'mock7', userName: 'HoopZ',     userAvatar: 'https://randomuser.me/api/portraits/men/83.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 5 * 60000) } },
+      { odId: 'mock8', userName: 'PullUp3',   userAvatar: 'https://randomuser.me/api/portraits/women/35.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 3 * 60000) } },
+      { odId: 'mock9', userName: 'FastBreak', userAvatar: 'https://randomuser.me/api/portraits/men/91.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 1 * 60000) } },
+    ],
+    'ut-rec-sports-center-austin': [
+      { odId: 'mock10', userName: 'LongHorn1', userAvatar: 'https://randomuser.me/api/portraits/men/12.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 30 * 60000) } },
+      { odId: 'mock11', userName: 'BurnhamB',  userAvatar: 'https://randomuser.me/api/portraits/men/23.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 25 * 60000) } },
+      { odId: 'mock12', userName: 'SixManSix', userAvatar: 'https://randomuser.me/api/portraits/women/47.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 20 * 60000) } },
+      { odId: 'mock13', userName: 'RunGun4',   userAvatar: 'https://randomuser.me/api/portraits/men/61.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 12 * 60000) } },
+      { odId: 'mock14', userName: 'DriveTime', userAvatar: 'https://randomuser.me/api/portraits/men/72.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 6 * 60000) } },
+      { odId: 'mock15', userName: 'Buckets99', userAvatar: 'https://randomuser.me/api/portraits/women/58.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 2 * 60000) } },
+    ],
+    'clay-madsen-round-rock': [
+      { odId: 'mock16', userName: 'RockHoops', userAvatar: 'https://randomuser.me/api/portraits/men/14.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 45 * 60000) } },
+      { odId: 'mock17', userName: 'SwishKid',  userAvatar: 'https://randomuser.me/api/portraits/men/29.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 40 * 60000) } },
+      { odId: 'mock18', userName: 'FullCourt', userAvatar: 'https://randomuser.me/api/portraits/women/63.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 35 * 60000) } },
+      { odId: 'mock19', userName: 'AceDeuce',  userAvatar: 'https://randomuser.me/api/portraits/men/37.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 28 * 60000) } },
+      { odId: 'mock20', userName: 'PostUp7',   userAvatar: 'https://randomuser.me/api/portraits/men/48.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 22 * 60000) } },
+      { odId: 'mock21', userName: 'GlassWork', userAvatar: 'https://randomuser.me/api/portraits/women/19.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 17 * 60000) } },
+      { odId: 'mock22', userName: 'TopLock',   userAvatar: 'https://randomuser.me/api/portraits/men/57.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 13 * 60000) } },
+      { odId: 'mock23', userName: 'Elevation', userAvatar: 'https://randomuser.me/api/portraits/men/66.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 8 * 60000) } },
+      { odId: 'mock24', userName: 'DropStep',  userAvatar: 'https://randomuser.me/api/portraits/women/74.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 4 * 60000) } },
+      { odId: 'mock25', userName: 'HighPost',  userAvatar: 'https://randomuser.me/api/portraits/men/81.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 1 * 60000) } },
+      { odId: 'mock26', userName: 'NetSnap',   userAvatar: 'https://randomuser.me/api/portraits/men/88.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 90000) } },
+      { odId: 'mock27', userName: 'LowBlock',  userAvatar: 'https://randomuser.me/api/portraits/women/82.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 30000) } },
+    ],
+    'ymca-northwest-austin': [
+      { odId: 'mock28', userName: 'PickNRoll', userAvatar: 'https://randomuser.me/api/portraits/men/11.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 55 * 60000) } },
+      { odId: 'mock29', userName: 'WeakSide',  userAvatar: 'https://randomuser.me/api/portraits/men/26.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 42 * 60000) } },
+      { odId: 'mock30', userName: 'WingSpan',  userAvatar: 'https://randomuser.me/api/portraits/women/31.jpg', checkedInAt: { toDate: () => new Date(Date.now() - 31 * 60000) } },
+      { odId: 'mock31', userName: 'CloseOut',  userAvatar: 'https://randomuser.me/api/portraits/men/43.jpg',  checkedInAt: { toDate: () => new Date(Date.now() - 19 * 60000) } },
+    ],
+  };
+
+  const MOCK_COUNT_MAP = Object.fromEntries(
+    Object.entries(MOCK_PRESENCE_MAP).map(([gymId, players]) => [gymId, players.length])
+  );
+
+  // Friends get their own IDs so the partition logic routes them to Friends Activity
+  const MOCK_FRIEND_IDS = ['mockF1', 'mockF2', 'mockF3'];
+
+  const MOCK_ACTIVITY_FEED = [
+    // ── Friends Activity (userId in MOCK_FRIEND_IDS) ──
+    { id: 'frd1', action: 'started a run at', userId: 'mockF1', userName: 'Malik_ATX',   userAvatar: 'https://randomuser.me/api/portraits/men/36.jpg',  gymName: 'Austin Sports Center - Central', gymId: 'austin-sports-center-central', createdAt: { toDate: () => new Date(Date.now() - 8  * 60000) } },
+    { id: 'frd2', action: 'started a run at', userId: 'mockF2', userName: 'Tay_Buckets', userAvatar: 'https://randomuser.me/api/portraits/men/52.jpg',  gymName: 'Clay Madsen Recreation Center', gymId: 'clay-madsen-round-rock',        createdAt: { toDate: () => new Date(Date.now() - 34 * 60000) } },
+    { id: 'frd3', action: 'started a run at', userId: 'mockF3', userName: 'Deja_Runs',   userAvatar: 'https://randomuser.me/api/portraits/women/28.jpg', gymName: 'YMCA Northwest Austin',         gymId: 'ymca-northwest-austin',         createdAt: { toDate: () => new Date(Date.now() - 72 * 60000) } },
+
+    // ── Community Activity (varied players, gyms, times) ──
+    { id: 'act1', action: 'started a run at', userId: 'mock1',  userName: 'JordanH',   userAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',  gymName: 'Austin Sports Center - Central', gymId: 'austin-sports-center-central', createdAt: { toDate: () => new Date(Date.now() - 22  * 60000) } },
+    { id: 'act2', action: 'started a run at', userId: 'mock16', userName: 'RockHoops', userAvatar: 'https://randomuser.me/api/portraits/men/14.jpg',  gymName: 'Clay Madsen Recreation Center', gymId: 'clay-madsen-round-rock',        createdAt: { toDate: () => new Date(Date.now() - 45  * 60000) } },
+    { id: 'act3', action: 'started a run at', userId: 'mock10', userName: 'LongHorn1', userAvatar: 'https://randomuser.me/api/portraits/men/12.jpg',  gymName: 'UT Rec Sports Center',          gymId: 'ut-rec-sports-center-austin',  createdAt: { toDate: () => new Date(Date.now() - 90  * 60000) } },
+    { id: 'act4', action: 'started a run at', userId: 'mock28', userName: 'PickNRoll', userAvatar: 'https://randomuser.me/api/portraits/men/11.jpg',  gymName: 'YMCA Northwest Austin',         gymId: 'ymca-northwest-austin',         createdAt: { toDate: () => new Date(Date.now() - 2   * 3600000) } },
+    { id: 'act5', action: 'started a run at', userId: 'mock2',  userName: 'DreDay23',  userAvatar: 'https://randomuser.me/api/portraits/men/44.jpg',  gymName: 'Austin Sports Center - Central', gymId: 'austin-sports-center-central', createdAt: { toDate: () => new Date(Date.now() - 3   * 3600000) } },
+    { id: 'act6', action: 'started a run at', userId: 'mock17', userName: 'SwishKid',  userAvatar: 'https://randomuser.me/api/portraits/men/29.jpg',  gymName: 'Clay Madsen Recreation Center', gymId: 'clay-madsen-round-rock',        createdAt: { toDate: () => new Date(Date.now() - 5   * 3600000) } },
+    { id: 'act7', action: 'started a run at', userId: 'mock22', userName: 'TopLock',   userAvatar: 'https://randomuser.me/api/portraits/men/57.jpg',  gymName: 'UT Rec Sports Center',          gymId: 'ut-rec-sports-center-austin',  createdAt: { toDate: () => new Date(Date.now() - 1   * 86400000) } },
+    { id: 'act8', action: 'started a run at', userId: 'mock30', userName: 'WingSpan',  userAvatar: 'https://randomuser.me/api/portraits/women/31.jpg', gymName: 'YMCA Northwest Austin',        gymId: 'ymca-northwest-austin',         createdAt: { toDate: () => new Date(Date.now() - 1.5 * 86400000) } },
+    { id: 'act9', action: 'started a run at', userId: 'mock4',  userName: 'TreyCold',  userAvatar: 'https://randomuser.me/api/portraits/men/68.jpg',  gymName: 'Austin Sports Center - Central', gymId: 'austin-sports-center-central', createdAt: { toDate: () => new Date(Date.now() - 2   * 86400000) } },
+  ];
+
+  const livePresenceMap = SCREENSHOT_MODE ? MOCK_PRESENCE_MAP : rawPresenceMap;
+  const liveCountMap    = SCREENSHOT_MODE ? MOCK_COUNT_MAP    : rawCountMap;
+  // ─────────────────────────────────────────────────────────────────────────
 
   // Subscribe to the current user's friends list in real time.
   useEffect(() => {
+    if (SCREENSHOT_MODE) {
+      setFriendIds(MOCK_FRIEND_IDS);
+      return;
+    }
     const currentUid = auth.currentUser?.uid;
     if (!currentUid) return;
     const unsubscribe = onSnapshot(
@@ -216,6 +297,10 @@ const HomeScreen = ({ navigation }) => {
   // Subscribe to activity documents from the last 2 hours in real time.
   // The cutoff is computed once on mount; Firestore evaluates it server-side.
   useEffect(() => {
+    if (SCREENSHOT_MODE) {
+      setActivityFeed(MOCK_ACTIVITY_FEED);
+      return;
+    }
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
     const q = query(
       collection(db, 'activity'),
@@ -819,7 +904,7 @@ const HomeScreen = ({ navigation }) => {
               >
                 <BlurView intensity={60} tint="dark" style={styles.actionCard}>
                   <View style={styles.checkInCardRow}>
-                    <Ionicons name="location" size={26} color="#FFFFFF" />
+                    <Ionicons name="location" size={26} color="#F97316" />
                     {todaysPlan && (
                       <View style={styles.checkInPlanBadge}>
                         <Text style={styles.checkInPlanBadgeText}>TODAY</Text>
@@ -845,8 +930,8 @@ const HomeScreen = ({ navigation }) => {
             >
               <BlurView intensity={60} tint="dark" style={styles.startRunCard}>
                 <View style={styles.startRunLeft}>
-                  <View style={styles.startRunIconWrap}>
-                    <Ionicons name="basketball" size={22} color={colors.primary} />
+                  <View style={[styles.startRunIconWrap, { backgroundColor: 'rgba(239,68,68,0.15)' }]}>
+                    <Ionicons name="basketball" size={22} color="#EF4444" />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.startRunTitle}>Start a Group Run</Text>
@@ -863,8 +948,8 @@ const HomeScreen = ({ navigation }) => {
                 onPress={() => goToTab('Runs')}
                 activeOpacity={0.8}
               >
-                <BlurView intensity={60} tint="dark" style={styles.actionCardSmall}>
-                  <Ionicons name="basketball-outline" size={24} color={colors.primary} />
+                <BlurView intensity={60} tint="dark" style={[styles.actionCardSmall, { borderLeftWidth: 3, borderLeftColor: '#3B82F6' }]}>
+                  <Ionicons name="basketball-outline" size={24} color="#3B82F6" />
                   <Text style={styles.actionSmallTitle}>Find Runs</Text>
                   <Text style={styles.actionSmallSub}>Open games</Text>
                 </BlurView>
@@ -875,8 +960,8 @@ const HomeScreen = ({ navigation }) => {
                 onPress={() => goToTab('Plan')}
                 activeOpacity={0.8}
               >
-                <BlurView intensity={60} tint="dark" style={styles.actionCardSmall}>
-                  <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+                <BlurView intensity={60} tint="dark" style={[styles.actionCardSmall, { borderLeftWidth: 3, borderLeftColor: '#22C55E' }]}>
+                  <Ionicons name="calendar-outline" size={24} color="#22C55E" />
                   <Text style={styles.actionSmallTitle}>Plan a Visit</Text>
                   <Text style={styles.actionSmallSub}>Schedule ahead</Text>
                 </BlurView>
@@ -2428,7 +2513,7 @@ actionCard: {
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
     borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
+    borderLeftColor: '#EF4444',
   },
   startRunLeft: {
     flex: 1,

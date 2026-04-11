@@ -332,8 +332,8 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   // Subscribe to live Firestore data for this gym
   const { gym, loading: gymLoading } = useGym(gymId);
-  const { presences, loading: presencesLoading } = useGymPresences(gymId);
-  const { schedules, loading: schedulesLoading } = useGymSchedules(gymId);
+  const { presences: rawPresences, loading: presencesLoading } = useGymPresences(gymId);
+  const { schedules: rawSchedules, loading: schedulesLoading } = useGymSchedules(gymId);
 
   // Live user profile — provides followedGyms and profile data
   const { followedGyms, profile } = useProfile();
@@ -427,7 +427,7 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   // ── Runs ──────────────────────────────────────────────────────────────────
   // Real-time runs at this gym and the current user's participation state.
-  const { runs, joinedRunIds } = useGymRuns(gymId);
+  const { runs: rawRuns, joinedRunIds: rawJoinedRunIds } = useGymRuns(gymId);
 
   // Start-a-Run modal state
   const [runModalVisible, setRunModalVisible] = useState(false);
@@ -456,7 +456,98 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Info sheet: 'runLevel' | 'meter' | null — explains badges and meter to new users
   const [infoSheetType, setInfoSheetType] = useState(null);
 
+  // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
+  // Flip to true before screenshots, back to false before shipping.
+  const SCREENSHOT_MODE = true;
+
+  const MOCK_RUN_ID  = 'mock-run-001';
+  const MOCK_RUN_ID2 = 'mock-run-002';
+  const now = new Date();
+  const inOneHour   = new Date(now.getTime() + 60 * 60000);
+  const inThreeDays = new Date(now.getTime() + 3 * 86400000);
+
+  const MOCK_PRESENCES = [
+    { odId: 'mp1', userName: 'JordanH',   userAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',  checkedInAt: { toDate: () => new Date(now - 22 * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp2', userName: 'DreDay23',  userAvatar: 'https://randomuser.me/api/portraits/men/44.jpg',  checkedInAt: { toDate: () => new Date(now - 18 * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp3', userName: 'KingCourt', userAvatar: 'https://randomuser.me/api/portraits/men/55.jpg',  checkedInAt: { toDate: () => new Date(now - 14 * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp4', userName: 'LaceUp5',   userAvatar: 'https://randomuser.me/api/portraits/women/21.jpg', checkedInAt: { toDate: () => new Date(now - 10 * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp5', userName: 'FastBreak', userAvatar: 'https://randomuser.me/api/portraits/men/68.jpg',  checkedInAt: { toDate: () => new Date(now - 7  * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp6', userName: 'TopLock',   userAvatar: 'https://randomuser.me/api/portraits/men/76.jpg',  checkedInAt: { toDate: () => new Date(now - 5  * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp7', userName: 'SwishKid',  userAvatar: 'https://randomuser.me/api/portraits/men/83.jpg',  checkedInAt: { toDate: () => new Date(now - 3  * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+    { odId: 'mp8', userName: 'HoopZ',     userAvatar: 'https://randomuser.me/api/portraits/women/35.jpg', checkedInAt: { toDate: () => new Date(now - 1  * 60000) }, expiresAt: { toDate: () => new Date(now.getTime() + 90 * 60000) }, status: 'ACTIVE', gymId },
+  ];
+
+  const MOCK_SCHEDULES = [
+    // Today × 5
+    { id: 'ms1', userId: 'su1', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 30  * 60000) }, status: 'scheduled' },
+    { id: 'ms2', userId: 'su2', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 45  * 60000) }, status: 'scheduled' },
+    { id: 'ms3', userId: 'su3', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 60  * 60000) }, status: 'scheduled' },
+    { id: 'ms4', userId: 'su4', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 90  * 60000) }, status: 'scheduled' },
+    { id: 'ms5', userId: 'su5', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 120 * 60000) }, status: 'scheduled' },
+    // Tomorrow × 4
+    { id: 'ms6', userId: 'su6', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 26 * 3600000) }, status: 'scheduled' },
+    { id: 'ms7', userId: 'su7', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 27 * 3600000) }, status: 'scheduled' },
+    { id: 'ms8', userId: 'su8', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 28 * 3600000) }, status: 'scheduled' },
+    { id: 'ms9', userId: 'su9', gymId, scheduledTime: { toDate: () => new Date(now.getTime() + 29 * 3600000) }, status: 'scheduled' },
+  ];
+
+  const MOCK_RUNS = [
+    {
+      id: MOCK_RUN_ID,
+      gymId,
+      gymName: gymName || 'Pan American Recreation Center',
+      startTime: { toDate: () => inOneHour },
+      participantCount: 8,
+      runLevel: 'competitive',
+      creatorId: 'mp1',
+      creatorName: 'JordanH',
+      status: 'active',
+    },
+    {
+      id: MOCK_RUN_ID2,
+      gymId,
+      gymName: gymName || 'Pan American Recreation Center',
+      startTime: { toDate: () => inThreeDays },
+      participantCount: 5,
+      runLevel: 'casual',
+      creatorId: 'mp5',
+      creatorName: 'FastBreak',
+      status: 'active',
+    },
+  ];
+
+  const MOCK_PARTICIPANTS = {
+    [MOCK_RUN_ID]: [
+      { userId: 'mp1', displayName: 'JordanH',   userAvatar: 'https://randomuser.me/api/portraits/men/32.jpg',  skillLevel: 'Competitive' },
+      { userId: 'mp2', displayName: 'DreDay23',  userAvatar: 'https://randomuser.me/api/portraits/men/44.jpg',  skillLevel: 'Competitive' },
+      { userId: 'mp3', displayName: 'KingCourt', userAvatar: 'https://randomuser.me/api/portraits/men/55.jpg',  skillLevel: 'Competitive' },
+      { userId: 'mp4', displayName: 'LaceUp5',   userAvatar: 'https://randomuser.me/api/portraits/women/21.jpg', skillLevel: 'Casual' },
+      { userId: 'mp5', displayName: 'FastBreak', userAvatar: 'https://randomuser.me/api/portraits/men/68.jpg',  skillLevel: 'Competitive' },
+      { userId: 'mp6', displayName: 'TopLock',   userAvatar: 'https://randomuser.me/api/portraits/men/76.jpg',  skillLevel: 'Competitive' },
+      { userId: 'mp7', displayName: 'SwishKid',  userAvatar: 'https://randomuser.me/api/portraits/men/83.jpg',  skillLevel: 'Casual' },
+      { userId: 'mp8', displayName: 'HoopZ',     userAvatar: 'https://randomuser.me/api/portraits/women/35.jpg', skillLevel: 'Casual' },
+    ],
+    [MOCK_RUN_ID2]: [
+      { userId: 'mp5', displayName: 'FastBreak', userAvatar: 'https://randomuser.me/api/portraits/men/68.jpg',  skillLevel: 'Casual' },
+      { userId: 'mp9', displayName: 'RockHoops', userAvatar: 'https://randomuser.me/api/portraits/men/14.jpg',  skillLevel: 'Casual' },
+      { userId: 'mp10', displayName: 'WingSpan', userAvatar: 'https://randomuser.me/api/portraits/women/31.jpg', skillLevel: 'Casual' },
+      { userId: 'mp11', displayName: 'PickNRoll', userAvatar: 'https://randomuser.me/api/portraits/men/26.jpg', skillLevel: 'Casual' },
+      { userId: 'mp12', displayName: 'PostUp7',  userAvatar: 'https://randomuser.me/api/portraits/men/48.jpg',  skillLevel: 'Casual' },
+    ],
+  };
+
+  // Override hook values in screenshot mode
+  const presences         = SCREENSHOT_MODE ? MOCK_PRESENCES   : rawPresences;
+  const schedules         = SCREENSHOT_MODE ? MOCK_SCHEDULES   : rawSchedules;
+  const runs              = SCREENSHOT_MODE ? MOCK_RUNS        : rawRuns;
+  const joinedRunIds      = SCREENSHOT_MODE ? new Set([MOCK_RUN_ID]) : rawJoinedRunIds;
+  // ────────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
+    if (SCREENSHOT_MODE) {
+      setRunParticipantsMap(MOCK_PARTICIPANTS);
+      return;
+    }
     if (runs.length === 0) {
       setRunParticipantsMap({});
       return;

@@ -5,43 +5,15 @@
  * marker shows a callout with the gym's name, type, and address; tapping
  * the callout navigates to RunDetailsScreen for the full breakdown.
  *
- * Platform handling:
- *   `react-native-maps` is not supported on web (Expo Web / React Native Web).
- *   The import is deferred inside a Platform.OS check so the web bundle
- *   doesn't fail at module resolution time. A fallback message is shown on
- *   web instead.
+ * Pin colors are activity-based (not gym type):
+ *   🔴 Red    → On Fire   (15+ players)
+ *   🟡 Yellow → Poppin    (8–14 players)
+ *   🟢 Green  → Active    (1–7 players)
+ *   ⚫ Grey   → Dead      (0 players)
  *
- * Map center:
- *   - If the user has already granted location permission and `useLocation`
- *     has a cached position, the map centers on the user.
- *   - Otherwise it defaults to `PFLUGERVILLE_CENTER` (the app's primary
- *     target market in the Austin metro area).
+ * A floating legend card in the bottom-left explains the color key.
  *
- * Marker colors:
- *   - Green  → outdoor court
- *   - Orange → indoor gym
- *
- * Gyms without a `location` field are silently skipped (no marker rendered).
- *
- * ── Future enhancements (TODO) ────────────────────────────────────────────
- *
- *   1. BASKETBALL MARKERS — Replace default `pinColor` markers with custom
- *      basketball emoji / image markers using react-native-maps' custom
- *      marker support:
- *        <Marker ...>
- *          <Image source={require('../assets/images/basketball-pin.png')} style={{ width: 36, height: 36 }} />
- *        </Marker>
- *      Use a green basketball for outdoor courts, orange for indoor.
- *
- *   2. FULL-SCREEN MAP — Remove SafeAreaView wrapper and use `StyleSheet.absoluteFillObject`
- *      on MapView so the map bleeds edge-to-edge. Overlay a floating back button
- *      (position: absolute, top + left safe insets) and player-count legend.
- *
- *   3. MAP AS PRIMARY TAB — Move GymMapScreen into the bottom tab navigator
- *      as its own "Map" tab (replacing or adding alongside Runs). Update App.js:
- *        <Tab.Screen name="Map" component={MapStack} />
- *      The map tab should not show the standard navigation header bar — use
- *      `headerShown: false` and handle the back / title with a floating overlay.
+ * SCREENSHOT_MODE — set to true to inject fake player counts for screenshots.
  */
 
 import React, { useMemo, useEffect } from 'react';
@@ -55,9 +27,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS } from '../constants/theme';
 
-// Defer the react-native-maps import to avoid a crash on web where the
-// native module is unavailable. We assign to module-level vars so the
-// JSX below can reference them without optional chaining gymnastics.
 let MapView, Marker, Callout;
 if (Platform.OS !== 'web') {
   const Maps = require('react-native-maps');
@@ -67,44 +36,74 @@ if (Platform.OS !== 'web') {
 }
 import { useTheme } from '../contexts';
 import { useGyms, useLocation } from '../hooks';
-import { GYM_TYPE } from '../services/models';
+import { useLivePresenceMap } from '../hooks';
 
-/** Default map region — centered on Pflugerville, TX with a ~10 km viewport. */
-const PFLUGERVILLE_CENTER = {
-  latitude: 30.4583,
-  longitude: -97.6200,
-  latitudeDelta: 0.08,
-  longitudeDelta: 0.08,
+/** Default map region — centered on Austin, TX */
+const AUSTIN_CENTER = {
+  latitude: 30.2672,
+  longitude: -97.7431,
+  latitudeDelta: 0.12,
+  longitudeDelta: 0.12,
 };
 
+// ─── SCREENSHOT MODE ─────────────────────────────────────────────────────────
+// Flip to true before taking screenshots, back to false before shipping.
+const SCREENSHOT_MODE = true;
+
+// Fake player counts per gym ID — drives pin color for screenshots
+const MOCK_GYM_COUNTS = {
+  'austin-sports-center-central':       20, // 🔴 On Fire
+  'clay-madsen-round-rock':             18, // 🔴 On Fire
+  'ut-rec-sports-center-austin':        17, // 🔴 On Fire
+  'gregory-gymnasium-austin':           15, // 🔴 On Fire
+  'pan-american-recreation-center':     16, // 🔴 On Fire
+  'ymca-northwest-austin':              13, // 🟡 Poppin
+  'metz-recreation-center':            11, // 🟡 Poppin
+  'montopolis-rec-center-austin':       10, // 🟡 Poppin
+  'dittmar-recreation-center':           9, // 🟡 Poppin
+  'northwest-recreation-center-austin':  8, // 🟡 Poppin
+  'lifetime-austin-north':               6, // 🟢 Active
+  'golds-gym-hesters-crossing':          5, // 🟢 Active
+  'la-fitness-cedar-park':               4, // 🟢 Active
+  'austin-sports-center-north':          3, // 🟢 Active
+  'east-communities-ymca-austin':        3, // 🟢 Active
+  'south-austin-recreation-center':      2, // 🟢 Active
+  'southwest-family-ymca-austin':        2, // 🟢 Active
+  'austin-recreation-center-shoal-creek': 1, // 🟢 Active
+  'ymca-downtown-austin':                0, // ⚫ Dead
+  'la-fitness-south-austin':             0, // ⚫ Dead
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
- * GymMapScreen — Interactive map showing all gym locations.
- *
- * @param {object} props
- * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
- *   React Navigation prop for setting the header title and navigating to RunDetails.
- * @returns {JSX.Element}
+ * Returns pin color and label based on active player count.
  */
+const getActivityPin = (count) => {
+  if (count >= 15) return { color: '#EF4444', label: 'On Fire 🔥', tier: 'fire' };
+  if (count >= 8)  return { color: '#F59E0B', label: 'Poppin',      tier: 'hot' };
+  if (count >= 1)  return { color: '#22C55E', label: 'Active',      tier: 'active' };
+  return                  { color: '#6B7280', label: 'Dead',        tier: 'dead' };
+};
+
 export default function GymMapScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { gyms, loading } = useGyms();
   const { location } = useLocation();
+  const { countMap: liveCountMap } = useLivePresenceMap();
 
-  // Set the navigation header title dynamically so the back button reads correctly
   useEffect(() => {
     navigation.setOptions({ title: 'Nearby Courts' });
   }, [navigation]);
 
-  // Center on the user's actual location if available; fall back to the default region
   const initialRegion = location
     ? {
         latitude: location.latitude,
         longitude: location.longitude,
-        latitudeDelta: 0.08,
-        longitudeDelta: 0.08,
+        latitudeDelta: 0.12,
+        longitudeDelta: 0.12,
       }
-    : PFLUGERVILLE_CENTER;
+    : AUSTIN_CENTER;
 
   if (loading) {
     return (
@@ -117,7 +116,6 @@ export default function GymMapScreen({ navigation }) {
     );
   }
 
-  // Web fallback — maps are not available in the browser build
   if (Platform.OS === 'web') {
     return (
       <SafeAreaView style={styles.safe}>
@@ -136,9 +134,14 @@ export default function GymMapScreen({ navigation }) {
         testID="gym-map"
       >
         {gyms.map((gym) => {
-          // Skip gyms that don't have GPS coordinates stored in Firestore
           if (!gym.location) return null;
-          const isOutdoor = gym.type === GYM_TYPE.OUTDOOR;
+
+          // Use mock counts in screenshot mode, otherwise use real live counts
+          const playerCount = SCREENSHOT_MODE
+            ? (MOCK_GYM_COUNTS[gym.id] ?? 0)
+            : (liveCountMap[gym.id] ?? 0);
+
+          const { color } = getActivityPin(playerCount);
 
           return (
             <Marker
@@ -147,45 +150,54 @@ export default function GymMapScreen({ navigation }) {
                 latitude: gym.location.latitude,
                 longitude: gym.location.longitude,
               }}
-              // Color-coded by type: green = outdoor, orange = indoor
-              pinColor={isOutdoor ? 'green' : 'orange'}
+              pinColor={color}
               testID={`marker-${gym.id}`}
             >
-              {/* Callout bubble shown when the marker is tapped */}
               <Callout
                 onPress={() =>
-                  // Navigate into the RunDetails screen within the Runs stack
                   navigation.navigate('RunDetails', {
                     gymId: gym.id,
                     gymName: gym.name,
-                    players: gym.currentPresenceCount || 0,
+                    players: playerCount,
                   })
                 }
               >
                 <View style={styles.callout}>
                   <Text style={styles.calloutTitle}>{gym.name}</Text>
-                  <Text style={styles.calloutType}>
-                    {isOutdoor ? 'Outdoor' : 'Indoor'}
+                  <Text style={[styles.calloutActivity, { color }]}>
+                    {playerCount > 0 ? `${playerCount} players` : 'No one here yet'}
                   </Text>
                   <Text style={styles.calloutAddress}>{gym.address}</Text>
-                  <Text style={styles.calloutTap}>Tap for details</Text>
+                  <Text style={styles.calloutTap}>Tap for details →</Text>
                 </View>
               </Callout>
             </Marker>
           );
         })}
       </MapView>
+
+      {/* ── Floating Legend ───────────────────────────────────────────────── */}
+      <View style={styles.legend}>
+        <Text style={styles.legendTitle}>ACTIVITY</Text>
+        {[
+          { color: '#EF4444', label: 'On Fire',  sub: '15+ players' },
+          { color: '#F59E0B', label: 'Poppin',   sub: '8–14 players' },
+          { color: '#22C55E', label: 'Active',   sub: '1–7 players' },
+          { color: '#6B7280', label: 'Dead',     sub: 'No one here' },
+        ].map(({ color, label, sub }) => (
+          <View key={label} style={styles.legendRow}>
+            <View style={[styles.legendDot, { backgroundColor: color }]} />
+            <View>
+              <Text style={styles.legendLabel}>{label}</Text>
+              <Text style={styles.legendSub}>{sub}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
     </SafeAreaView>
   );
 }
 
-/**
- * getStyles — Generates a themed StyleSheet for GymMapScreen.
- *
- * @param {object} colors — Active color palette from ThemeContext.
- * @param {boolean} isDark — Whether dark mode is active.
- * @returns {object} React Native StyleSheet object.
- */
 const getStyles = (colors, isDark) =>
   StyleSheet.create({
     safe: {
@@ -205,8 +217,10 @@ const getStyles = (colors, isDark) =>
     map: {
       flex: 1,
     },
+
+    // ── Callout ────────────────────────────────────────────────────────────
     callout: {
-      minWidth: 180,
+      minWidth: 190,
       padding: SPACING.xs,
     },
     calloutTitle: {
@@ -215,12 +229,10 @@ const getStyles = (colors, isDark) =>
       color: colors.textPrimary,
       letterSpacing: 0.3,
     },
-    calloutType: {
+    calloutActivity: {
       fontSize: FONT_SIZES.small,
-      color: colors.primary,
-      fontWeight: FONT_WEIGHTS.medium,
+      fontWeight: FONT_WEIGHTS.bold,
       marginTop: 2,
-      letterSpacing: 0.2,
     },
     calloutAddress: {
       fontSize: FONT_SIZES.xs,
@@ -232,5 +244,47 @@ const getStyles = (colors, isDark) =>
       color: colors.primary,
       marginTop: SPACING.xs,
       fontStyle: 'italic',
+    },
+
+    // ── Legend ─────────────────────────────────────────────────────────────
+    legend: {
+      position: 'absolute',
+      bottom: 28,
+      left: 14,
+      backgroundColor: 'rgba(0,0,0,0.78)',
+      borderRadius: RADIUS.md,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      gap: 7,
+      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.1)',
+    },
+    legendTitle: {
+      fontSize: 9,
+      fontWeight: FONT_WEIGHTS.extraBold,
+      color: 'rgba(255,255,255,0.5)',
+      letterSpacing: 1.2,
+      marginBottom: 2,
+    },
+    legendRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    legendDot: {
+      width: 11,
+      height: 11,
+      borderRadius: 6,
+    },
+    legendLabel: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: '#FFFFFF',
+      lineHeight: 14,
+    },
+    legendSub: {
+      fontSize: 10,
+      color: 'rgba(255,255,255,0.5)',
+      lineHeight: 13,
     },
   });

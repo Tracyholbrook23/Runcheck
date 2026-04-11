@@ -184,7 +184,7 @@ export default function PlanVisitScreen({ navigation }) {
   const availableDays = getAvailableDays();
 
   const {
-    schedules,
+    schedules: rawSchedules,
     loading: schedulesLoading,
     createSchedule,
     cancelSchedule,
@@ -195,6 +195,96 @@ export default function PlanVisitScreen({ navigation }) {
   const { gyms, loading: gymsLoading } = useGyms();
   const { countMap } = useLivePresenceMap();
   const { location: userLocation, getCurrentLocation } = useLocation();
+
+  // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
+  // Flip to true before screenshots, back to false before shipping.
+  const SCREENSHOT_MODE = true;
+
+  const now = new Date();
+  const d = (hours) => new Date(now.getTime() + hours * 3600000);
+
+  const MOCK_SCHEDULES = [
+    {
+      id: 'msv1',
+      gymId: 'austin-sports-center-central',
+      gymName: 'Austin Sports Center - Central',
+      scheduledTime: { toDate: () => d(1.5), toMillis: () => d(1.5).getTime() },
+      timeSlot: new Date(d(1.5).setMinutes(0, 0, 0)).toISOString(),
+      status: 'scheduled',
+    },
+    {
+      id: 'msv2',
+      gymId: 'gregory-gymnasium-austin',
+      gymName: 'Gregory Gymnasium',
+      scheduledTime: { toDate: () => d(8), toMillis: () => d(8).getTime() },
+      timeSlot: new Date(d(8).setMinutes(0, 0, 0)).toISOString(),
+      status: 'scheduled',
+    },
+    {
+      id: 'msv3',
+      gymId: 'hutto-family-ymca',
+      gymName: 'Hutto Family YMCA',
+      scheduledTime: { toDate: () => d(4), toMillis: () => d(4).getTime() },
+      timeSlot: new Date(d(4).setMinutes(0, 0, 0)).toISOString(),
+      status: 'scheduled',
+    },
+  ];
+
+  const MOCK_COMMUNITY_RUNS = [
+    {
+      id: 'mcr5',
+      gymId: 'gregory-gymnasium-austin',
+      gymName: 'Gregory Gymnasium',
+      startTime: { toDate: () => d(8) },
+      participantCount: 14,
+      runLevel: 'competitive',
+      createdBy: 'mock22',
+      creatorName: 'TopLock',
+    },
+    {
+      id: 'mcr1',
+      gymId: 'austin-sports-center-central',
+      gymName: 'Austin Sports Center - Central',
+      startTime: { toDate: () => d(1.5) },
+      participantCount: 9,
+      runLevel: 'competitive',
+      createdBy: 'mock1',
+      creatorName: 'JordanH',
+    },
+    {
+      id: 'mcr3',
+      gymId: 'hutto-family-ymca',
+      gymName: 'Hutto Family YMCA',
+      startTime: { toDate: () => d(4) },
+      participantCount: 11,
+      runLevel: 'mixed',
+      createdBy: 'mock28',
+      creatorName: 'PickNRoll',
+    },
+    {
+      id: 'mcr2',
+      gymId: 'clay-madsen-round-rock',
+      gymName: 'Clay Madsen Recreation Center',
+      startTime: { toDate: () => d(26) },
+      participantCount: 6,
+      runLevel: 'casual',
+      createdBy: 'mock16',
+      creatorName: 'RockHoops',
+    },
+    {
+      id: 'mcr4',
+      gymId: 'ut-rec-sports-center-austin',
+      gymName: 'UT Rec Sports Center',
+      startTime: { toDate: () => d(51) },
+      participantCount: 4,
+      runLevel: 'casual',
+      createdBy: 'mock10',
+      creatorName: 'LongHorn1',
+    },
+  ];
+
+  const schedules = SCREENSHOT_MODE ? MOCK_SCHEDULES : rawSchedules;
+  // ────────────────────────────────────────────────────────────────────────────
 
   // ── Step 2 filter helpers ─────────────────────────────────────────────────
   const sanitizeGymSearch = (raw) =>
@@ -260,6 +350,10 @@ export default function PlanVisitScreen({ navigation }) {
   const [communityRuns, setCommunityRuns] = useState([]);
 
   useEffect(() => {
+    if (SCREENSHOT_MODE) {
+      setCommunityRuns(MOCK_COMMUNITY_RUNS);
+      return;
+    }
     const unsubscribe = subscribeToAllUpcomingRuns((runs) => {
       setCommunityRuns(runs);
     });
@@ -673,7 +767,7 @@ export default function PlanVisitScreen({ navigation }) {
               <View style={styles.section}>
                 <View style={styles.runsSectionHeader}>
                   <Ionicons name="basketball-outline" size={15} color={colors.primary} style={{ marginRight: 5 }} />
-                  <Text style={styles.sectionTitle}>Runs Being Planned</Text>
+                  <Text style={styles.sectionTitle}>Runs Being Planned By Others</Text>
                   {filteredAndSortedRuns.length > 0 && (
                     <View style={styles.runCountBadge}>
                       <Text style={styles.runCountBadgeText}>{filteredAndSortedRuns.length}</Text>

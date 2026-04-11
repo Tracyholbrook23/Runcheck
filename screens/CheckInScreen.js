@@ -79,15 +79,34 @@ export default function CheckInScreen({ navigation }) {
   const { countMap: liveCountMap } = useLivePresenceMap();
 
   const {
-    presence,
+    presence: rawPresence,
     loading: presenceLoading,
-    isCheckedIn,
+    isCheckedIn: rawIsCheckedIn,
     checkIn,
     checkOut,
     checkingIn,
     checkingOut,
-    getTimeRemaining,
+    getTimeRemaining: rawGetTimeRemaining,
   } = usePresence();
+
+  // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
+  // Flip to true before screenshots, back to false before shipping.
+  const SCREENSHOT_MODE = true;
+
+  const MOCK_PRESENCE = {
+    gymId:       'austin-sports-center-central',
+    gymName:     'Austin Sports Center - Central',
+    checkedInAt: { toDate: () => new Date(Date.now() - 38 * 60000) },
+    expiresAt:   { toDate: () => new Date(Date.now() + 82 * 60000) },
+    status:      'ACTIVE',
+  };
+
+  const presence        = SCREENSHOT_MODE ? MOCK_PRESENCE : rawPresence;
+  const isCheckedIn     = SCREENSHOT_MODE ? true          : rawIsCheckedIn;
+  const getTimeRemaining = SCREENSHOT_MODE
+    ? () => '1h 22m'
+    : rawGetTimeRemaining;
+  // ────────────────────────────────────────────────────────────────────────────
 
   // ── Smart proximity check-in ──────────────────────────────────────────────
   // Polls GPS every 30 s while the app is active. When the user is inside a

@@ -570,10 +570,52 @@ export default function ProfileScreen({ navigation }) {
   // Session stats from the same useReliability hook that provides score/tier.
   // Previously read from a separate inline onSnapshot `reliability` state, which
   // could resolve after reliabilityLoading cleared — causing a flash of zeroes. RC-004.
-  const displayScheduled  = stats?.totalScheduled  ?? 0;
-  const displayAttended   = stats?.totalAttended   ?? 0;
-  const displayNoShows    = stats?.totalNoShow     ?? 0;
-  const displayCancelled  = stats?.totalCancelled  ?? 0;
+  // ─── SCREENSHOT MODE ──────────────────────────────────────────────────────
+  // Flip to false before shipping.
+  const SCREENSHOT_MODE = true;
+
+  const displayScheduled  = SCREENSHOT_MODE ? 7  : (stats?.totalScheduled  ?? 0);
+  const displayAttended   = SCREENSHOT_MODE ? 15 : (stats?.totalAttended   ?? 0);
+  const displayNoShows    = SCREENSHOT_MODE ? 7  : (stats?.totalNoShow     ?? 0);
+  const displayCancelled  = SCREENSHOT_MODE ? 2  : (stats?.totalCancelled  ?? 0);
+
+  const MOCK_FRIENDS = [
+    { uid: 'mf1',  name: 'Malik_ATX',    photoURL: 'https://randomuser.me/api/portraits/men/36.jpg'   },
+    { uid: 'mf2',  name: 'Tay_Buckets',  photoURL: 'https://randomuser.me/api/portraits/men/52.jpg'   },
+    { uid: 'mf3',  name: 'JordanH',      photoURL: 'https://randomuser.me/api/portraits/men/32.jpg'   },
+    { uid: 'mf4',  name: 'DreDay23',     photoURL: 'https://randomuser.me/api/portraits/men/44.jpg'   },
+    { uid: 'mf5',  name: 'LongHorn1',    photoURL: 'https://randomuser.me/api/portraits/men/12.jpg'   },
+    { uid: 'mf6',  name: 'SwishKid',     photoURL: 'https://randomuser.me/api/portraits/men/29.jpg'   },
+    { uid: 'mf7',  name: 'TopLock',      photoURL: 'https://randomuser.me/api/portraits/men/57.jpg'   },
+    { uid: 'mf8',  name: 'WingSpan',     photoURL: 'https://randomuser.me/api/portraits/women/31.jpg' },
+    { uid: 'mf9',  name: 'PickNRoll',    photoURL: 'https://randomuser.me/api/portraits/men/11.jpg'   },
+    { uid: 'mf10', name: 'Deja_Runs',    photoURL: 'https://randomuser.me/api/portraits/women/28.jpg' },
+    { uid: 'mf11', name: 'TreyCold',     photoURL: 'https://randomuser.me/api/portraits/men/68.jpg'   },
+    { uid: 'mf12', name: 'RockHoops',    photoURL: 'https://randomuser.me/api/portraits/men/14.jpg'   },
+  ];
+
+  const MOCK_CLIPS = [
+    { id: 'mc1', gymId: 'clay-madsen-round-rock',        createdAt: { toDate: () => new Date(Date.now() - 2  * 3600000)  }, status: 'processed' },
+    { id: 'mc2', gymId: 'austin-sports-center-central',  createdAt: { toDate: () => new Date(Date.now() - 5  * 3600000)  }, status: 'processed' },
+    { id: 'mc3', gymId: 'gregory-gymnasium-austin',      createdAt: { toDate: () => new Date(Date.now() - 1  * 86400000) }, status: 'processed' },
+    { id: 'mc4', gymId: 'hutto-family-ymca',             createdAt: { toDate: () => new Date(Date.now() - 2  * 86400000) }, status: 'processed' },
+    { id: 'mc5', gymId: 'montopolis-rec-center-austin',  createdAt: { toDate: () => new Date(Date.now() - 3  * 86400000) }, status: 'processed' },
+  ];
+
+  const MOCK_CLIP_THUMBNAILS = {
+    mc1: 'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/clay-madsen-round-rock/1.jpg',
+    mc2: 'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/austin-sports-center-central/2.jpg',
+    mc3: 'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/gregory-gymnasium-austin/5.jpg',
+    mc4: 'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/hutto-family-ymca/4.jpg',
+    mc5: 'https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/montopolis-rec-center-austin/1.jpg',
+  };
+
+  const displayFriendsProfiles  = SCREENSHOT_MODE ? MOCK_FRIENDS         : friendsProfiles;
+  const displayUserClips        = SCREENSHOT_MODE ? MOCK_CLIPS            : userClips;
+  const displayClipThumbnails   = SCREENSHOT_MODE ? MOCK_CLIP_THUMBNAILS  : clipThumbnails;
+  const displayClipVideos       = SCREENSHOT_MODE ? {}                    : clipVideoUrls;
+  const displayClipsLoading     = SCREENSHOT_MODE ? false                 : clipsLoading;
+  // ──────────────────────────────────────────────────────────────────────────
   const displayRunsStarted = liveProfile?.runsStarted ?? 0;
   const _completionDenom  = displayAttended + displayCancelled + displayNoShows;
   const displayAttendance = _completionDenom > 0
@@ -624,10 +666,12 @@ export default function ProfileScreen({ navigation }) {
   }
 
   // Friend count label with correct singular/plural
-  const friendCountLabel = (() => {
-    const n = liveProfile?.friends?.length || 0;
-    return n === 1 ? '1 friend' : `${n} friends`;
-  })();
+  const friendCountLabel = SCREENSHOT_MODE
+    ? `${MOCK_FRIENDS.length} friends`
+    : (() => {
+        const n = liveProfile?.friends?.length || 0;
+        return n === 1 ? '1 friend' : `${n} friends`;
+      })();
 
   return (
     <ImageBackground source={require('../assets/images/profllepg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
@@ -979,13 +1023,13 @@ export default function ProfileScreen({ navigation }) {
               <Ionicons name="person-add-outline" size={18} color={colors.primary} />
             </TouchableOpacity>
           </View>
-          {friendsProfiles.length > 0 ? (
+          {displayFriendsProfiles.length > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.crewScroll}
             >
-              {friendsProfiles.map((friend) => (
+              {displayFriendsProfiles.map((friend) => (
                 <TouchableOpacity
                   key={friend.uid}
                   style={styles.friendItem}
@@ -1025,13 +1069,13 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.card}>
           <View style={styles.clipsSectionHeader}>
             <Text style={styles.cardTitle}>My Clips</Text>
-            {userClips.length > 0 && (
+            {displayUserClips.length > 0 && (
               <View style={styles.clipsCountBadge}>
-                <Text style={styles.clipsCountText}>{userClips.length}</Text>
+                <Text style={styles.clipsCountText}>{displayUserClips.length}</Text>
               </View>
             )}
           </View>
-          {clipsLoading ? (
+          {displayClipsLoading ? (
             <FlatList
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1040,16 +1084,16 @@ export default function ProfileScreen({ navigation }) {
               contentContainerStyle={styles.clipsRow}
               renderItem={() => <View style={styles.clipSkeletonTile} />}
             />
-          ) : userClips.length > 0 ? (
+          ) : displayUserClips.length > 0 ? (
             <FlatList
               horizontal
               showsHorizontalScrollIndicator={false}
-              data={userClips}
+              data={displayUserClips}
               keyExtractor={(item) => item.id}
               contentContainerStyle={styles.clipsRow}
               renderItem={({ item: clip }) => {
-                const videoUrl = clipVideoUrls[clip.id];
-                const thumbUri = clipThumbnails[clip.id];
+                const videoUrl = displayClipVideos[clip.id];
+                const thumbUri = displayClipThumbnails[clip.id];
                 return (
                   <TouchableOpacity
                     style={styles.clipTile}
