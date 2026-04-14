@@ -91,7 +91,7 @@ export default function CheckInScreen({ navigation }) {
 
   // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
   // Flip to true before screenshots, back to false before shipping.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const MOCK_PRESENCE = {
     gymId:       'austin-sports-center-central',

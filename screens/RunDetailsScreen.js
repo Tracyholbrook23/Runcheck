@@ -458,7 +458,7 @@ export default function RunDetailsScreen({ route, navigation }) {
 
   // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
   // Flip to true before screenshots, back to false before shipping.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const MOCK_RUN_ID  = 'mock-run-001';
   const MOCK_RUN_ID2 = 'mock-run-002';
@@ -2772,7 +2772,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                   );
                 })}
                 <Text style={[styles.infoSheetBody, { marginTop: SPACING.md, opacity: 0.65 }]}>
-                  Based on the skill levels of players going — check the run style badge for the creator's intended vibe.
+                  Based on players currently in the run — check the run style badge for the creator's intended vibe.
                 </Text>
               </>
             )}

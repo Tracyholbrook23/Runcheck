@@ -198,7 +198,7 @@ export default function PlanVisitScreen({ navigation }) {
 
   // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
   // Flip to true before screenshots, back to false before shipping.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const now = new Date();
   const d = (hours) => new Date(now.getTime() + hours * 3600000);

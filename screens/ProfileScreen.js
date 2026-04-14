@@ -572,7 +572,7 @@ export default function ProfileScreen({ navigation }) {
   // could resolve after reliabilityLoading cleared — causing a flash of zeroes. RC-004.
   // ─── SCREENSHOT MODE ──────────────────────────────────────────────────────
   // Flip to false before shipping.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const displayScheduled  = SCREENSHOT_MODE ? 7  : (stats?.totalScheduled  ?? 0);
   const displayAttended   = SCREENSHOT_MODE ? 15 : (stats?.totalAttended   ?? 0);

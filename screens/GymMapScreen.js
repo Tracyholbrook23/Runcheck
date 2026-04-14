@@ -48,7 +48,7 @@ const AUSTIN_CENTER = {
 
 // ─── SCREENSHOT MODE ─────────────────────────────────────────────────────────
 // Flip to true before taking screenshots, back to false before shipping.
-const SCREENSHOT_MODE = true;
+const SCREENSHOT_MODE = false;
 
 // Fake player counts per gym ID — drives pin color for screenshots
 const MOCK_GYM_COUNTS = {

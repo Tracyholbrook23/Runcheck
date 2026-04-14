@@ -205,7 +205,7 @@ const HomeScreen = ({ navigation }) => {
   // Set SCREENSHOT_MODE = true before taking app store screenshots, then flip
   // back to false before shipping. Injects fake presence + activity data so
   // Live Runs and the activity feed look populated without touching Firestore.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const MOCK_PRESENCE_MAP = {
     'austin-sports-center-central': [

@@ -493,7 +493,7 @@ export default function MessagesScreen({ navigation }) {
 
   // ─── SCREENSHOT MODE ────────────────────────────────────────────────────────
   // Flip to false before shipping. Leaves real DMs intact, mocks run chats only.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const t = (hoursFromNow) => {
     const d = new Date(Date.now() + hoursFromNow * 3600000);
