@@ -52,7 +52,7 @@ import { useTheme } from '../contexts';
 import { useGyms, useProfile, useLivePresenceMap, useLocation } from '../hooks';
 import { Logo } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
-import { calculateDistanceMeters } from '../utils/locationUtils';
+import { calculateDistanceMeters, isLocationGranted } from '../utils/locationUtils';
 import { auth, db } from '../config/firebase';
 import {
   doc,
@@ -96,6 +96,14 @@ const ACCESS_FILTERS = [
   { key: 'free',       label: 'Free' },
   { key: 'membership', label: 'Membership' },
 ];
+
+// ── State display names ───────────────────────────────────────────────────────
+// Maps state abbreviation stored in Firestore → human-readable label.
+// Add a new entry here whenever a new state is added to the gym dataset.
+const STATE_LABELS = {
+  TX: 'Texas',
+  MI: 'Michigan',
+};
 
 /**
  * formatGymDistance — Builds the location string shown on gym cards.
@@ -294,8 +302,9 @@ export default function ViewRunsScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState(null);         // null | 'indoor' | 'outdoor'
   const [accessFilter, setAccessFilter] = useState(null);     // null | 'free' | 'membership'
-  const [cityFilter, setCityFilter] = useState(null);         // null | city string
-  const [runLevelFilter, setRunLevelFilter] = useState(null); // null | 'casual' | 'mixed' | 'competitive'
+  const [stateFilter, setStateFilter] = useState(null);        // null | state abbreviation string e.g. 'TX' | 'MI'
+  const [cityFilter, setCityFilter] = useState(null);          // null | city string (scoped to stateFilter when set)
+  const [runLevelFilter, setRunLevelFilter] = useState(null);  // null | 'casual' | 'mixed' | 'competitive'
   const [crewFilter, setCrewFilter] = useState(null);         // null | uid string — filter by crew member
   const [ageGroupFilter, setAgeGroupFilter] = useState(null); // null | '18-25' | '26-35' | '36+'
   const [allUpcomingRuns, setAllUpcomingRuns] = useState([]); // live runs across all gyms for level filter
@@ -310,24 +319,58 @@ export default function ViewRunsScreen({ navigation, route }) {
     return () => unsub();
   }, []);
 
+  // ── Passive location fetch on mount ────────────────────────────────────────
+  // Silently check whether location permission is already granted. If it is,
+  // fetch the user's coordinates so the 100-mile nearby filter (step 0 in
+  // filteredGyms) can hide gyms in other cities automatically.
+  //
+  // Critically: this path does NOT call requestForegroundPermissionsAsync, so
+  // no OS permission dialog is shown. The explicit prompt only fires when the
+  // user taps the "Nearest First" toggle (handleNearestToggle). If permission
+  // was never granted, userLocation stays null and all gyms remain visible.
+  useEffect(() => {
+    let cancelled = false;
+    isLocationGranted().then((granted) => {
+      if (!cancelled && granted) {
+        getCurrentLocation().catch(() => {}); // silent — errors are expected (GPS off indoors, etc.)
+      }
+    });
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Count how many filters/sorts are active so we can badge the Filter button
-  const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (cityFilter ? 1 : 0) + (runLevelFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
+  const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (stateFilter ? 1 : 0) + (cityFilter ? 1 : 0) + (runLevelFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
+  // ── State list for state filter ───────────────────────────────────────────
+  // Derived dynamically so new states appear automatically when gyms are seeded.
+  const availableStates = useMemo(() => {
+    const seen = new Set();
+    const states = [];
+    gyms.forEach((g) => {
+      if (g.state && !seen.has(g.state)) {
+        seen.add(g.state);
+        states.push(g.state);
+      }
+    });
+    return states.sort();
+  }, [gyms]);
+
   // ── City list for city filter ─────────────────────────────────────────────
-  // Derived dynamically from loaded gyms so it auto-expands as new gyms are added.
+  // When a state is selected, only cities from that state are shown.
+  // This prevents East Lansing (MI) and Austin (TX) from appearing together.
   const availableCities = useMemo(() => {
     const seen = new Set();
     const cities = [];
     gyms.forEach((g) => {
-      if (g.city && !seen.has(g.city)) {
+      if (g.city && !seen.has(g.city) && (!stateFilter || g.state === stateFilter)) {
         seen.add(g.city);
         cities.push(g.city);
       }
     });
     return cities.sort();
-  }, [gyms]);
+  }, [gyms, stateFilter]);
 
   // ── User location for "Nearest" sort ────────────────────────────────────────
   // useLocation is already available in the hooks barrel. If the user hasn't
@@ -341,7 +384,7 @@ export default function ViewRunsScreen({ navigation, route }) {
 
   // ─── SCREENSHOT MODE ───────────────────────────────────────────────────────
   // Flip to true before screenshots, back to false before shipping.
-  const SCREENSHOT_MODE = true;
+  const SCREENSHOT_MODE = false;
 
   const MOCK_CREW = [
     { uid: 'mf1',  name: 'Malik_ATX',   photoURL: 'https://randomuser.me/api/portraits/men/36.jpg'   },
@@ -556,6 +599,25 @@ export default function ViewRunsScreen({ navigation, route }) {
     const q = searchQuery.trim().toLowerCase();
     let result = gyms;
 
+    // ── 0. Nearby filter — hide gyms beyond 100 miles ──────────────────────
+    // Applied first so all subsequent filters operate on a pre-scoped list.
+    // 100 miles = 160,934 m. Rounded to 160,000 for a clean constant.
+    // Skipped when userLocation is null (permission denied, GPS off, or not
+    // yet resolved) — all gyms remain visible in that case.
+    // Skipped when stateFilter is set — the user has explicitly chosen to
+    // browse a specific state, so the automatic radius must not block it.
+    // Gyms without a location field are kept rather than silently hidden.
+    const NEARBY_RADIUS_METERS = 160000; // ~100 miles
+    if (userLocation && !stateFilter) {
+      result = result.filter((gym) => {
+        if (!gym.location) return true;
+        return calculateDistanceMeters(userLocation, {
+          latitude:  gym.location.latitude,
+          longitude: gym.location.longitude,
+        }) <= NEARBY_RADIUS_METERS;
+      });
+    }
+
     // ── 1. Text search ─────────────────────────────────────────────────────
     if (q) {
       result = result.filter((gym) => {
@@ -582,21 +644,51 @@ export default function ViewRunsScreen({ navigation, route }) {
       result = result.filter((gym) => gym.accessType !== 'free');
     }
 
+    // ── 3.5. State filter ─────────────────────────────────────────────────
+    // Applied before city so the city filter always operates on a
+    // state-scoped list. When no state is selected, all states pass through.
+    if (stateFilter) {
+      result = result.filter((gym) => gym.state === stateFilter);
+    }
+
     // ── 4. City filter ─────────────────────────────────────────────────────
     if (cityFilter) {
       result = result.filter((gym) => gym.city === cityFilter);
     }
 
     // ── 5. Run level filter ────────────────────────────────────────────────
-    // Shows only gyms that have at least one upcoming run tagged at the
-    // selected level. Runs without a runLevel field are treated as 'mixed'.
+    // A gym passes this filter if EITHER:
+    //   (a) It has at least one upcoming active run tagged at the selected level, OR
+    //   (b) It has NO upcoming runs at all AND its gym.defaultRunLevel matches
+    //       (undefined defaultRunLevel is treated as 'mixed').
+    //
+    // This means the filter works at off-peak hours when no runs are live,
+    // falling back to the gym's declared default character instead of hiding it.
     if (runLevelFilter) {
-      const matchingGymIds = new Set(
+      // Build a set of gymIds that already have a matching active run (path a).
+      const gymsWithMatchingRun = new Set(
         allUpcomingRuns
           .filter((r) => (r.runLevel ?? 'mixed') === runLevelFilter)
           .map((r) => r.gymId)
       );
-      result = result.filter((gym) => matchingGymIds.has(gym.id));
+
+      // Build a set of gymIds that have ANY active run (used to detect "no runs").
+      const gymsWithAnyRun = new Set(allUpcomingRuns.map((r) => r.gymId));
+
+      result = result.filter((gym) => {
+        // Path (a): active run at this gym matches the selected level.
+        if (gymsWithMatchingRun.has(gym.id)) return true;
+
+        // Path (b): gym has no active runs — fall back to gym.defaultRunLevel.
+        // Treat undefined/null defaultRunLevel as 'mixed'.
+        if (!gymsWithAnyRun.has(gym.id)) {
+          const gymDefault = gym.defaultRunLevel ?? 'mixed';
+          return gymDefault === runLevelFilter;
+        }
+
+        // Gym has active runs but none match the selected level — exclude it.
+        return false;
+      });
     }
 
     // ── 6. Sort ────────────────────────────────────────────────────────────
@@ -623,7 +715,7 @@ export default function ViewRunsScreen({ navigation, route }) {
     }
 
     return result;
-  }, [gyms, searchQuery, typeFilter, accessFilter, cityFilter, runLevelFilter, allUpcomingRuns, sortByNearest, userLocation, homeCourtId, liveCountMap]);
+  }, [gyms, searchQuery, typeFilter, accessFilter, stateFilter, cityFilter, runLevelFilter, allUpcomingRuns, sortByNearest, userLocation, homeCourtId, liveCountMap]);
 
   // NOTE: loading gate intentionally removed from here.
   // The header, search bar, and filter pills are static and need no gym data —
@@ -695,6 +787,13 @@ export default function ViewRunsScreen({ navigation, route }) {
                   <Text style={styles.activeChipText}>
                     {accessFilter === 'free' ? 'Free' : 'Membership'}
                   </Text>
+                  <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
+                </TouchableOpacity>
+              )}
+              {stateFilter && (
+                <TouchableOpacity style={[styles.activeChip, { backgroundColor: '#8B5CF6' }]} onPress={() => { setStateFilter(null); setCityFilter(null); }} activeOpacity={0.8}>
+                  <Ionicons name="map-outline" size={11} color="#fff" style={{ marginRight: 3 }} />
+                  <Text style={styles.activeChipText}>{STATE_LABELS[stateFilter] ?? stateFilter}</Text>
                   <Ionicons name="close" size={11} color="#fff" style={{ marginLeft: 3 }} />
                 </TouchableOpacity>
               )}
@@ -772,6 +871,26 @@ export default function ViewRunsScreen({ navigation, route }) {
                   <Ionicons name="search-outline" size={28} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
                   <Text style={styles.emptyText}>No gyms found</Text>
                   <Text style={styles.emptySubtext}>Try another gym name or area</Text>
+                </>
+              ) : activeFilterCount > 0 ? (
+                <>
+                  <Ionicons name="options-outline" size={28} color={colors.textMuted} style={{ marginBottom: SPACING.sm }} />
+                  <Text style={styles.emptyText}>No gyms match your filters</Text>
+                  <Text style={styles.emptySubtext}>Try removing a filter or check back later.</Text>
+                  <TouchableOpacity
+                    style={styles.clearFiltersButton}
+                    onPress={() => {
+                      setTypeFilter(null);
+                      setAccessFilter(null);
+                      setStateFilter(null);
+                      setCityFilter(null);
+                      setRunLevelFilter(null);
+                      setSortByNearest(false);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={styles.clearFiltersButtonText}>Clear Filters</Text>
+                  </TouchableOpacity>
                 </>
               ) : (
                 <>
@@ -951,6 +1070,37 @@ export default function ViewRunsScreen({ navigation, route }) {
               })}
             </View>
 
+            {/* ── State ── */}
+            {availableStates.length > 1 && (
+              <>
+                <Text style={styles.sheetSectionLabel}>State</Text>
+                <View style={styles.sheetPillRow}>
+                  {availableStates.map((state) => {
+                    const active = stateFilter === state;
+                    return (
+                      <TouchableOpacity
+                        key={state}
+                        style={[styles.sheetPill, active && { backgroundColor: '#8B5CF6', borderColor: '#8B5CF6' }]}
+                        onPress={() => {
+                          // Selecting a new state auto-clears city since cities
+                          // are now scoped — the previous city may not exist here.
+                          const next = active ? null : state;
+                          setStateFilter(next);
+                          setCityFilter(null);
+                        }}
+                        activeOpacity={0.75}
+                      >
+                        <Ionicons name="map-outline" size={13} color={active ? '#fff' : colors.textMuted} style={{ marginRight: 5 }} />
+                        <Text style={[styles.sheetPillText, active && styles.sheetPillTextActive]}>
+                          {STATE_LABELS[state] ?? state}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
             {/* ── City ── */}
             {availableCities.length > 0 && (
               <>
@@ -985,8 +1135,11 @@ export default function ViewRunsScreen({ navigation, route }) {
               </>
             )}
 
-            {/* ── Run Level ── */}
-            <Text style={styles.sheetSectionLabel}>Run Level</Text>
+            {/* ── Run Style ── */}
+            <Text style={styles.sheetSectionLabel}>Run Style</Text>
+            <Text style={[styles.sheetToggleSub, { marginBottom: 10, marginTop: -4 }]}>
+              Based on active runs or typical play at this gym
+            </Text>
             <View style={styles.sheetPillRow}>
               {RUN_LEVEL_FILTERS.map(({ key, label, color }) => {
                 const active = runLevelFilter === key;
@@ -1105,6 +1258,7 @@ export default function ViewRunsScreen({ navigation, route }) {
                 onPress={() => {
                   setTypeFilter(null);
                   setAccessFilter(null);
+                  setStateFilter(null);
                   setCityFilter(null);
                   setRunLevelFilter(null);
                   setCrewFilter(null);
@@ -1274,6 +1428,20 @@ loadingText: {
     fontSize: FONT_SIZES.body,
     color: colors.textSecondary,
     marginTop: SPACING.sm,
+    textAlign: 'center',
+  },
+  clearFiltersButton: {
+    marginTop: SPACING.md,
+    paddingVertical: 9,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  clearFiltersButtonText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semiBold,
+    color: colors.primary,
   },
   gymCard: {
     flexDirection: 'row',
