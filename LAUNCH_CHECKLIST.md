@@ -4,6 +4,60 @@ This file tracks what must be true before RunCheck ships.
 Items are organized by area. Check them off as they are completed.
 If something isn't on this list, it's either already done or it belongs in `PARKING_LOT.md`.
 
+**Priority order:** Launch-Critical Data Integrity → High-Priority Functional Fixes → Content / Asset Cleanup → Scope Decisions Before Launch → existing feature sections → UI / Polish (Post-Launch).
+
+---
+
+## ⚠️ Launch-Critical Data Integrity
+
+These items must be resolved before launch. Incorrect gym data breaks the core promise of the app — users cannot trust check-in, directions, or court availability if the underlying data is wrong.
+
+- [ ] **Gym existence audit** — Verify every gym in the `gyms/` Firestore collection actually exists as a real, currently-operating facility. Remove (archive via `status: 'archived'`) any gym that has closed or no longer exists.
+- [ ] **Basketball court verification** — Confirm every listed gym actually has playable basketball courts (not just a general fitness facility with no courts). Archive gyms that do not have courts.
+- [ ] **Address accuracy** — Verify the displayed `address`, `city`, and `state` fields for every gym are accurate and complete.
+- [ ] **Coordinate audit** — Verify `location.latitude` / `location.longitude` for every gym is correctly pinned to the actual building or court entrance. Incorrect coordinates will silently break check-in proximity enforcement for users at the real location.
+- [ ] **Directions test (Apple Maps + Google Maps)** — Confirm that tapping the directions button on each gym opens the correct real-world destination. This depends entirely on accurate coordinates.
+- [ ] **Check-in radius re-validation** — After correcting any coordinates, verify the existing `checkInRadiusMeters` value per gym still permits check-in at the corrected real-world position.
+
+> ⚠️ **Context:** 89 gyms are seeded across Batches 1–6 as of 2026-03-30. Batches 2–6 (80 gyms) are pending the full enrichment pipeline (`enrichGymsWithPlaces.js` → `downloadGymPhotos.js` → `selectBestGymPhoto.js` → `seedGyms.js`). The existence/address/coordinate audit should be completed before running enrichment so that bad data is not baked in.
+> This task supersedes the older "Verify Cowboys Fit coordinates" note in the Post-Launch section below.
+
+---
+
+## High-Priority Functional Fixes
+
+Functional issues that affect user trust, onboarding success, or first impressions of the product.
+
+- [ ] **Email verification flow audit** — Review the full Firebase email verification flow end-to-end before launch:
+  - Confirm verification emails are sent from a branded sender address/domain (not a raw Firebase no-reply address that triggers spam filters)
+  - Investigate and reduce spam/junk folder delivery rate — review Firebase Auth email sender config; consider a custom SMTP sender via Firebase Extensions or a transactional email service if needed
+  - Verify the verification link in the email is clearly formatted, not truncated, and does not look suspicious in common email clients (Gmail, Apple Mail)
+  - Test the full flow on a fresh account: sign up → receive email → tap link → return to app → verified state confirmed
+  - Files involved: `screens/VerifyEmailScreen.js`, Firebase Console → Authentication → Templates
+
+---
+
+## Content / Asset Cleanup
+
+Data and media quality issues that affect first impressions and trust. Should follow the gym data audit above — no point fixing images for gyms being removed.
+
+- [ ] **Gym thumbnail / image audit** — Review gym images displayed across the app for all active gyms:
+  - Identify images that are low-quality, incorrect (showing the wrong facility), misleading, or broken/missing
+  - Replace bad images with accurate photos of the actual court/facility
+  - Run or re-run `selectBestGymPhoto.js` pipeline after any coordinate/enrichment corrections
+  - Files involved: `imageUrl` and `photoGallery` fields in `gyms/{gymId}`, Firebase Storage, `runcheck-backend/scripts/selectBestGymPhoto.js`
+
+---
+
+## Scope Decisions Before Launch
+
+These are decision points, not implementation tasks. Each needs a go/no-go call before launch work can be scoped.
+
+- [ ] **Clips feature scope decision** — Decide whether to temporarily disable the clips feature (posting, recording, uploading) before launch, or commit to fixing the clips flow in time for launch.
+  - **Option A (Disable for MVP):** Temporarily hide/remove clips UI entry points (record button, upload flow) to ship a cleaner, more focused MVP. Re-enable post-launch once QA is solid. Would require hiding "My Clips", "Tagged In", and "Featured In" sections on ProfileScreen / UserProfileScreen or showing graceful empty states.
+  - **Option B (Fix for Launch):** Identify the specific clips flow issues blocking a reliable experience and resolve them before ship. Requires QA on RecordClipScreen → TrimClipScreen → upload → finalize on real device.
+  - **Recommendation:** _Decision not yet made. Do a short QA pass on the clips flow (record → trim → upload → playback) on device before deciding. If it works reliably, keep it. If not, disable for MVP._
+
 ---
 
 ## Auth & Profile Basics
@@ -119,10 +173,10 @@ These are known improvements that can wait until after launch:
 - Composite Firestore index for `activity` collection (needed at scale, not blocking small user base)
 - Migrate remaining gym images to Firebase Storage (5 of 6 still on external hosts)
 - Deprecate/remove stale `addGym` Cloud Function
-- Verify Cowboys Fit coordinates with manual Google Maps pin
+- ~~Verify Cowboys Fit coordinates with manual Google Maps pin~~ — superseded by the full **Gym data accuracy audit** in Launch-Critical Data Integrity above
 - Switch `useTaggedClips` from client-side filtering to `taggedUserIds` native query
 - Premium/monetization features (PremiumScreen exists but no billing)
 
 ---
 
-_Last updated: 2026-03-28_
+_Last updated: 2026-04-14 — Added Launch-Critical Data Integrity (gym audit), High-Priority Functional Fixes (email verification), Content / Asset Cleanup (gym thumbnails), and Scope Decisions Before Launch (clips) sections._
