@@ -353,7 +353,7 @@ Track audit progress for every active gym here. Archived and hidden gyms are in 
 | South Austin Recreation Center | `south-austin-recreation-center` | Austin | 3 | I | free | NOT_STARTED | |
 | Givens Recreation Center | `givens-recreation-center-austin` | Austin | 3 | I | free | VERIFIED | ✅ 2026-04-16 |
 | Gus Garcia Recreation Center | `gus-garcia-recreation-center` | Austin | 3 | I | free | VERIFIED | ✅ 2026-04-18 |
-| Parque Zaragoza Recreation Center | `parque-zaragoza-recreation-center` | Austin | 3 | I | free | NOT_STARTED | |
+| Parque Zaragoza Recreation Center | `parque-zaragoza-recreation-center` | Austin | 3 | I | free | VERIFIED | ✅ 2026-04-18 |
 | Virginia L. Brown Recreation Center | `virginia-brown-recreation-center` | Austin | 3 | I | free | NOT_STARTED | |
 | Dottie Jordan Recreation Center | `dottie-jordan-recreation-center` | Austin | 3 | I | free | NOT_STARTED | |
 | Turner Roberts Recreation Center | `turner-roberts-recreation-center` | Austin | 3 | I | free | NOT_STARTED | |
@@ -364,20 +364,20 @@ Track audit progress for every active gym here. Archived and hidden gyms are in 
 | Del Valle Recreation Center | `del-valle-recreation-center` | Del Valle | 3 | I | free | NOT_STARTED | |
 | Austin Sports Center - Central | `austin-sports-center-central` | Austin | 3 | I | paid | VERIFIED | ✅ 2026-04-16 |
 | Austin Sports Center - North | `austin-sports-center-north` | Austin | 3 | I | paid | VERIFIED | ✅ 2026-04-16 |
-| Life Time Fitness - South Austin | `lifetime-south-austin` | Austin | 3 | I | paid | NOT_STARTED | |
+| Life Time Fitness - South Austin | `lifetime-south-austin` | Austin | 3 | I | paid | VERIFIED | ✅ 2026-04-18 |
 | LA Fitness - South Lamar | `la-fitness-south-lamar` | Austin | 3 | I | paid | NEEDS_REVIEW | ⚠️ coord |
 | Georgetown Recreation Center | `georgetown-recreation-center` | Georgetown | 3 | I | paid | VERIFIED | ✅ 2026-04-16 |
-| Pflugerville Recreation Center | `pflugerville-recreation-center` | Pflugerville | 3 | I | paid | NOT_STARTED | |
+| Pflugerville Recreation Center | `pflugerville-recreation-center` | Pflugerville | 3 | I | paid | VERIFIED | ✅ 2026-04-18 |
 | NE Metro Park Recreation Center | `northeast-metro-park-rec-center` | Pflugerville | 3 | I | free | NOT_STARTED | |
 | Brushy Creek Community Center | `brushy-creek-community-center` | Round Rock | 3 | I | paid | VERIFIED | ✅ 2026-04-16 |
 | Kyle Recreation Center | `kyle-recreation-center` | Kyle | 3 | I | free | NOT_STARTED | |
 | Lakeway Activity Center | `lakeway-activity-center` | Lakeway | 3 | I | paid | NOT_STARTED | |
 | Bee Cave Central Park Gymnasium | `bee-cave-central-park-gym` | Bee Cave | 3 | I | free | NOT_STARTED | |
-| Round Rock Sports Center | `round-rock-sports-center` | Round Rock | 4 | I | free | NOT_STARTED | |
+| Round Rock Sports Center | `round-rock-sports-center` | Round Rock | 4 | I | free | VERIFIED | ✅ 2026-04-18 |
 | CHASCO Family YMCA | `chasco-family-ymca-round-rock` | Round Rock | 4 | I | paid | NEEDS_REVIEW | ⚠️ coord |
 | LA Fitness - AW Grimes | `la-fitness-aw-grimes-round-rock` | Round Rock | 4 | I | paid | NOT_STARTED | |
 | LA Fitness - RM 620 | `la-fitness-rm620-round-rock` | Round Rock | 4 | I | paid | NOT_STARTED | |
-| Hutto Family YMCA | `hutto-family-ymca` | Hutto | 4 | I | paid | NOT_STARTED | |
+| Hutto Family YMCA | `hutto-family-ymca` | Hutto | 4 | I | paid | VERIFIED | ✅ 2026-04-18 |
 | Alamo Pocket Park | `alamo-pocket-park` | Austin | 5 | O | free | NOT_STARTED | |
 | Shipe Neighborhood Park | `shipe-neighborhood-park` | Austin | 5 | O | free | NOT_STARTED | |
 | Northwest District Park | `northwest-district-park` | Austin | 5 | O | free | NOT_STARTED | |
@@ -404,7 +404,7 @@ Track audit progress for every active gym here. Archived and hidden gyms are in 
 | Milburn Park | `milburn-park-cedar-park` | Cedar Park | 6 | O | free | NOT_STARTED | |
 | Nelson Ranch Park | `nelson-ranch-park-cedar-park` | Cedar Park | 6 | O | free | NOT_STARTED | |
 | Creekside Park | `creekside-park-cedar-park` | Cedar Park | 6 | O | free | NOT_STARTED | |
-| HOA Harris Branch Basketball Court | `hoa-harris-branch-basketball-court` | Austin | 7 | O | free | NOT_STARTED | |
+| HOA Harris Branch Basketball Court | `hoa-harris-branch-basketball-court` | Austin | 7 | O | free | VERIFIED | ✅ 2026-04-18 |
 
 ### Michigan (Batch 8) — Active Gyms
 
@@ -412,19 +412,20 @@ Track audit progress for every active gym here. Archived and hidden gyms are in 
 
 | Gym Name | ID | City | T | Access | Audit Status | Flag |
 |---|---|---|---|---|---|---|
-| Court One Athletic Club - East | `court-one-east-lansing` | Okemos | I | paid | NOT_STARTED | ⚠️ coord |
-| Court One Athletic Club - North | `court-one-north-lansing` | Lansing | I | paid | NOT_STARTED | ⚠️ coord |
-| MSU IM West | `msu-im-west` | East Lansing | I | paid | NOT_STARTED | ⚠️ coord, access? |
-| MSU IM Circle | `msu-im-circle` | East Lansing | I | paid | NOT_STARTED | ⚠️ coord, access? |
-| MSU IM East | `msu-im-east` | East Lansing | I | paid | NOT_STARTED | ⚠️ coord, access? |
-| Alfreda Schmidt Community Center | `alfreda-schmidt-community-center` | Lansing | I | free | NOT_STARTED | ⚠️ coord |
-| Foster Community Center | `foster-community-center-lansing` | Lansing | I | free | NOT_STARTED | ⚠️ coord |
-| Gier Community Center | `gier-community-center-lansing` | Lansing | I | free | NOT_STARTED | ⚠️ coord |
-| Hannah Community Center | `hannah-community-center-east-lansing` | East Lansing | I | paid | FIXED | ✅ 2026-04-14 |
-| Patriarche Park | `patriarche-park-east-lansing` | East Lansing | O | free | NOT_STARTED | ⚠️ coord |
-| Hunter Park | `hunter-park-lansing` | Lansing | O | free | NOT_STARTED | ⚠️ coord |
-| Quentin Park | `quentin-park-lansing` | Lansing | O | free | NOT_STARTED | ⚠️ coord |
-| Frances Park | `frances-park-lansing` | Lansing | O | free | NOT_STARTED | ⚠️ coord |
+| Court One Athletic Club - East | `court-one-east-lansing` | Okemos | I | paid | FIXED | ✅ 2026-04-19 |
+| Court One Athletic Club - North | `court-one-north-lansing` | Lansing | I | paid | FIXED | ✅ 2026-04-19 |
+| MSU IM West | `msu-im-west` | East Lansing | I | paid | VERIFIED | ✅ 2026-04-19 coords re-verified via Google Maps |
+| MSU IM Circle | `msu-im-circle` | East Lansing | I | paid | FIXED | ✅ 2026-04-19 |
+| The Club at Chandler Crossings | `club-chandler-crossings` | East Lansing | I | paid | FIXED | ✅ 2026-04-19 |
+| MSU IM East | `msu-im-east` | East Lansing | I | paid | FIXED | ✅ 2026-04-19 |
+| Alfreda Schmidt Community Center | `alfreda-schmidt-community-center` | Lansing | I | free | FIXED | ✅ 2026-04-19 |
+| Foster Community Center | `foster-community-center-lansing` | Lansing | I | free | FIXED | ✅ 2026-04-19 |
+| Gier Community Center | `gier-community-center-lansing` | Lansing | I | free | FIXED | ✅ 2026-04-19 |
+| Hannah Community Center | `hannah-community-center-east-lansing` | East Lansing | I | paid | FIXED | ✅ 2026-04-19 |
+| Patriarche Park | `patriarche-park-east-lansing` | East Lansing | O | free | REMOVE | ✅ 2026-04-19 archived |
+| Hunter Park | `hunter-park-lansing` | Lansing | O | free | REMOVE | 🚫 court unconfirmed |
+| Quentin Park | `quentin-park-lansing` | Lansing | O | free | REMOVE | 🚫 court unconfirmed |
+| Frances Park | `frances-park-lansing` | Lansing | O | free | REMOVE | 🚫 court unconfirmed |
 
 ### Michigan (Batch 8) — Hidden Gyms (pending access confirmation)
 
@@ -566,6 +567,70 @@ These are set to `status: 'hidden'` in the seed file. Before making any active, 
 **Notes:** Verified 2026-04-14. Coordinates corrected. Photo confirmed via Google Maps street view.
 **Final Storage URL:** `https://storage.googleapis.com/runcheck-567a3.firebasestorage.app/gymImages/hannah-community-center-east-lansing/1.jpg`
 **Action required:** Run `node scripts/uploadHannahPhoto.js` to upload the photo to Firebase Storage, then run `node seedProductionGyms.js` to push coordinates + photo URL to Firestore.
+
+---
+
+### Alfreda Schmidt Community Center — `alfreda-schmidt-community-center`
+
+**Batch:** 8 (Michigan)
+**Type:** indoor | **Access:** free
+**Old Address:** 1619 Reo Ave, Lansing, MI 48910
+**Correct Address:** 5825 Wise Rd, Lansing, MI 48911
+**Old Coordinates:** 42.7201, -84.5793
+**Correct Coordinates:** 42.67375028615337, -84.59064418650749
+
+#### Verification Checklist
+- [x] Gym still exists and is operating
+- [x] Basketball courts confirmed present
+- [x] Address verified correct
+- [x] Coordinates verified (right-click → "What's here?" in Google Maps)
+- [ ] Directions open correct destination in Apple Maps
+- [ ] Directions open correct destination in Google Maps
+- [ ] Check-in radius valid at corrected location
+
+#### Findings
+**Verified Gym Exists?** Yes
+**Verified Basketball Courts?** Yes
+**Correct Address:** 5825 Wise Rd, Lansing, MI 48911
+**Correct Coordinates:** 42.67375028615337, -84.59064418650749
+**Apple Maps Correct?** Pending smoke test
+**Google Maps Correct?** Pending smoke test
+**Check-In Location Valid?** Pending smoke test
+
+**Status:** FIXED
+**Notes:** Fixed 2026-04-19. Address and coordinates both wrong in original seed (Reo Ave was incorrect; estimate coordinates were off). Corrected to 5825 Wise Rd, 48911 and verified pin. Re-seed required: run `node seedProductionGyms.js` to push to Firestore.
+
+---
+
+### Court One Athletic Club - East — `court-one-east-lansing`
+
+**Batch:** 8 (Michigan)
+**Type:** indoor | **Access:** paid
+**Old Address:** 2291 Research Circle, Okemos, MI 48864
+**Correct Address:** 2291 Research Dr, Okemos, MI 48864
+**Old Coordinates:** 42.7183, -84.4077
+**Correct Coordinates:** 42.70536236156866, -84.43527622883583
+
+#### Verification Checklist
+- [x] Gym still exists and is operating
+- [x] Basketball courts confirmed present
+- [x] Address verified correct
+- [x] Coordinates verified
+- [x] Directions open correct destination in Apple Maps
+- [x] Directions open correct destination in Google Maps
+- [x] Check-in radius valid at corrected location
+
+#### Findings
+**Verified Gym Exists?** Yes
+**Verified Basketball Courts?** Yes
+**Correct Address:** 2291 Research Dr, Okemos, MI 48864
+**Correct Coordinates:** 42.70536236156866, -84.43527622883583
+**Apple Maps Correct?** Yes
+**Google Maps Correct?** Yes
+**Check-In Location Valid?** Yes
+
+**Status:** FIXED
+**Notes:** Fixed 2026-04-19. Address corrected (Research Circle → Research Dr). Coordinates updated from estimate. Photo uploaded to Firebase Storage and seeded to Firestore.
 
 ---
 

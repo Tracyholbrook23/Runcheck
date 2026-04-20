@@ -1,29 +1,58 @@
-# Current Focus — Launch Prep
+# Current Focus — Michigan Gym Expansion
 
-One goal this phase: ship a reliable Texas launch. Nothing else.
+Texas gyms: ✅ complete. Michigan Batch 8 gyms: ✅ audit complete (all verified, fixed, or archived as of 2026-04-19).
+
+## Session Summary — 2026-04-19
+
+### Completed today
+- **IM West** (`msu-im-west`) — coordinates corrected twice; final verified coords: `42.72904384119816, -84.4870783518538` via Google Maps pin
+- **IM Circle** (`msu-im-circle`) — coordinates fixed: `42.73186045039393, -84.48576466431427`, address: `308 W Circle Dr, East Lansing, MI 48824`
+- **Patriarche Park** — archived (`status: 'archived'`), unconfirmed basketball courts
+- **The Club at Chandler Crossings** (`club-chandler-crossings`) — NEW gym added: `3850 Coleman Rd, East Lansing, MI 48823`, coords `42.77254580224525, -84.48743187233903`, photo uploaded to Firebase Storage as `cover.jpg`
+- **Hannah Community Center** — photo re-uploaded as `cover2.jpg` to bust CDN cache; seed file already has correct URL
+
+### Still needed before Michigan goes live
+- Run `node seedProductionGyms.js` from the RunCheck folder to push all today's changes to Firestore
+- Confirm hidden school gyms (Holt, East Lansing HS, Lansing Catholic, Waverly) before activating
+- More new Michigan gyms to be added (in progress — user adding additional locations)
+
+## Michigan Batch 8 — Final Status
+
+| Gym | Status |
+|---|---|
+| Alfreda Schmidt Community Center | VERIFIED |
+| Court One Athletic Club (East/North) | FIXED |
+| Court One Lake Lansing | FIXED |
+| Foster Community Center | FIXED |
+| Gier Community Center | FIXED |
+| Hannah Community Center | FIXED (photo: cover2.jpg) |
+| The Club at Chandler Crossings | FIXED (new — added 2026-04-19) |
+| MSU IM East | FIXED |
+| MSU IM West | VERIFIED (coords: 42.72904384119816, -84.4870783518538) |
+| MSU IM Circle | FIXED (coords: 42.73186045039393, -84.48576466431427) |
+| Frances Park | ARCHIVED |
+| Hunter Park | ARCHIVED |
+| Quentin Park | ARCHIVED |
+| Patriarche Park | ARCHIVED |
 
 ## Active Now
 
-1. **Fix gym coordinate accuracy.** Audit Texas gym docs, correct lat/lng so map pins land on the actual building.
-2. **Auto-remove empty runs.** When the last player leaves a run, the run is deleted (or marked ended) so the live list stays clean.
-3. **Data integrity sweep for Texas gyms.** Standardize names, addresses, hours, and required fields across all Texas gym documents.
-4. **Reliability of join/leave flow.** Confirm the leave action consistently triggers the empty-run cleanup in production.
-5. **Pre-launch smoke test.** Walk the find → join → leave → schedule path on a real device against production data.
+1. **Add more Michigan gyms.** User is continuing to add new Michigan locations — same workflow: address + coords + photo → `seedProductionGyms.js` → seed script.
+2. **Auto-remove empty runs.** When the last player leaves a run, delete or mark it ended.
+3. **Reliability of join/leave flow.** Confirm leave action consistently triggers empty-run cleanup in production.
+4. **Pre-launch smoke test.** Walk the find → join → leave → schedule path on a real device.
+
+## Key Scripts & Workflow
+
+- **Add/update gym data:** edit `RunCheck/seedProductionGyms.js` → run `node seedProductionGyms.js`
+- **Upload gym photo:** `node scripts/uploadGymImage.js --gymId <id> --image <url-or-path> [--filename cover2.jpg]`
+  - Use `--filename cover2.jpg` (or cover3, etc.) if CDN is caching the old image
+  - Copy printed Storage URL into `imageUrl` and `photoGallery` in `seedProductionGyms.js`
+- **Audit tracker:** `RunCheck/GYM_LOCATION_AUDIT.md`
 
 ## Paused
 
-- New features of any kind (chat, notifications, profiles, social, stats).
-- Expansion beyond Texas gyms.
-- UI redesigns, theme changes, animation polish.
-- Refactors, dependency upgrades, test framework changes.
-- Schema changes to Firestore or new Cloud Functions not required by the five items above.
-- Backend repo work that is not in service of the Active Now list.
-
-## Rules for this phase
-
-- If a task is not on the Active Now list, it goes to `PARKING_LOT.md`. No exceptions without explicit approval.
-- Smallest safe change only. No drive-by cleanup.
-- Client stays read-only for reliability, moderation, gym docs, and `taggedPlayers`.
-- Do not modify Firestore schema or Cloud Function logic unless the task above requires it.
-- Read only the files needed for the current task. No full-repo scans.
-- "Nice to have" = paused. Only "blocks Texas launch" is Active Now.
+- New app features (chat, notifications, profiles, social, stats)
+- UI redesigns, animation polish
+- Refactors, dependency upgrades
+- Schema changes to Firestore or new Cloud Functions unless explicitly required
