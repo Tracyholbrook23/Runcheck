@@ -35,9 +35,8 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS, SKILL_LEVEL_COLORS } from '.
 import { useTheme } from '../contexts';
 import { formatSkillLevel } from '../services/models';
 import { Logo, Button, Input } from '../components';
-import { auth, db } from '../config/firebase';
-import { createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
-import { doc } from 'firebase/firestore';
+import { auth, callFunction } from '../config/firebase';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { sanitizePersonName, sanitizeUsername } from '../utils/sanitize';
 
 /** The three play-style options a user can choose from during registration. */
@@ -257,8 +256,9 @@ export default function SignupScreen({ navigation }) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       authUser = userCredential.user;
 
-      // Step 2: Send verification email
-      await sendEmailVerification(authUser);
+      // Step 2: Send branded verification email via Cloud Function
+      // (uses Resend from noreply@theruncheck.app instead of Firebase's default sender)
+      await callFunction('sendVerificationEmail');
 
       // Step 3: Navigate to verification gate, passing form data so
       // VerifyEmailScreen can write to Firestore once email is confirmed.

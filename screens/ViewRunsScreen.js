@@ -213,8 +213,14 @@ function GymCard({
             onPress={() => onToggleFollow(gym.id, isFollowed)}
             activeOpacity={0.7}
           >
+            <Ionicons
+              name={isFollowed ? 'notifications' : 'notifications-outline'}
+              size={11}
+              color={isFollowed ? 'rgba(255,255,255,0.70)' : '#F97316'}
+              style={{ marginRight: 3 }}
+            />
             <Text style={[styles.followButtonText, isFollowed && styles.followButtonTextActive]}>
-              {isFollowed ? 'Following' : 'Follow'}
+              {isFollowed ? 'Notified' : 'Notify Me'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1504,6 +1510,8 @@ loadingText: {
     marginRight: SPACING.xs,
   },
   followButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: RADIUS.full,

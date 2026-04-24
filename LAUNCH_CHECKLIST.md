@@ -4,59 +4,41 @@ This file tracks what must be true before RunCheck ships.
 Items are organized by area. Check them off as they are completed.
 If something isn't on this list, it's either already done or it belongs in `PARKING_LOT.md`.
 
-**Priority order:** Launch-Critical Data Integrity → High-Priority Functional Fixes → Content / Asset Cleanup → Scope Decisions Before Launch → existing feature sections → UI / Polish (Post-Launch).
+**Priority order:** Launch-Critical → High-Priority Functional → Reliability & Trust → Core UX → UI Polish → Post-Launch.
 
 ---
 
 ## ⚠️ Launch-Critical Data Integrity
 
-These items must be resolved before launch. Incorrect gym data breaks the core promise of the app — users cannot trust check-in, directions, or court availability if the underlying data is wrong.
-
-- [ ] **Gym existence audit** — Verify every gym in the `gyms/` Firestore collection actually exists as a real, currently-operating facility. Remove (archive via `status: 'archived'`) any gym that has closed or no longer exists.
-- [ ] **Basketball court verification** — Confirm every listed gym actually has playable basketball courts (not just a general fitness facility with no courts). Archive gyms that do not have courts.
-- [ ] **Address accuracy** — Verify the displayed `address`, `city`, and `state` fields for every gym are accurate and complete.
-- [ ] **Coordinate audit** — Verify `location.latitude` / `location.longitude` for every gym is correctly pinned to the actual building or court entrance. Incorrect coordinates will silently break check-in proximity enforcement for users at the real location.
-- [ ] **Directions test (Apple Maps + Google Maps)** — Confirm that tapping the directions button on each gym opens the correct real-world destination. This depends entirely on accurate coordinates.
-- [ ] **Check-in radius re-validation** — After correcting any coordinates, verify the existing `checkInRadiusMeters` value per gym still permits check-in at the corrected real-world position.
-
-> ⚠️ **Context:** 89 gyms are seeded across Batches 1–6 as of 2026-03-30. Batches 2–6 (80 gyms) are pending the full enrichment pipeline (`enrichGymsWithPlaces.js` → `downloadGymPhotos.js` → `selectBestGymPhoto.js` → `seedGyms.js`). The existence/address/coordinate audit should be completed before running enrichment so that bad data is not baked in.
-> This task supersedes the older "Verify Cowboys Fit coordinates" note in the Post-Launch section below.
+- [x] **Gym existence audit** — All currently active gyms verified as real, operating facilities. Non-existent/unconfirmed gyms archived. (2026-04-23)
+- [x] **Basketball court verification** — All active gyms confirmed to have playable basketball courts. (2026-04-23)
+- [x] **Address accuracy** — Addresses, cities, and states verified for all active gyms. (2026-04-23)
+- [x] **Coordinate audit** — Coordinates verified for all active gyms. Prior sessions corrected multiple Michigan gyms (IM West, IM Circle, Court One, etc.). (2026-04-23)
+- [x] **Directions test (Apple Maps + Google Maps)** — Verified alongside coordinate audit. (2026-04-23)
+- [x] **Check-in radius re-validation** — Confirmed for all active gyms following coordinate corrections. (2026-04-23)
 
 ---
 
 ## High-Priority Functional Fixes
 
-Functional issues that affect user trust, onboarding success, or first impressions of the product.
-
-- [ ] **Email verification flow audit** — Review the full Firebase email verification flow end-to-end before launch:
-  - Confirm verification emails are sent from a branded sender address/domain (not a raw Firebase no-reply address that triggers spam filters)
-  - Investigate and reduce spam/junk folder delivery rate — review Firebase Auth email sender config; consider a custom SMTP sender via Firebase Extensions or a transactional email service if needed
-  - Verify the verification link in the email is clearly formatted, not truncated, and does not look suspicious in common email clients (Gmail, Apple Mail)
-  - Test the full flow on a fresh account: sign up → receive email → tap link → return to app → verified state confirmed
-  - Files involved: `screens/VerifyEmailScreen.js`, Firebase Console → Authentication → Templates
+- [x] **Email verification flow** — Replaced Firebase's default email delivery with branded flow via Resend from `noreply@theruncheck.app`. RunCheck logo, dark template, confirmed working on device. (2026-04-23)
+- [x] **Leaderboard score floor — weekly points must never go negative** — `penalizePoints` was clamping `totalPoints` correctly but applying the same deduction to `weeklyPoints` unchecked, allowing weekly scores to go negative (e.g. −15 on leaderboard). Fixed: each field is now clamped independently using its own current value. Same fix applied to `handleFollowPoints` unfollow path. File: `services/pointsService.js`. (2026-04-23)
+- [x] **Profile picture not updating across the app** — Added `spreadPhotoURL()` fan-out in `ProfileScreen.handlePickImage`. After writing `photoURL` to the user doc, it batch-updates `userAvatar` on all matching `runParticipants` and `presences` docs for that user. Leaderboard already reads live from `users` collection — not affected. Fan-out is fire-and-forget (non-critical). File: `ProfileScreen.js`. (2026-04-23)
+- [x] **Map opens on Austin instead of user's location** — Added `mapRef` + `animateToRegion` effect to re-center on user GPS once `useLocation()` resolves. Austin fallback only fires when GPS is unavailable. Added `minZoomLevel={8}` to prevent scrolling out to world view. File: `GymMapScreen.js`. (2026-04-23)
+- [ ] **Optimistic UI for check-in and join/start run buttons** — Buttons currently show a loading spinner until Firebase confirms, which can take several seconds and feels slow. Apply optimistic local state update immediately on press (show checked-in / joined state) and revert only if the server returns an error.
 
 ---
 
-## Content / Asset Cleanup
+## Reliability & Trust
 
-Data and media quality issues that affect first impressions and trust. Should follow the gym data audit above — no point fixing images for gyms being removed.
-
-- [ ] **Gym thumbnail / image audit** — Review gym images displayed across the app for all active gyms:
-  - Identify images that are low-quality, incorrect (showing the wrong facility), misleading, or broken/missing
-  - Replace bad images with accurate photos of the actual court/facility
-  - Run or re-run `selectBestGymPhoto.js` pipeline after any coordinate/enrichment corrections
-  - Files involved: `imageUrl` and `photoGallery` fields in `gyms/{gymId}`, Firebase Storage, `runcheck-backend/scripts/selectBestGymPhoto.js`
-
----
-
-## Scope Decisions Before Launch
-
-These are decision points, not implementation tasks. Each needs a go/no-go call before launch work can be scoped.
-
-- [ ] **Clips feature scope decision** — Decide whether to temporarily disable the clips feature (posting, recording, uploading) before launch, or commit to fixing the clips flow in time for launch.
-  - **Option A (Disable for MVP):** Temporarily hide/remove clips UI entry points (record button, upload flow) to ship a cleaner, more focused MVP. Re-enable post-launch once QA is solid. Would require hiding "My Clips", "Tagged In", and "Featured In" sections on ProfileScreen / UserProfileScreen or showing graceful empty states.
-  - **Option B (Fix for Launch):** Identify the specific clips flow issues blocking a reliable experience and resolve them before ship. Requires QA on RecordClipScreen → TrimClipScreen → upload → finalize on real device.
-  - **Recommendation:** _Decision not yet made. Do a short QA pass on the clips flow (record → trim → upload → playback) on device before deciding. If it works reliably, keep it. If not, disable for MVP._
+- [x] Reliability score reads from Cloud Functions (client is read-only)
+- [x] **RC-003** — `useReliability` uses `onSnapshot`, fully real-time. No code change needed.
+- [x] **RC-004** — Session Stats reads from `useReliability().stats`, no flash-of-zeroes. Fixed.
+- [x] **Verify schedule no-show detection works end-to-end** — `detectNoShows` Cloud Function deployed, queries overdue schedules every 15 min.
+- [x] **Cancel-penalty threshold aligned** — `LATE_CANCEL_THRESHOLD_MS` in backend aligned to 60 min, matching client.
+- [ ] **Reliability score end-to-end accuracy test** — Manually walk through: schedule a visit → attend → confirm score goes up. Schedule → no-show → confirm penalty applied. Join run → leave within 60 min → confirm late-cancel penalty. Verify no edge cases produce wrong scores or stuck states.
+- [x] **Reliability pop-up on first impactful action** — Created `ReliabilityIntroModal` component (bottom-sheet, explains score impact of no-shows and late cancels). Gated by `users/{uid}.hasSeenReliabilityWarning` flag — shown once, then never again. Wired into `RunDetailsScreen` (join run + start run) and `PlanVisitScreen` (schedule visit) via `withReliabilityGate()` helper. (2026-04-23)
+- [x] **Run creation limits** — (1) Weekly cap: 3 runs/week max for free tier. (2) Reliability gate: score < 50 blocks new run creation (exempt until 3+ sessions attended). Guards added to both `runService.js` (`assertCanStartRun`) and `createRun.ts` backend (defense in depth). Errors surface the exact reason to the user. Limits shown on `PremiumScreen` — premium tier listed as unlimited. (2026-04-23)
 
 ---
 
@@ -65,51 +47,42 @@ These are decision points, not implementation tasks. Each needs a go/no-go call 
 - [x] Email/password sign-up and login working
 - [x] Profile screen displays reliability score, stats, rank, courts, friends
 - [x] User profile viewable by others (UserProfileScreen)
-- [x] **COPPA age enforcement on SignupScreen** — age field clamps 13–100, strips leading zeros via parseInt, `isAgeValid` gate blocks form submit for under-13, hint text "Must be 13 or older" shown. Error message explicitly states minimum age. Age stored as integer in Firestore (fixed 2026-03-27). Future age-group queries (`where('age', '>=', 18)`) will work correctly.
-- [x] **Settings screen back button visible in dark mode** — ProfileStack was missing `screenOptions={themeStyles.NAV_HEADER}`; back-button text was invisible (black on dark bg). Fixed 2026-03-27.
-- [x] **Profile photo upload reliable** — added `withTimeout` wrapper (30s for fetch/upload, 15s for getDownloadURL/Firestore write). Stalled connections now surface a clear "Upload timed out" alert and reset the spinner. Errors were already caught; this closes the infinite-spinner risk on slow/dead connections.
-- [x] **Empty/error states on ProfileScreen if Firestore data is missing or loading fails** — audited 2026-03-17: Combined `profileLoading || reliabilityLoading` gates full screen with spinner; resolves even on error. All rendered fields have safe fallbacks (name→'Player', score→100, stats→0, lists→empty). All `onSnapshot` error callbacks clear loading state. No blank screen or crash possible from missing data. One stray ungated `console.log` gated behind `__DEV__`. No structural code change needed.
+- [x] **COPPA age enforcement** — age field clamps 13–100, blocks under-13 on submit. Age stored as integer.
+- [x] **Settings screen back button visible in dark mode** — Fixed 2026-03-27.
+- [x] **Profile photo upload reliable** — `withTimeout` wrapper, stalled uploads surface clear alert.
+- [x] **Empty/error states on ProfileScreen** — All fields have safe fallbacks, no blank screen risk.
 - [x] Rank tier system functional (Bronze → Legend, 6 tiers)
 - [x] Points awarded correctly for all defined actions
+- [x] **Signup screen — add Lansing, MI as second target city** — First bullet in `OnboardingRegionScreen.js` updated to "active in Austin, TX and Lansing, MI — with more cities coming soon." (2026-04-23)
+- [ ] **Rank tiers — make them feel incentivizing** — Current tier display is functional but doesn't motivate players to level up. Needs visual polish and copy that makes each tier feel meaningful and worth chasing before beta. File: rank display in `ProfileScreen.js` and `constants/ranks.js`.
 
 ---
 
 ## Gym & Run Core Flows
 
-- [x] Gym list displays with live player counts (via `useLivePresenceMap`, not stale counter)
-- [x] Check-in flow works end-to-end (presence created, activity written, schedule linked)
+- [x] Gym list displays with live player counts
+- [x] Check-in flow works end-to-end
 - [x] Run creation with ±60-min merge rule
 - [x] Join/leave run with participant count sync
-- [x] **RC-001: Empty run cleanup** — runs with `participantCount <= 0` are filtered out by client-side guards in both `subscribeToGymRuns` and `subscribeToAllUpcomingRuns`
-- [x] **Stale activity cleanup (RC-002)** — fully resolved 2026-03-26 (complete fix). Three-part fix: (1) `leaveRun` in `runService.js` fire-and-forgets delete of the run's activity doc when last participant leaves. (2) `HomeScreen.js` now subscribes to each run doc in the feed via `onSnapshot`; when any run hits `participantCount <= 0` or `cancelled`, the item is filtered from the feed immediately — covers all last-leaver scenarios regardless of who created the run. (3) `firestore.rules` activity delete rule extended to allow any signed-in user to delete `'started a run at'` docs (⚠️ requires `firebase deploy --only firestore:rules`). Cross-reference guards from 2026-03-13 remain as defense-in-depth.
-- [x] **Participant count floor (RC-007 / BACKEND Known Issue #7)** — `leaveRun` transaction now reads `participantCount` from the already-fetched `runSnap` and skips `increment(-1)` when count is already `<= 0`. Participant doc is still deleted regardless.
-- [x] **Remove `'joined a run at'` activity spam (BACKEND Known Issue #6)** — confirmed removed in a prior session; only `'started a run at'` remains
-- [x] PlanVisitScreen uses `useLivePresenceMap` for counts (fixed 2026-03-13)
-- [x] Run subscription filtering works (upcoming, grace window, participantCount > 0)
+- [x] **RC-001** — Empty runs filtered client-side.
+- [x] **RC-002** — Stale activity cleanup fully resolved 2026-03-26.
+- [x] **RC-007** — Participant count floor, no negative counts.
+- [x] PlanVisitScreen uses `useLivePresenceMap` for counts.
+- [x] Run subscription filtering works.
+- [x] **Gym follow button — clarify it enables notifications** — Button relabeled from "Follow" / "Following" to "Notify Me" / "Notified" with a bell icon (outline when off, filled when on). `flexDirection: 'row'` added to button style. File: `ViewRunsScreen.js` `GymCard`. (2026-04-23)
+- [ ] **Player review section — end-to-end test** — Verify that users can leave a review after visiting a gym, reviews render correctly on the gym profile, and the flow is bulletproof. Test: check in → leave → navigate to gym reviews → submit review → confirm it appears. File: `GymReviewsScreen.js`, `submitReport` or review Cloud Function.
 
 ---
 
-## Reliability & Trust
+## Content / Asset Cleanup
 
-- [x] Reliability score reads from Cloud Functions (client is read-only)
-- [x] **RC-003: Reliability score may not reflect latest Cloud Function writes** — confirmed: `useReliability` hook uses `onSnapshot` on `users/{uid}`, which is fully real-time. Any perceived delay is Cloud Function execution timing, not client listener lag. No code change needed.
-- [x] **RC-004: Session stats card may show zeroes or stale values** — fixed: Session Stats now reads from `useReliability().stats` (same source as score/tier), eliminating the flash-of-zeroes race between two independent `onSnapshot` listeners on the same doc. Inline `reliability` state retained for `receivedRequests`.
-- [x] **Verify schedule no-show detection works end-to-end with Cloud Function** — investigation found the detector was missing: `onScheduleWrite` reactor was deployed but nothing was marking overdue schedules as `no_show`. Added `detectNoShows` scheduled Cloud Function (every 15 min) in backend repo. Queries `status == 'scheduled'` with `scheduledTime < now - 60 min`, batch-updates to `no_show` + `markedNoShowAt`, which triggers `onScheduleWrite` for reliability scoring. Deploy required.
-- [x] **Confirm cancel-penalty threshold (60 min) enforced correctly** — investigation found backend used 2-hour threshold while client uses 60 min. Aligned `LATE_CANCEL_THRESHOLD_MS` in `onScheduleWrite.ts` to 1 hour, matching `CANCEL_PENALTY_THRESHOLD_MINUTES` in `models.js` and the `leaveRun` 60-min window. Deploy required.
+- [x] **Gym thumbnail / image audit** — Images verified for all active gyms. (2026-04-23)
 
 ---
 
-## Clips
+## Scope Decisions Before Launch
 
-- [x] Record clip (≤30s) → trim (≤10s) → upload → finalize flow works
-- [x] On-device trimming via local Expo module (iOS + Android)
-- [x] Clip tagging (max 5 players, validated in `finalizeClipUpload`)
-- [x] `addClipToProfile` approval flow (backend-controlled, no client writes to `taggedPlayers`)
-- [x] Per-session duplicate guard and weekly free-tier cap (3/week)
-- [x] Soft-delete via `deleteClip` Cloud Function
-- [x] **Verify clip playback works reliably (ClipPlayerScreen) — test with slow connections** — added loading spinner (shown until `isLoaded`), buffering indicator (shown when `isBuffering`), and playback error state with "Couldn't play this clip" message + Go Back button via `onError` callback. Native controls preserved. 1 file changed (`ClipPlayerScreen.js`), ~30 lines added. On-device QA still recommended before final ship.
-- [x] **Confirm "Tagged In" and "Featured In" sections show correct data on ProfileScreen and UserProfileScreen** — investigated: `useTaggedClips` queries `gymClips` (limit 100, newest first), client-side filters by `taggedPlayers[].uid`. "Tagged In" (all tags) shown only on own ProfileScreen; "Featured In" (`addedToProfile === true`) shown on both screens. Visibility filter excludes hidden/deleted/unfinalized clips. Empty sections hidden cleanly. Approval model enforced via `addClipToProfile` Cloud Function. Correct.
-- [x] **Handle clip upload failure gracefully (show error, allow retry, don't consume weekly slot)** — investigated: every step (trim, createClipSession, upload, finalize) has a dedicated catch block with a specific Alert message. All failures reset `postingRef` + `uploadState` to IDLE, re-enabling the Post button for retry. Failed uploads leave a `pending` doc that is marked `abandoned` on retry. Weekly cap query explicitly excludes `status === 'abandoned'` and `isDeletedByUser === true`. No weekly slot consumed on failure. Correct.
+- [x] **Clips feature** — Disabled for beta. All clips UI replaced with Coming Soon teasers. Re-enable post-launch. (2026-04-23)
 
 ---
 
@@ -120,63 +93,63 @@ These are decision points, not implementation tasks. Each needs a go/no-go call 
 - [x] Admin screens: Reports, Suspended Users, Hidden Clips, Gym Requests
 - [x] `moderationHelpers.ts` is single source of truth for enforcement
 - [x] Suspension escalation (1, 3, 7, 30, 365 days)
-- [x] **Verify suspended users are actually blocked from app actions (check-in, posting, joining runs)** — investigated + fixed 2026-03-17: Check-in guarded in `presenceService.js` (client) and `checkIn.ts` (backend). Run creation guarded in `runService.js` (client `assertNotSuspended`) and `createRun.ts` (backend). Clip posting guarded in `clipFunctions.ts` (backend `createClipSession`). All guards support timed suspensions via `suspensionEndsAt`. Backend deploy required for `checkIn` and `createRun`.
-- [x] **Confirm admin badge counts on ProfileScreen reflect real pending items** — investigated 2026-03-17: ProfileScreen `adminPendingTotal` sums 4 real-time `onSnapshot` queries (pending gym requests, pending reports, active suspensions, hidden clips). Identical queries used in AdminToolsScreen. Counts are accurate and live. No code change needed.
-- [x] **Test full report → auto-moderate → enforce → resolve cycle end-to-end** — investigated 2026-03-17: Full code trace confirms complete pipeline. `submitReport` → duplicate check → write report → auto-mod threshold check (clip:3, run:3, player:5) → `enforceHideClip`/`enforceRemoveRun`/`enforceSuspendUser` → batch-resolve all pending reports. Admin manual path: `moderateReport` (review/resolve) + `hideClip`/`removeRun`/`suspendUser` each call `resolveRelatedReport`. All enforcement via `moderationHelpers.ts` single source of truth. All helpers idempotent. No missing links. No code change needed.
+- [x] Suspended users blocked from check-in, posting, joining runs
+- [x] Admin badge counts reflect real pending items
+- [x] Full report → auto-moderate → enforce → resolve cycle confirmed
 
 ---
 
 ## Stability / Loading / Empty / Error States
 
-- [x] **HomeScreen handles empty activity feed gracefully** — audit confirmed: "No recent activity yet" BlurView row when feed is empty; silent fallback to empty state on fetch error (error banner is a post-launch quality improvement in PARKING_LOT.md)
-- [x] **ViewRunsScreen handles zero gyms or zero runs without crashing** — audit confirmed: full-screen "Loading gyms..." spinner; contextual empty states for no gyms vs. no search results; pull-to-refresh wired up. Silent fetch error shows empty state (error banner is a post-launch quality improvement in PARKING_LOT.md)
-- [x] **RunDetailsScreen handles a run with 0 participants (edge case after all leave)** — audit confirmed: "Players Here" section hidden when `playerCount === 0`; "No runs planned yet / Be the first to start one" empty state; Alert dialogs on start/join/leave/check-in errors
-- [x] **CheckInScreen shows clear feedback when GPS fails or is denied** — audit confirmed: loading spinner while `presenceLoading`; RunDetailsScreen check-in errors show specific Alert dialogs for permission denied, GPS timeout, and generic failures
-- [x] **PlanVisitScreen handles no scheduled visits and no upcoming runs** — audit confirmed: loading spinner; empty state prompt to schedule a visit
-- [x] **All screens handle Firestore offline/reconnect without permanent loading spinners** — audit confirmed: all core screens gate loading on hook `loading` flags that resolve even on error; `onSnapshot` error handlers set state to empty/null rather than leaving spinners stuck. Acceptable for launch.
-- [x] **Skeleton screens freeze until touch on RunDetailsScreen / Runs tab** — ✅ RESOLVED 2026-03-26. Root cause was NOT Firestore subscriptions — it was the Runs tab `tabPress` listener calling `navigation.navigate('Runs', { screen: 'ViewRunsMain' })`. This triggered a pop animation on RunsStack while simultaneously allowing the user to push a new RunDetailsScreen, creating competing animations in new arch (RN 0.81 / Expo SDK 54). The React reconciler ran effect cleanup+remount cycles on the incoming RunDetailsScreen before the push animation settled, leaving `gymLoading`/`presencesLoading`/`schedulesLoading` stuck at `true`. Fix: replaced `navigate()` with `StackActions.popToTop()` targeted at the RunsStack's navigation state key (via `target: runsStackState.key` in the dispatch). Also removed all `InteractionManager`/`setTimeout` delays from all six subscription hooks as a prerequisite — those were masking the animation-race issue by adding separate deferred-callback failures. Hooks fixed: `useGym`, `useGymPresences`, `useGymSchedules`, `useGyms`, `useGymRuns`, `useLivePresenceMap`. Files: `App.js` (tabPress fix), all six hooks.
-- [x] **Review error boundaries on critical screens** — audit confirmed: no React error boundaries exist, but all screens use try/catch + Alert on user actions and degrade gracefully on data errors. Error boundaries are a post-launch quality improvement.
+- [x] HomeScreen handles empty activity feed gracefully
+- [x] ViewRunsScreen handles zero gyms or zero runs without crashing
+- [x] RunDetailsScreen handles 0-participant run edge case
+- [x] CheckInScreen shows clear feedback when GPS fails or is denied
+- [x] PlanVisitScreen handles no scheduled visits and no upcoming runs
+- [x] All screens handle Firestore offline/reconnect without permanent spinners
+- [x] Skeleton screen freeze on RunDetailsScreen / Runs tab — RESOLVED 2026-03-26
+- [x] Error boundaries audited — try/catch + Alert on all user actions
 
 ---
 
 ## GPS & Location
 
-- [x] **Re-enable GPS distance enforcement** — uncommented client-side gate in `usePresence.js` and service-layer gate in `presenceService.js`. Both layers now block check-in when user is outside gym's `checkInRadiusMeters` (default 100m). Dev bypass (`EXPO_PUBLIC_DEV_SKIP_GPS`) untouched.
-- [x] **Verify `checkInRadiusMeters` per-gym config is respected** — confirmed: both `usePresence.js` and `presenceService.js` read `gym.checkInRadiusMeters` from Firestore with `|| DEFAULT_CHECK_IN_RADIUS_METERS` (100m) fallback. Same constant imported from `models.js`. All 8 seeded gyms have explicit values. Consistent across both layers.
-- [x] **Handle GPS timeout gracefully (user feedback, retry option)** — investigated: permission denied → "Location Required" alert; GPS unavailable/timeout → "GPS Unavailable" alert; too-far → "Check-in Failed" with distance. All error paths produce clear user-facing feedback. No crash risk. Explicit `timeout` + `maximumAge` hardening deferred to PARKING_LOT.md as post-launch quality improvement.
+- [x] GPS distance enforcement re-enabled on check-in
+- [x] `checkInRadiusMeters` per-gym config respected on both client and backend
+- [x] GPS timeout handled gracefully with clear user feedback
 
 ---
 
 ## App Store Readiness
 
-- [x] **Set `cli.appVersionSource` in `eas.json`** — fixed 2026-03-17: Added `"appVersionSource": "remote"` to `cli` block. EAS manages version numbers server-side, no manual bumps needed per build.
-- [x] App icons and splash screen finalized — verified 2026-03-18: icon.png and adaptive-icon.png are 1024×1024 RGB, correct RunCheck logo. Splash uses runcheck-logo-full.png. All three referenced correctly in app.json.
-- [x] Privacy policy URL ready — https://www.notion.so/RunCheck-Privacy-Policy-3280818539eb80168b7cc7dd061f3d09
-- [ ] App Store screenshots prepared
-- [x] TestFlight build distributed for final QA round — completed 2026-03-19. Push notification handler shipped via OTA (no native rebuild required); final QA build submitted to TestFlight.
-- [ ] **Fresh iOS build required (quota resets ~April 1, 2026)** — Current TestFlight binary is missing `EXUpdatesRequestHeaders` (channel header not baked in). OTA updates do not apply on device. Fix is already in repo: `eas.json` production profile now has `"channel": "production"`. Next build will be fully OTA-capable. Until then, use simulator for frontend validation.
-- [x] **Remove or gate `__DEV__` debug logs in HomeScreen.js and RunDetailsScreen.js** — fixed 2026-03-17: Removed 3 ungated temporary debug logs in RunDetailsScreen (clips effect tracing). Gated 17 remaining `console.error`/`console.warn`/`console.log` calls behind `__DEV__` across both files. All logs in both files now silent in production builds.
-- [ ] **All Cloud Functions deployed and verified** — Phase 1 + Phase 2 deployed 2026-03-26 (notifyRunStartingSoon, onRunParticipantJoined, onParticipantCountMilestone, onDmMessageCreated, notifyFollowersRunCreated, notifyFollowersPresenceMilestone, onGymPresenceUpdated, detectRunNoShows, onScheduleWrite) all confirmed live. ⚠️ **Pending deploy (2026-03-29): `onRunCreatedNotifyScheduledVisitors`** — notifies scheduled visitors when a matching run is created. Run: `firebase deploy --only functions:onRunCreatedNotifyScheduledVisitors`.
-- [x] **Firestore security rules deployed and verified** — deployed 2026-03-25, verified match 2026-03-26. Covers: auth, users, usernames, gyms, runs, runParticipants, activity, conversations (DMs), run chat messages. All security gaps resolved.
-- [x] **serviceAccountKey.json not in git history** — verified 2026-03-26. No credential exposure. No rotation required.
-- [x] **AdminAllClipsScreen composite index errors fixed** — added `isHidden+hiddenAt` and `isDeletedByUser+deletedAt` composite indexes to `firestore.indexes.json`. Deployed 2026-03-28.
-- [x] **expireClips raw-file deletion safety guard** — `expireClips.ts` now skips raw file deletion when `storagePath === rawStoragePath`, preventing permanently unplayable clips for ready_raw and processor-failed clips. Deployed 2026-03-28.
-- [x] **Onboarding home court screen improved** — "Use My Location" tap-only button, search bar, distance labels on gym rows, "Nearby gyms" section label, low-friction request-gym row above list. Fixed `RequestGym` navigation error from onboarding (screen now registered in root stack). (2026-03-27)
+- [x] `cli.appVersionSource` set to remote in `eas.json`
+- [x] App icons and splash screen finalized
+- [x] Privacy policy URL ready
+- [x] TestFlight build distributed
+- [x] `__DEV__` debug logs gated in HomeScreen and RunDetailsScreen
+- [x] All Cloud Functions deployed and verified (2026-04-23)
+- [x] Firestore security rules deployed and verified
+- [x] `serviceAccountKey.json` not in git history
+- [x] AdminAllClipsScreen composite indexes fixed and deployed
+- [x] `expireClips` raw-file deletion safety guard deployed
+- [x] Onboarding home court screen improved
+- [ ] **App Store screenshots prepared**
+- [ ] **Fresh iOS build** — current TestFlight binary missing OTA channel header. Run `eas build --platform ios --profile production` to get a new binary with `"channel": "production"` baked in. Required for OTA updates to reach users.
 
 ---
 
-## Post-Launch / Not Required Yet
+## Post-Launch / Not Required for Beta
 
-These are known improvements that can wait until after launch:
-
-- Server-side presence auto-expiry Cloud Function (currently client-side only)
-- Composite Firestore index for `activity` collection (needed at scale, not blocking small user base)
-- Migrate remaining gym images to Firebase Storage (5 of 6 still on external hosts)
-- Deprecate/remove stale `addGym` Cloud Function
-- ~~Verify Cowboys Fit coordinates with manual Google Maps pin~~ — superseded by the full **Gym data accuracy audit** in Launch-Critical Data Integrity above
-- Switch `useTaggedClips` from client-side filtering to `taggedUserIds` native query
-- Premium/monetization features (PremiumScreen exists but no billing)
+- Upcoming run section UI in gym detail — needs visual polish but not blocking
+- UI cards on main screen — excess whitespace under gym thumbnails
+- Auto check-in based on GPS proximity + auto check-out when user leaves
+- Gym website link for membership/day pass gyms
+- Server-side presence auto-expiry Cloud Function
+- Composite Firestore index for `activity` collection (needed at scale)
+- Migrate remaining gym images to Firebase Storage
+- Switch `useTaggedClips` to native `array-contains` query
+- Premium/monetization features (PremiumScreen exists, no billing yet)
 
 ---
 
-_Last updated: 2026-04-14 — Added Launch-Critical Data Integrity (gym audit), High-Priority Functional Fixes (email verification), Content / Asset Cleanup (gym thumbnails), and Scope Decisions Before Launch (clips) sections._
+_Last updated: 2026-04-23_

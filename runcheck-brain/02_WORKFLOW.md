@@ -41,3 +41,17 @@ If neither: add it to `PARKING_LOT.md` and ask "proceed anyway?"
 2. Note anything considered but left alone, and why.
 3. Add follow-ups to `PARKING_LOT.md`.
 4. Update `ARCHITECTURE_MAP.md` or `BACKEND_MEMORY.md` only if structure or schema moved.
+
+## Deploying to TestFlight (Physical Device)
+
+The TestFlight build was built with the `production` profile (`eas.json`) and is linked to the `production` channel. The `preview` profile has no channel and cannot receive OTA updates.
+
+**To push JS changes to the physical device:**
+```
+cd RunCheck
+eas update --channel production --message "<short description>"
+```
+
+Then on the phone: fully close the app (swipe away from app switcher) and reopen it. It downloads the update on first launch and applies it on the next open — so two full close+reopens may be needed.
+
+The simulator picks up changes directly from Metro (no OTA needed). Physical device always requires `eas update --channel production`.

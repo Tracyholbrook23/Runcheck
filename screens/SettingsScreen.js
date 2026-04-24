@@ -38,6 +38,7 @@ import { auth, db } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { registerPushToken, clearPushToken } from '../utils/notifications';
 
 // ── App constants ──────────────────────────────────────────────────────────
 const APP_VERSION = '1.0.0';
@@ -76,6 +77,28 @@ export default function SettingsScreen({ navigation }) {
   const handleToggleFeed = (val) => {
     setShowCommunityFeed(val);                    // instant UI snap
     updatePreference('showCommunityFeed', val);   // background Firestore write
+  };
+
+  // ── Push Notifications toggle — optimistic local state ───────────────────
+  const [notificationsEnabled, setNotificationsEnabled] = useState(
+    profile?.preferences?.notificationsEnabled ?? true
+  );
+
+  // Sync once when profile first loads
+  useEffect(() => {
+    if (profile?.preferences?.notificationsEnabled !== undefined) {
+      setNotificationsEnabled(profile.preferences.notificationsEnabled);
+    }
+  }, [profile?.preferences?.notificationsEnabled]);
+
+  const handleToggleNotifications = async (val) => {
+    setNotificationsEnabled(val);                              // instant UI snap
+    updatePreference('notificationsEnabled', val);            // background Firestore write
+    if (val) {
+      await registerPushToken();  // re-registers token if permission already granted
+    } else {
+      await clearPushToken();     // removes token so Cloud Functions skip this device
+    }
   };
 
   // ── Preference updater ──────────────────────────────────────────────────
@@ -244,16 +267,38 @@ export default function SettingsScreen({ navigation }) {
             </View>
             <View>
               <Text style={styles.settingLabel}>Push Notifications</Text>
-              <Text style={styles.settingHint}>Runs, check-ins & friend activity</Text>
+              <Text style={styles.settingHint}>
+                {notificationsEnabled ? 'Alerts are on' : 'Alerts are off'}
+              </Text>
             </View>
           </View>
           <Switch
-            value={true}
-            onValueChange={() => {}}
-            trackColor={{ false: colors.border, true: colors.primary }}
+            value={notificationsEnabled}
+            onValueChange={handleToggleNotifications}
+            trackColor={{ false: colors.border, true: '#FF9F0A' }}
             thumbColor="#FFFFFF"
-            disabled
           />
+        </View>
+
+        {/* Notification type list — always visible, dimmed when disabled */}
+        <View style={[styles.notifTypeList, !notificationsEnabled && styles.notifTypeListDimmed]}>
+          {[
+            { icon: '⚡', label: 'Run starting soon', desc: '30 min before your run starts' },
+            { icon: '👥', label: 'Player joined your run', desc: 'When someone joins a run you created' },
+            { icon: '🔥', label: 'Run getting full', desc: 'When your run hits 5, 10, or 20 players' },
+            { icon: '🏀', label: 'New run at your gym', desc: 'Run posted at a gym you follow' },
+            { icon: '📅', label: 'Matches your schedule', desc: 'Run posted during your planned visit' },
+            { icon: '📍', label: 'Gym going live', desc: 'A followed gym reaches 3 or 6 players' },
+            { icon: '💬', label: 'New message', desc: 'Direct message received' },
+          ].map(({ icon, label, desc }) => (
+            <View key={label} style={styles.notifTypeRow}>
+              <Text style={styles.notifTypeIcon}>{icon}</Text>
+              <View style={styles.notifTypeText}>
+                <Text style={styles.notifTypeLabel}>{label}</Text>
+                <Text style={styles.notifTypeDesc}>{desc}</Text>
+              </View>
+            </View>
+          ))}
         </View>
 
         <View style={styles.menuDivider} />
@@ -570,6 +615,44 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   versionText: {
     fontSize: FONT_SIZES.body,
     color: colors.textMuted,
+  },
+  // ── Push Notification type list ──────────────────────────────────────────
+  notifTypeList: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  notifTypeListDimmed: {
+    opacity: 0.38,
+  },
+  notifTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingVertical: 2,
+  },
+  notifTypeIcon: {
+    fontSize: 15,
+    lineHeight: 20,
+    width: 22,
+    textAlign: 'center',
+  },
+  notifTypeText: {
+    flex: 1,
+  },
+  notifTypeLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: colors.textPrimary,
+    lineHeight: 18,
+  },
+  notifTypeDesc: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
+    marginTop: 1,
   },
   footer: {
     alignItems: 'center',

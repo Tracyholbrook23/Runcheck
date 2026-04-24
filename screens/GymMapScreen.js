@@ -16,7 +16,7 @@
  * SCREENSHOT_MODE — set to true to inject fake player counts for screenshots.
  */
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -38,7 +38,11 @@ import { useTheme } from '../contexts';
 import { useGyms, useLocation } from '../hooks';
 import { useLivePresenceMap } from '../hooks';
 
-/** Default map region — centered on Austin, TX */
+/**
+ * Default map region — Austin, TX fallback only.
+ * Used only when GPS has not resolved yet on first render.
+ * Once `useLocation()` returns a position, `animateToRegion` re-centers the map.
+ */
 const AUSTIN_CENTER = {
   latitude: 30.2672,
   longitude: -97.7431,
@@ -91,10 +95,27 @@ export default function GymMapScreen({ navigation }) {
   const { gyms, loading } = useGyms();
   const { location } = useLocation();
   const { countMap: liveCountMap } = useLivePresenceMap();
+  const mapRef = useRef(null);
 
   useEffect(() => {
     navigation.setOptions({ title: 'Nearby Courts' });
   }, [navigation]);
+
+  // Once GPS resolves, animate the map to the user's actual location.
+  // initialRegion is only used for the very first render — this effect
+  // handles the common case where location arrives after the map mounts.
+  useEffect(() => {
+    if (!location || !mapRef.current) return;
+    mapRef.current.animateToRegion(
+      {
+        latitude: location.latitude,
+        longitude: location.longitude,
+        latitudeDelta: 0.12,
+        longitudeDelta: 0.12,
+      },
+      600, // animation duration ms
+    );
+  }, [location]);
 
   const initialRegion = location
     ? {
@@ -129,8 +150,10 @@ export default function GymMapScreen({ navigation }) {
   return (
     <SafeAreaView style={styles.safe}>
       <MapView
+        ref={mapRef}
         style={styles.map}
         initialRegion={initialRegion}
+        minZoomLevel={8}
         testID="gym-map"
       >
         {gyms.map((gym) => {

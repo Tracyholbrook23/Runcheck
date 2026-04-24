@@ -23,7 +23,7 @@
  *   - `getAvailableDays` — builds the 7-day array with display labels
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -51,6 +51,7 @@ import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile, useLivePresenceMap, useLocation } from '../hooks';
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { ReliabilityIntroModal } from '../components';
 import { calculateDistanceMeters } from '../utils/locationUtils';
 import { subscribeToAllUpcomingRuns, startOrJoinRun, joinExistingRun, leaveRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
@@ -172,6 +173,10 @@ export default function PlanVisitScreen({ navigation }) {
   const [runLevelFilter, setRunLevelFilter] = useState(null);
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
+
+  // Reliability intro modal — shown once before first scheduled visit
+  const [reliabilityModalVisible, setReliabilityModalVisible] = useState(false);
+  const pendingActionRef = useRef(null);
 
   // User profile provides name + avatar for activity feed writes
   const { profile } = useProfile();
@@ -438,6 +443,19 @@ export default function PlanVisitScreen({ navigation }) {
   };
 
   const loading = schedulesLoading || gymsLoading;
+
+  /**
+   * withReliabilityGate — Shows the one-time reliability intro modal before
+   * the first schedule action. If already seen, runs the action immediately.
+   */
+  const withReliabilityGate = (action) => {
+    if (profile?.hasSeenReliabilityWarning) {
+      action();
+    } else {
+      pendingActionRef.current = action;
+      setReliabilityModalVisible(true);
+    }
+  };
 
   /**
    * handleCreateSchedule — Writes the new schedule to Firestore and resets wizard.
@@ -1705,7 +1723,7 @@ export default function PlanVisitScreen({ navigation }) {
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primaryButton, (!selectedSlot || creating) && styles.buttonDisabled]}
-            onPress={handleCreateSchedule}
+            onPress={() => withReliabilityGate(handleCreateSchedule)}
             disabled={!selectedSlot || creating}
           >
             {creating ? (
@@ -1718,6 +1736,19 @@ export default function PlanVisitScreen({ navigation }) {
       </ScrollView>
       </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
+      {/* Reliability intro — shown once before first scheduled visit */}
+      <ReliabilityIntroModal
+        visible={reliabilityModalVisible}
+        onConfirm={() => {
+          setReliabilityModalVisible(false);
+          pendingActionRef.current?.();
+          pendingActionRef.current = null;
+        }}
+        onDismiss={() => {
+          setReliabilityModalVisible(false);
+          pendingActionRef.current = null;
+        }}
+      />
     </SafeAreaView>
     </ImageBackground>
   );

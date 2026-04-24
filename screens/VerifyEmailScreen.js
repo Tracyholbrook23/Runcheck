@@ -5,8 +5,8 @@
  * verified their email address via the Firebase Auth verification link.
  *
  * Provides two actions:
- *   1. "Resend Verification Email" — calls sendEmailVerification with a
- *      60-second cooldown to avoid Firebase rate limits.
+ *   1. "Resend Verification Email" — calls the sendVerificationEmail Cloud
+ *      Function with a 60-second cooldown to avoid rate limits.
  *   2. "I Verified, Continue" — calls user.reload() to refresh the
  *      emailVerified flag from the server, then navigates forward if
  *      verified. If not, shows a hint message.
@@ -25,8 +25,8 @@ import {
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { Logo, Button } from '../components';
-import { auth, db } from '../config/firebase';
-import { sendEmailVerification, signOut } from 'firebase/auth';
+import { auth, db, callFunction } from '../config/firebase';
+import { signOut } from 'firebase/auth';
 import { doc, getDoc, runTransaction } from 'firebase/firestore';
 
 /**
@@ -62,21 +62,18 @@ export default function VerifyEmailScreen({ navigation, route }) {
     setHint('');
 
     try {
-      const user = auth.currentUser;
-      if (user) {
-        await sendEmailVerification(user);
-        setHint('Verification email sent! Check your inbox and spam folder.');
-        setCooldown(true);
-        setTimeout(() => setCooldown(false), 60000);
-      }
+      await callFunction('sendVerificationEmail');
+      setHint('Verification email sent! Check your inbox and spam folder.');
+      setCooldown(true);
+      setTimeout(() => setCooldown(false), 60000);
     } catch (error) {
-      // Only log truly unexpected errors — rate limits are normal and handled below
-      if (error.code === 'auth/too-many-requests') {
+      // HttpsError code 'resource-exhausted' maps to Firebase rate-limit
+      if (error?.code === 'functions/resource-exhausted') {
         setHint('Verification email already sent. Check your inbox or spam folder, then try again in a minute.');
         setCooldown(true);
         setTimeout(() => setCooldown(false), 60000);
       } else {
-        if (__DEV__) console.warn('[VerifyEmail] Resend error:', error.code);
+        if (__DEV__) console.warn('[VerifyEmail] Resend error:', error);
         setHint('Could not send email right now. Please wait a moment and try again.');
       }
     } finally {

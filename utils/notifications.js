@@ -20,7 +20,7 @@
 
 import * as Notifications from 'expo-notifications';
 import { auth, db } from '../config/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, deleteField } from 'firebase/firestore';
 
 /**
  * registerPushToken — Requests notification permission and saves the
@@ -75,5 +75,26 @@ export const registerPushToken = async () => {
     // Non-critical — log but do not surface to the user
     if (__DEV__) console.warn('registerPushToken error:', err);
     return null;
+  }
+};
+
+/**
+ * clearPushToken — Removes the Expo push token from the signed-in user's
+ * Firestore document. Used when the user disables push notifications in
+ * Settings — Cloud Functions read `users/{uid}.pushToken` to send alerts,
+ * so removing it effectively silences all push notifications for this device
+ * without requiring any backend changes.
+ *
+ * Non-critical: catches and logs all errors so a failure never blocks UI.
+ *
+ * @returns {Promise<void>}
+ */
+export const clearPushToken = async () => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+  try {
+    await updateDoc(doc(db, 'users', uid), { pushToken: deleteField() });
+  } catch (err) {
+    if (__DEV__) console.warn('clearPushToken error:', err);
   }
 };

@@ -70,6 +70,7 @@ import {
   arrayUnion,
   serverTimestamp,
   onSnapshot,
+  writeBatch,
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -297,6 +298,61 @@ export default function ProfileScreen({ navigation }) {
   }, [userRank.name]);
 
   /**
+   * spreadPhotoURL — Propagates a newly uploaded profile photo URL to any
+   * Firestore documents that cached a stale snapshot of the user's avatar.
+   *
+   * Collections updated (fire-and-forget, batched):
+   *   runParticipants — `userAvatar` field, keyed by `userId`
+   *   presences       — `userAvatar` field, keyed by `odId`
+   *   activity        — `userAvatar` field, keyed by `userId`
+   *
+   * All queries are scoped to the current user's UID so only their own
+   * documents are touched. Errors are swallowed — the update is non-critical
+   * and the snapshot will self-heal on the next join or check-in.
+   */
+  const spreadPhotoURL = async (uid, photoURL) => {
+    try {
+      const batch = writeBatch(db);
+      let writeCount = 0;
+
+      // runParticipants — avatar shown in "who's going" lists and upcoming runs
+      const participantsSnap = await getDocs(
+        query(collection(db, 'runParticipants'), where('userId', '==', uid))
+      );
+      participantsSnap.forEach((d) => {
+        batch.update(d.ref, { userAvatar: photoURL });
+        writeCount++;
+      });
+
+      // presences — avatar shown on the live gym presence card
+      const presencesSnap = await getDocs(
+        query(collection(db, 'presences'), where('odId', '==', uid))
+      );
+      presencesSnap.forEach((d) => {
+        batch.update(d.ref, { userAvatar: photoURL });
+        writeCount++;
+      });
+
+      // activity — avatar shown in the community activity feed (HomeScreen)
+      const activitySnap = await getDocs(
+        query(collection(db, 'activity'), where('userId', '==', uid))
+      );
+      activitySnap.forEach((d) => {
+        batch.update(d.ref, { userAvatar: photoURL });
+        writeCount++;
+      });
+
+      if (writeCount > 0) {
+        await batch.commit();
+        if (__DEV__) console.log(`[spreadPhotoURL] updated ${writeCount} snapshot docs`);
+      }
+    } catch (err) {
+      // Non-critical — log in dev only and move on
+      if (__DEV__) console.warn('[spreadPhotoURL] fan-out error:', err);
+    }
+  };
+
+  /**
    * handlePickImage — Opens the device photo library, uploads the selected
    * image to Firebase Storage, and persists the download URL to Firestore.
    *
@@ -369,6 +425,11 @@ export default function ProfileScreen({ navigation }) {
 
       // Update the local avatar immediately without waiting for a Firestore read
       setPhotoUri(downloadURL);
+
+      // Fan out the new photo to any snapshot copies stored in other collections
+      // so avatars stay fresh everywhere (run participant lists, presence cards).
+      // Fire-and-forget — failure is non-critical and will self-heal on next join/check-in.
+      spreadPhotoURL(uid, downloadURL);
 
       // Award profile-completion bonus once if the user also has a skill level set
       if (liveProfile?.skillLevel) {
@@ -1066,7 +1127,20 @@ export default function ProfileScreen({ navigation }) {
         </View>
 
         {/* ── My Clips ─────────────────────────────────────────────────── */}
+        {/* BETA: Clips hidden — replace live section with a Coming Soon teaser */}
         <View style={styles.card}>
+          <View style={styles.clipsSectionHeader}>
+            <Text style={styles.cardTitle}>My Clips</Text>
+          </View>
+          <View style={styles.clipsComingSoonWrap}>
+            <Ionicons name="film-outline" size={28} color={colors.primary} style={{ marginBottom: 8 }} />
+            <Text style={styles.clipsComingSoonTitle}>Coming Soon</Text>
+            <Text style={styles.clipsComingSoonSub}>Highlight reels from your runs. Drop soon.</Text>
+          </View>
+        </View>
+
+        {/* ── [BETA HIDDEN] My Clips live content ─────────────────────── */}
+        {false && <View style={styles.card}>
           <View style={styles.clipsSectionHeader}>
             <Text style={styles.cardTitle}>My Clips</Text>
             {displayUserClips.length > 0 && (
@@ -1153,10 +1227,11 @@ export default function ProfileScreen({ navigation }) {
               </Text>
             </View>
           )}
-        </View>
+        </View>}
 
         {/* ── Tagged In (own profile only — private review surface) ─────── */}
-        {taggedClips.length > 0 && (
+        {/* BETA: hidden — re-enable by changing false → taggedClips.length > 0 */}
+        {false && (
           <View style={styles.card}>
             <View style={styles.clipsSectionHeader}>
               <Text style={styles.cardTitle}>Tagged In</Text>
@@ -1229,7 +1304,8 @@ export default function ProfileScreen({ navigation }) {
         )}
 
         {/* ── Featured In (public — clips where addedToProfile === true) ── */}
-        {featuredInClips.length > 0 && (
+        {/* BETA: hidden — re-enable by changing false → featuredInClips.length > 0 */}
+        {false && (
           <View style={styles.card}>
             <View style={styles.clipsSectionHeader}>
               <Text style={styles.cardTitle}>Featured In</Text>
@@ -2344,6 +2420,22 @@ const getStyles = (colors, isDark) =>
       height: 148,
       borderRadius: 12,
       backgroundColor: '#2a2a2a',
+    },
+    clipsComingSoonWrap: {
+      alignItems: 'center',
+      paddingVertical: SPACING.lg,
+      gap: 4,
+    },
+    clipsComingSoonTitle: {
+      color: isDark ? '#FFFFFF' : '#111111',
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+    },
+    clipsComingSoonSub: {
+      color: colors.textMuted,
+      fontSize: FONT_SIZES.small,
+      textAlign: 'center',
+      paddingHorizontal: SPACING.md,
     },
     clipsEmpty: {
       alignItems: 'center',

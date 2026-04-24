@@ -1110,8 +1110,8 @@ const HomeScreen = ({ navigation }) => {
             );
           })()}
 
-          {/* Featured Clip Spotlight — single editorial card, auto-hidden when empty */}
-          {featuredClip && featuredVideoUrl && (
+          {/* Featured Clip Spotlight — BETA: hidden until clips are live */}
+          {false && featuredClip && featuredVideoUrl && (
             <TouchableOpacity
               activeOpacity={0.85}
               onPress={() => navigation.navigate('ClipPlayer', {

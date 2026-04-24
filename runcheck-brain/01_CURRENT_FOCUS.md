@@ -1,6 +1,37 @@
-# Current Focus — Michigan Gym Expansion
+# Current Focus — Beta Prep (2 weeks out)
 
-Texas gyms: ✅ complete. Michigan Batch 8 gyms: ✅ audit complete (all verified, fixed, or archived as of 2026-04-19).
+Texas gyms: ✅ complete. Michigan Batch 8 gyms: ✅ audit complete (all verified, fixed, or archived as of 2026-04-19). Active focus has shifted from gym expansion to beta readiness.
+
+## Session Summary — 2026-04-22
+
+Beta prep session. Two deliverables shipped:
+
+### 1. Last-leaver bug — FIXED
+Bug: when the last non-creator participant tried to leave a run, the transaction failed with `Missing or insufficient permissions`. Root cause: `leaveRun` wrote `status: 'cancelled'` alongside `participantCount: 0`, but the Firestore rule for non-creator `runs/{runId}` updates only allowed `hasOnly(['participantCount', 'lastMessageAt'])`. Fix landed in two places:
+- **Client** (`services/runService.js`) — dropped the `status: 'cancelled'` write from the `leaveRun` transaction (now writes only `participantCount: increment(-1)`). Added a `participantCount > 0` filter to the `startOrJoinRun` merge query so users aren't re-added to zombie runs. Large explanatory comments in both spots.
+- **Backend rules** (`runcheck-backend/firestore.rules`, deployed 2026-04-22) — added a narrow carve-out allowing a non-creator to write `participantCount` + `status` together ONLY IF `status == 'cancelled'` and `participantCount == 0`. Makes the old pre-OTA client code work too. Safe: no one can cancel an active run through this path.
+
+Verified fixed on physical device by Tracy after rules deploy. Simulator verified earlier.
+
+**Gotcha discovered:** physical devices did not pull the `eas update --branch preview` push — simulator ran the new JS from Metro, but phones stayed on the old bundle. Rules fix is what actually unstuck real devices. **OTA delivery needs investigation before beta** — likely a channel/branch mapping issue in the EAS dashboard, or the installed preview build isn't linked to the `preview` branch.
+
+### 2. Hide-for-beta sweep — PLAN DELIVERED, NOT IMPLEMENTED
+`BETA_HIDE_CHECKLIST.md` at repo root. 7 conservative items with file paths, line numbers, and recommended actions. Top hides: Clips (all surfaces), Premium teaser + Private/Paid Run entry points, "Last Week's Winners" leaderboard section, and the disabled Push Notifications toggle in Settings. Rollup proposal: single `config/betaFlags.js` with 4 toggles.
+
+### Files changed this session
+- `services/runService.js` — last-leaver fix (two edits, with comments)
+- `runcheck-backend/firestore.rules` — non-creator last-leaver carve-out (deployed)
+- `BETA_HIDE_CHECKLIST.md` — NEW, hide-for-beta plan
+- `PARKING_LOT.md` — added zombie-run cleanup follow-up under Technical Improvements
+
+### Open follow-ups for next session
+- Implement `BETA_FLAGS` module and wire up the hide-for-beta toggles
+- Fix leaderboard "week of" copy (item 3 in BETA_HIDE_CHECKLIST)
+- QA-pass the gym review system on device (item 5)
+- Investigate EAS OTA delivery to physical devices
+- Zombie-run cleanup Cloud Function (parked, post-beta)
+
+---
 
 ## Session Summary — 2026-04-19
 

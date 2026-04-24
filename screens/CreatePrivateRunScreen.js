@@ -176,215 +176,58 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
             <Text style={styles.premiumBadgeText}>Premium Feature — Coming Soon</Text>
           </View>
 
-          {/* ══════════════════════════════════════════════════════════════
-              FORM FIELDS
-          ══════════════════════════════════════════════════════════════ */}
-
-          {/* ── Gym Info ──────────────────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>Gym / Location</Text>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.inputWrap}>
-              <Ionicons name="business-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Gym name"
-                placeholderTextColor={colors.textMuted}
-                value={gymName}
-                onChangeText={setGymName}
-                autoCapitalize="words"
+          {/* ── Coming Soon teaser ────────────────────────────────────────── */}
+          <View style={styles.teaserCard}>
+            <View style={styles.teaserIconWrap}>
+              <Ionicons
+                name={runType === 'private' ? 'lock-closed' : 'cash'}
+                size={32}
+                color={runType === 'private' ? colors.primary : '#22C55E'}
               />
             </View>
 
-            <View style={[styles.inputWrap, styles.inputWrapBorderTop]}>
-              <Ionicons name="location-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Address"
-                placeholderTextColor={colors.textMuted}
-                value={gymAddress}
-                onChangeText={setGymAddress}
-                autoCapitalize="words"
-              />
-            </View>
-          </View>
-
-          {/* ── Date & Time ───────────────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>Date & Time</Text>
-
-          <View style={styles.inputGroup}>
-            <View style={styles.inputRow}>
-              <View style={[styles.inputWrap, { flex: 1 }]}>
-                <Ionicons name="calendar-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Date (e.g. Mar 25)"
-                  placeholderTextColor={colors.textMuted}
-                  value={runDate}
-                  onChangeText={setRunDate}
-                />
-              </View>
-              <View style={{ width: SPACING.sm }} />
-              <View style={[styles.inputWrap, { flex: 1 }]}>
-                <Ionicons name="time-outline" size={16} color={colors.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Time (e.g. 7:00 PM)"
-                  placeholderTextColor={colors.textMuted}
-                  value={runTime}
-                  onChangeText={setRunTime}
-                />
-              </View>
-            </View>
-          </View>
-
-          {/* ── Players ───────────────────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>Max Players</Text>
-
-          <View style={styles.stepperCard}>
-            <Text style={styles.stepperLabel}>Roster limit</Text>
-            <View style={styles.stepperControls}>
-              <TouchableOpacity
-                style={[styles.stepperBtn, maxPlayers <= MIN_PLAYERS && styles.stepperBtnDisabled]}
-                onPress={handleDecrementPlayers}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="remove" size={18} color={maxPlayers <= MIN_PLAYERS ? colors.textMuted : colors.textPrimary} />
-              </TouchableOpacity>
-              <Text style={styles.stepperValue}>{maxPlayers}</Text>
-              <TouchableOpacity
-                style={[styles.stepperBtn, maxPlayers >= MAX_PLAYERS && styles.stepperBtnDisabled]}
-                onPress={handleIncrementPlayers}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="add" size={18} color={maxPlayers >= MAX_PLAYERS ? colors.textMuted : colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* ── Min Skill Level (Private only) ────────────────────────────── */}
-          {runType === 'private' && (
-            <>
-              <Text style={styles.sectionLabel}>Minimum Skill Level</Text>
-              <View style={styles.skillRow}>
-                {SKILL_LEVELS.map((s) => (
-                  <TouchableOpacity
-                    key={String(s.value)}
-                    style={[styles.skillChip, minSkill === s.value && styles.skillChipActive]}
-                    onPress={() => setMinSkill(s.value)}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={[styles.skillChipText, minSkill === s.value && styles.skillChipTextActive]}>
-                      {s.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </>
-          )}
-
-          {/* ── Entry Fee + Payout Preview (Paid only) ────────────────────── */}
-          {runType === 'paid' && (
-            <>
-              <Text style={styles.sectionLabel}>Entry Fee</Text>
-
-              <View style={styles.inputGroup}>
-                <View style={styles.inputWrap}>
-                  <Text style={styles.currencyPrefix}>$</Text>
-                  <TextInput
-                    style={[styles.input, styles.inputFee]}
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textMuted}
-                    value={entryFeeText}
-                    onChangeText={(t) => setEntryFeeText(t.replace(/[^0-9.]/g, ''))}
-                    keyboardType="decimal-pad"
-                  />
-                  <Text style={styles.currencySuffix}>per player</Text>
-                </View>
-              </View>
-
-              {/* ── Payout preview card ────────────────────────────────────── */}
-              <View style={styles.payoutCard}>
-                <View style={styles.payoutCardHeader}>
-                  <Ionicons name="wallet-outline" size={16} color="#22C55E" style={{ marginRight: 6 }} />
-                  <Text style={styles.payoutCardTitle}>Your Estimated Payout</Text>
-                </View>
-
-                <View style={styles.payoutRow}>
-                  <Text style={styles.payoutLabel}>Entry fee × max players</Text>
-                  <Text style={styles.payoutValue}>
-                    {formatCurrency(entryFee)} × {maxPlayers} = {formatCurrency(grossIfFull)}
-                  </Text>
-                </View>
-
-                <View style={styles.payoutRow}>
-                  <Text style={styles.payoutLabel}>RunCheck platform fee (5%)</Text>
-                  <Text style={styles.payoutValueDeduct}>− {formatCurrency(platformCut)}</Text>
-                </View>
-
-                <View style={styles.payoutDivider} />
-
-                <View style={styles.payoutRow}>
-                  <Text style={styles.payoutTotalLabel}>You receive (if full)</Text>
-                  <Text style={styles.payoutTotalValue}>{formatCurrency(youReceiveFull)}</Text>
-                </View>
-
-                <View style={styles.payoutPerPlayerRow}>
-                  <Ionicons name="person-outline" size={12} color={colors.textMuted} style={{ marginRight: 4 }} />
-                  <Text style={styles.payoutPerPlayer}>
-                    {formatCurrency(perPlayerYou)} per player that joins
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.payoutDisclaimer}>
-                Payouts are sent after the run ends. RunCheck keeps 5% to cover payment processing and platform costs.
-              </Text>
-            </>
-          )}
-
-          {/* ── Summary card ─────────────────────────────────────────────── */}
-          {(gymName || gymAddress) && (
-            <View style={styles.summaryCard}>
-              <Text style={styles.summaryTitle}>
-                {runType === 'private' ? '🔒 Private Run' : '💰 Paid Run'}
-              </Text>
-              {gymName ? <Text style={styles.summaryLine}>📍 {gymName}{gymAddress ? `, ${gymAddress}` : ''}</Text> : null}
-              {runDate || runTime ? <Text style={styles.summaryLine}>🗓 {[runDate, runTime].filter(Boolean).join(' · ')}</Text> : null}
-              <Text style={styles.summaryLine}>👥 Up to {maxPlayers} players</Text>
-              {runType === 'paid' && entryFee > 0 && (
-                <Text style={styles.summaryLine}>💵 {formatCurrency(entryFee)} entry · You keep {formatCurrency(perPlayerYou)}/player</Text>
-              )}
-              {runType === 'private' && minSkill !== null && (
-                <Text style={styles.summaryLine}>
-                  ⭐ Min skill: {SKILL_LEVELS.find((s) => s.value === minSkill)?.label}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* ── CTA Button ────────────────────────────────────────────────── */}
-          <TouchableOpacity
-            style={[styles.ctaBtn, runType === 'paid' && styles.ctaBtnPaid]}
-            onPress={handleCreateRun}
-            activeOpacity={0.85}
-          >
-            <Ionicons
-              name={runType === 'private' ? 'lock-closed' : 'flash'}
-              size={18}
-              color="#FFFFFF"
-              style={{ marginRight: SPACING.xs }}
-            />
-            <Text style={styles.ctaBtnText}>
-              {runType === 'private' ? 'Create Private Run' : 'Create Paid Run'}
+            <Text style={styles.teaserTitle}>
+              {runType === 'private' ? 'Private Runs' : 'Paid Runs'}
             </Text>
-          </TouchableOpacity>
+            <Text style={styles.teaserSubtitle}>
+              {runType === 'private'
+                ? 'Invite-only runs with full roster and skill control. Coming with Premium.'
+                : 'Set an entry fee, cap the roster, collect your payout. Coming with Premium.'}
+            </Text>
 
-          <Text style={styles.ctaNote}>
-            {runType === 'private'
-              ? 'Only invited players will be able to join.'
-              : 'Players will be charged at the time they join.'}
-          </Text>
+            {/* Feature bullets */}
+            <View style={styles.teaserBullets}>
+              {(runType === 'private'
+                ? [
+                    'Invite specific players by name',
+                    'Set a minimum skill level',
+                    'Cap the roster size',
+                    'Run locks when full',
+                  ]
+                : [
+                    'You set the entry fee',
+                    'Cap the roster size',
+                    'Payments handled in-app',
+                    'Payout sent after the run',
+                  ]
+              ).map((b) => (
+                <View key={b} style={styles.teaserBulletRow}>
+                  <Ionicons name="checkmark-circle" size={16} color={runType === 'private' ? colors.primary : '#22C55E'} style={{ marginRight: SPACING.xs }} />
+                  <Text style={styles.teaserBulletText}>{b}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* CTA */}
+            <TouchableOpacity
+              style={[styles.teaserBtn, runType === 'paid' && styles.teaserBtnPaid]}
+              onPress={() => navigation.navigate('Premium')}
+              activeOpacity={0.85}
+            >
+              <Ionicons name="flash" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.teaserBtnText}>See Premium Features</Text>
+            </TouchableOpacity>
+          </View>
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -812,6 +655,72 @@ const getStyles = (colors, isDark) =>
       color: colors.textMuted,
       textAlign: 'center',
       marginBottom: SPACING.xl,
+    },
+
+    // ── Coming Soon teaser ──
+    teaserCard: {
+      backgroundColor: colors.surface,
+      borderRadius: RADIUS.md,
+      padding: SPACING.lg,
+      alignItems: 'center',
+      marginTop: SPACING.sm,
+      ...(isDark ? {} : { borderWidth: 1, borderColor: colors.border }),
+    },
+    teaserIconWrap: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      backgroundColor: isDark ? colors.surfaceLight : '#F3F4F6',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: SPACING.md,
+    },
+    teaserTitle: {
+      fontSize: FONT_SIZES.h2,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textPrimary,
+      marginBottom: SPACING.xs,
+      textAlign: 'center',
+    },
+    teaserSubtitle: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      lineHeight: 20,
+      marginBottom: SPACING.lg,
+      paddingHorizontal: SPACING.sm,
+    },
+    teaserBullets: {
+      width: '100%',
+      marginBottom: SPACING.lg,
+      gap: SPACING.sm,
+    },
+    teaserBulletRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    teaserBulletText: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      flex: 1,
+    },
+    teaserBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.primary,
+      borderRadius: RADIUS.md,
+      paddingVertical: SPACING.sm + 2,
+      paddingHorizontal: SPACING.xl,
+      width: '100%',
+    },
+    teaserBtnPaid: {
+      backgroundColor: '#22C55E',
+    },
+    teaserBtnText: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: '#FFFFFF',
     },
 
     // ── Premium gate modal ──

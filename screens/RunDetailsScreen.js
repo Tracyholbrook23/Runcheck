@@ -52,7 +52,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
-import { PresenceList, Logo, ReportModal } from '../components';
+import { PresenceList, Logo, ReportModal, ReliabilityIntroModal } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import * as Location from 'expo-location';
@@ -445,6 +445,12 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [reportType, setReportType] = useState(null);   // 'gym' | 'run'
   const [reportTargetId, setReportTargetId] = useState(null);
 
+  // ── Reliability intro modal ──────────────────────────────────────────────
+  // Shown once before the user's first reliability-impacting action.
+  // pendingActionRef stores the callback to run after the user confirms.
+  const [reliabilityModalVisible, setReliabilityModalVisible] = useState(false);
+  const pendingActionRef = useRef(null);
+
   // ── Per-run participant subscriptions ───────────────────────────────────────
   // Maps runId → participant[] so each run card can show real-time avatars
   // and names. Subscriptions are created/torn-down when the visible run list
@@ -565,6 +571,21 @@ export default function RunDetailsScreen({ route, navigation }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runs.map((r) => r.id).join(',')]);
+
+  /**
+   * withReliabilityGate — Wraps an async action with the one-time reliability
+   * intro modal. If the user has already seen the warning, the action runs
+   * immediately. Otherwise the modal is shown first, and the action runs after
+   * the user taps "Got It".
+   */
+  const withReliabilityGate = (action) => {
+    if (profile?.hasSeenReliabilityWarning) {
+      action();
+    } else {
+      pendingActionRef.current = action;
+      setReliabilityModalVisible(true);
+    }
+  };
 
   /**
    * handleStartOrJoinRun — Creates a new run or joins an existing one.
@@ -1773,7 +1794,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           {/* Start a Run — secondary CTA, visually distinct from Check In */}
           <TouchableOpacity
             style={styles.startRunCTA}
-            onPress={() => setRunModalVisible(true)}
+            onPress={() => withReliabilityGate(() => setRunModalVisible(true))}
             activeOpacity={0.8}
           >
             <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
@@ -2029,7 +2050,7 @@ export default function RunDetailsScreen({ route, navigation }) {
                     ) : (
                       <TouchableOpacity
                         style={[styles.runJoinButton, joiningRunId === run.id && { opacity: 0.6 }]}
-                        onPress={() => handleJoinRun(run)}
+                        onPress={() => withReliabilityGate(() => handleJoinRun(run))}
                         disabled={joiningRunId === run.id}
                       >
                         {joiningRunId === run.id ? (
@@ -2083,97 +2104,17 @@ export default function RunDetailsScreen({ route, navigation }) {
           />
         </View>
 
-        {/* Gym Highlights — Stories-style horizontal row */}
-        <View
-          style={styles.section}
-          onLayout={(e) => { clipsYRef.current = e.nativeEvent.layout.y; }}
-        >
-          {/* Section header */}
+        {/* Gym Highlights — BETA: hidden, showing Coming Soon teaser */}
+        <View style={styles.section}>
           <View style={clipPlayerStyles.storiesHeaderRow}>
             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>Gym Highlights</Text>
             <Text style={clipPlayerStyles.storiesSubtitle}>From recent sessions</Text>
           </View>
-
-          {clipsLoading ? (
-            // Skeleton: Post tile + 3 grey placeholder tiles while data loads
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={clipPlayerStyles.storiesRow}
-            >
-              <TouchableOpacity
-                style={[
-                  clipPlayerStyles.storiesPostTile,
-                  (postingClip || hasAlreadyPostedClip) && { opacity: 0.5 },
-                ]}
-                onPress={handlePostClip}
-                disabled={postingClip || hasAlreadyPostedClip || !gymId}
-              >
-                {postingClip ? (
-                  <ActivityIndicator color="#FF7A45" size="small" />
-                ) : hasAlreadyPostedClip ? (
-                  <Ionicons name="checkmark-circle-outline" size={24} color="#6B7280" />
-                ) : (
-                  <Ionicons name="add-circle-outline" size={24} color="#FF7A45" />
-                )}
-                <Text style={clipPlayerStyles.storiesPostLabel}>
-                  {postingClip ? 'Starting…' : hasAlreadyPostedClip ? 'Posted' : 'Post'}
-                </Text>
-              </TouchableOpacity>
-              {[1, 2, 3].map((i) => (
-                <View key={i} style={clipPlayerStyles.storiesSkeletonTile} />
-              ))}
-            </ScrollView>
-          ) : (
-            <FlatList
-              data={gymClips}
-              keyExtractor={(item) => item.id}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={clipPlayerStyles.storiesRow}
-              ListHeaderComponent={
-                <TouchableOpacity
-                  style={[
-                    clipPlayerStyles.storiesPostTile,
-                    (postingClip || hasAlreadyPostedClip) && { opacity: 0.5 },
-                  ]}
-                  onPress={handlePostClip}
-                  disabled={postingClip || hasAlreadyPostedClip || !gymId}
-                >
-                  {postingClip ? (
-                    <ActivityIndicator color="#FF7A45" size="small" />
-                  ) : hasAlreadyPostedClip ? (
-                    <Ionicons name="checkmark-circle-outline" size={24} color="#6B7280" />
-                  ) : (
-                    <Ionicons name="add-circle-outline" size={24} color="#FF7A45" />
-                  )}
-                  <Text style={clipPlayerStyles.storiesPostLabel}>
-                    {postingClip ? 'Starting…' : hasAlreadyPostedClip ? 'Posted' : 'Post'}
-                  </Text>
-                </TouchableOpacity>
-              }
-              ListEmptyComponent={
-                <View style={clipPlayerStyles.storiesEmptyWrap}>
-                  <Ionicons name="film-outline" size={22} color="rgba(255,255,255,0.18)" style={{ marginBottom: 6 }} />
-                  <Text style={clipPlayerStyles.storiesEmptyText}>No highlights yet</Text>
-                  <Text style={clipPlayerStyles.storiesEmptySubtext}>Post a clip from your session</Text>
-                </View>
-              }
-              renderItem={({ item }) => (
-                <ClipTile
-                  clip={item}
-                  videoUrl={clipVideoUrls[item.id]}
-                  thumbnailUri={clipThumbnails[item.id]}
-                  liked={!!(item.likedBy?.[uid])}
-                  likesCount={item.likesCount ?? 0}
-                  navigation={navigation}
-                  onLike={toggleLike}
-                  style={clipPlayerStyles.storiesTile}
-                  uploaderInfo={clipUserMap[item.uploaderUid]}
-                />
-              )}
-            />
-          )}
+          <View style={clipPlayerStyles.storiesComingSoonWrap}>
+            <Ionicons name="film-outline" size={28} color="#FF7A45" style={{ marginBottom: 8 }} />
+            <Text style={clipPlayerStyles.storiesComingSoonTitle}>Coming Soon</Text>
+            <Text style={clipPlayerStyles.storiesComingSoonSub}>Clip highlights from the run. Drop soon.</Text>
+          </View>
         </View>
 
         {/* Reviews — live from Firestore with Leave a Review CTA */}
@@ -2449,7 +2390,7 @@ export default function RunDetailsScreen({ route, navigation }) {
             style={styles.typeSheetOption}
             onPress={() => {
               setRunTypeSheetVisible(false);
-              setRunModalVisible(true);
+              withReliabilityGate(() => setRunModalVisible(true));
             }}
             activeOpacity={0.8}
           >
@@ -2848,6 +2789,20 @@ export default function RunDetailsScreen({ route, navigation }) {
         onClose={() => { setReportVisible(false); setReportType(null); setReportTargetId(null); }}
         type={reportType}
         targetId={reportTargetId}
+      />
+
+      {/* Reliability intro — shown once before first join/start action */}
+      <ReliabilityIntroModal
+        visible={reliabilityModalVisible}
+        onConfirm={() => {
+          setReliabilityModalVisible(false);
+          pendingActionRef.current?.();
+          pendingActionRef.current = null;
+        }}
+        onDismiss={() => {
+          setReliabilityModalVisible(false);
+          pendingActionRef.current = null;
+        }}
       />
 
     </SafeAreaView>
@@ -3393,6 +3348,22 @@ const clipPlayerStyles = StyleSheet.create({
     backgroundColor: '#252525',
   },
   // Empty state wrapper — same height as tiles so text centers in the row.
+  storiesComingSoonWrap: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+    gap: 4,
+  },
+  storiesComingSoonTitle: {
+    color: '#FFFFFF',
+    fontSize: FONT_SIZES.body,
+    fontWeight: '600',
+  },
+  storiesComingSoonSub: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: FONT_SIZES.small,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.md,
+  },
   storiesEmptyWrap: {
     height: 160,
     width: 150,

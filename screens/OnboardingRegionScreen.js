@@ -3,8 +3,8 @@
  *
  * Shown once, right before the Welcome screen, to set expectations about
  * RunCheck's current geographic focus. Explains that the app is currently
- * centered on the Austin, TX area, will expand, and that players can request
- * any gym to be added at any time.
+ * active in Austin, TX and Lansing, MI, will expand, and that players can
+ * request any gym to be added at any time.
  */
 
 import React, { useMemo } from 'react';
@@ -24,7 +24,7 @@ const BULLETS = [
   {
     icon: 'location',
     iconColor: '#F97316',
-    text: 'RunCheck is currently focused on the Austin, TX area and surrounding cities.',
+    text: 'RunCheck is currently active in Austin, TX and Lansing, MI — with more cities coming soon.',
   },
   {
     icon: 'basketball',

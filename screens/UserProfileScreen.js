@@ -644,7 +644,20 @@ export default function UserProfileScreen({ route, navigation }) {
         )}
 
         {/* ── Clips ── */}
+        {/* BETA: live clips hidden — showing Coming Soon teaser */}
         <View style={[styles.section, { marginBottom: SPACING.lg }]}>
+          <View style={styles.clipsSectionHeader}>
+            <Text style={styles.sectionTitle}>Clips</Text>
+          </View>
+          <View style={styles.clipsComingSoonWrap}>
+            <Ionicons name="film-outline" size={28} color="#FF7A45" style={{ marginBottom: 8 }} />
+            <Text style={styles.clipsComingSoonTitle}>Coming Soon</Text>
+            <Text style={styles.clipsComingSoonSub}>Highlight reels from the run. Drop soon.</Text>
+          </View>
+        </View>
+
+        {/* ── [BETA HIDDEN] Clips live content ── */}
+        {false && <View style={[styles.section, { marginBottom: SPACING.lg }]}>
           <View style={styles.clipsSectionHeader}>
             <Text style={styles.sectionTitle}>Clips</Text>
             {userClips.length > 0 && (
@@ -721,10 +734,11 @@ export default function UserProfileScreen({ route, navigation }) {
           ) : (
             <Text style={styles.emptyText}>No clips yet</Text>
           )}
-        </View>
+        </View>}
 
         {/* ── Featured In (public — clips where addedToProfile === true) ── */}
-        {featuredInClips.length > 0 && (
+        {/* BETA: hidden — re-enable by changing false → featuredInClips.length > 0 */}
+        {false && (
           <View style={styles.section}>
             <View style={styles.clipsSectionHeader}>
               <Text style={styles.sectionTitle}>Featured In</Text>
@@ -1299,6 +1313,22 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontStyle: 'italic',
   },
   // ── Clips section ─────────────────────────────────────────────────────────
+  clipsComingSoonWrap: {
+    alignItems: 'center',
+    paddingVertical: SPACING.lg,
+    gap: 4,
+  },
+  clipsComingSoonTitle: {
+    color: isDark ? '#FFFFFF' : '#111111',
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  clipsComingSoonSub: {
+    color: isDark ? '#8E8E93' : '#6B7280',
+    fontSize: FONT_SIZES.small,
+    textAlign: 'center',
+    paddingHorizontal: SPACING.md,
+  },
   clipsSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

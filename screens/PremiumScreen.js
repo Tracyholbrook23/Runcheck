@@ -163,6 +163,12 @@ const FREE_FEATURES = [
     title: 'Follow Gyms',
     description: 'Follow your favorite spots and see when friends check in.',
   },
+  {
+    icon: 'basketball-outline',
+    title: 'Start Runs (3/week)',
+    description: 'Free accounts can start up to 3 runs per week. Joining existing runs is always unlimited.',
+    limit: '3 runs / week',
+  },
 ];
 
 // ─── Free vs Premium comparison table ────────────────────────────────────────
@@ -170,6 +176,15 @@ const FREE_FEATURES = [
 // free / premium can be: true (checkmark), false (✗), or a string (custom label)
 
 const COMPARE_ROWS = [
+  // Premium-only rows first — so the locked items land immediately
+  { feature: 'Private invite-only runs',      free: false,             premium: true },
+  { feature: 'Host paid private runs',        free: false,             premium: true },
+  { feature: 'Skill level filtering',         free: false,             premium: true },
+  { feature: 'Smart run alerts',              free: false,             premium: true },
+  { feature: 'Premium player badge',          free: false,             premium: true },
+  { feature: 'Start runs per week',            free: '3 / week',        premium: 'Unlimited' },
+  { feature: 'Run clips',                     free: '1/run · 3/week',  premium: 'Unlimited' },
+  // Free features below the fold
   { feature: 'Find & browse open runs',       free: true,              premium: true },
   { feature: 'Live player counts',            free: true,              premium: true },
   { feature: 'Check in & check out',          free: true,              premium: true },
@@ -177,12 +192,6 @@ const COMPARE_ROWS = [
   { feature: 'Player profile',                free: true,              premium: true },
   { feature: 'Follow gyms',                   free: true,              premium: true },
   { feature: 'Leave verified reviews',        free: true,              premium: true },
-  { feature: 'Run clips',                     free: '1/run · 3/week',  premium: 'Unlimited' },
-  { feature: 'Skill level filtering',         free: false,             premium: true },
-  { feature: 'Smart run alerts',              free: false,             premium: true },
-  { feature: 'Private invite-only runs',      free: false,             premium: true },
-  { feature: 'Host paid private runs',        free: false,             premium: true },
-  { feature: 'Premium player badge',          free: false,             premium: true },
 ];
 
 // ─── Pricing tiers ────────────────────────────────────────────────────────────
@@ -216,7 +225,7 @@ const PRICING = [
 export default function PremiumScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
-  const [activeTab, setActiveTab] = useState('free'); // 'free' | 'premium'
+  const [activeTab, setActiveTab] = useState('premium'); // 'free' | 'premium'
   const [selectedPlan, setSelectedPlan] = useState('annual'); // 'monthly' | 'annual'
 
   const handleCtaPress = () => {
@@ -335,8 +344,28 @@ export default function PremiumScreen({ navigation }) {
         ══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'premium' && (
           <>
-            <Text style={styles.tabHeadline}>Everything on the free plan, plus:</Text>
-            <Text style={styles.tabSubline}>See exactly what you unlock when you go Premium.</Text>
+            <Text style={styles.tabHeadline}>5 features you don't have yet.</Text>
+            <Text style={styles.tabSubline}>Free gets you in the door. Premium changes how you play.</Text>
+
+            {/* ── "What you're locked out of" hook card ─────────────────── */}
+            <View style={styles.lockoutCard}>
+              <View style={styles.lockoutRow}>
+                <View style={styles.lockoutSide}>
+                  <Text style={styles.lockoutSideLabel}>You have</Text>
+                  <Text style={styles.lockoutSideNumber}>8</Text>
+                  <Text style={styles.lockoutSideUnit}>features</Text>
+                </View>
+                <View style={styles.lockoutDivider} />
+                <View style={[styles.lockoutSide, styles.lockoutSidePremium]}>
+                  <Text style={[styles.lockoutSideLabel, { color: '#FF6B35' }]}>Premium unlocks</Text>
+                  <Text style={[styles.lockoutSideNumber, { color: '#FF6B35' }]}>+5</Text>
+                  <Text style={[styles.lockoutSideUnit, { color: '#FF6B3599' }]}>more</Text>
+                </View>
+              </View>
+              <Text style={styles.lockoutHint}>
+                Private runs. Paid runs. Skill filtering. Smart alerts. A badge that sets you apart.
+              </Text>
+            </View>
 
             {/* ── Free vs Premium comparison table ──────────────────────── */}
             <View style={styles.compareCard}>
@@ -360,9 +389,10 @@ export default function PremiumScreen({ navigation }) {
               {/* Rows */}
               {COMPARE_ROWS.map((row, i) => {
                 const isLast = i === COMPARE_ROWS.length - 1;
+                const isLocked = row.free === false;
                 return (
                   <View key={row.feature}>
-                    <View style={styles.compareRow}>
+                    <View style={[styles.compareRow, isLocked && styles.compareRowLocked]}>
                       {/* Feature name */}
                       <View style={styles.compareFeatureCol}>
                         <Text style={styles.compareFeatureName}>{row.feature}</Text>
@@ -1071,6 +1101,59 @@ const getStyles = (colors, isDark) =>
       marginRight: 2,
     },
 
+    // ── Lockout hook card ──
+    lockoutCard: {
+      backgroundColor: isDark ? '#1A1108' : '#FFF8F5',
+      borderRadius: RADIUS.md,
+      padding: SPACING.md,
+      borderWidth: 1,
+      borderColor: '#FF6B3530',
+      marginBottom: SPACING.lg,
+    },
+    lockoutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: SPACING.sm,
+    },
+    lockoutSide: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    lockoutSidePremium: {
+      // intentionally empty — color applied inline
+    },
+    lockoutSideLabel: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.semibold,
+      color: colors.textMuted,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginBottom: 2,
+    },
+    lockoutSideNumber: {
+      fontSize: 40,
+      fontWeight: FONT_WEIGHTS.extraBold,
+      color: colors.textSecondary,
+      lineHeight: 44,
+    },
+    lockoutSideUnit: {
+      fontSize: FONT_SIZES.xs,
+      color: colors.textMuted,
+      marginTop: 2,
+    },
+    lockoutDivider: {
+      width: 1,
+      height: 60,
+      backgroundColor: '#FF6B3530',
+      marginHorizontal: SPACING.md,
+    },
+    lockoutHint: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      lineHeight: 20,
+      textAlign: 'center',
+    },
+
     // ── Compare table ──
     compareCard: {
       backgroundColor: colors.surface,
@@ -1116,6 +1199,9 @@ const getStyles = (colors, isDark) =>
       alignItems: 'center',
       paddingVertical: SPACING.sm,
       paddingHorizontal: SPACING.md,
+    },
+    compareRowLocked: {
+      backgroundColor: isDark ? '#FF6B350A' : '#FFF5F0',
     },
     compareFeatureName: {
       fontSize: FONT_SIZES.small,

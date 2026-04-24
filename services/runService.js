@@ -86,6 +86,81 @@ const assertNotSuspended = async () => {
   throw new Error('Your account is suspended. You cannot perform this action.');
 };
 
+// ── Run creation limits ───────────────────────────────────────────────────────
+
+/** Max runs a free-tier user may START (not join) per calendar week. */
+const WEEKLY_RUN_LIMIT = 3;
+
+/**
+ * UIDs that bypass the weekly run cap and reliability gate.
+ * Add your Firebase Auth UID here for testing. Remove before public launch.
+ */
+const TEST_USER_UIDS = new Set([
+  // 'PASTE_YOUR_UID_HERE',
+]);
+
+/** Reliability score below which a user is blocked from starting a run.
+ *  Only enforced once they have attended 3+ sessions (new users are exempt). */
+const MIN_RELIABILITY_TO_START = 50;
+
+/**
+ * assertCanStartRun — Pre-creation guard for starting (not joining) a run.
+ * Throws if the user:
+ *   (a) has reached the weekly run creation cap, or
+ *   (b) has a reliability score below the minimum threshold.
+ *
+ * Joining an existing run via the merge rule is NOT affected by either guard.
+ */
+const assertCanStartRun = async (uid) => {
+  // Test accounts bypass all limits so you can test freely without hitting caps.
+  if (TEST_USER_UIDS.has(uid)) return;
+
+  const userSnap = await getDoc(doc(db, 'users', uid));
+  const data = userSnap.data() ?? {};
+
+  // ── Reliability gate ─────────────────────────────────────────────────────
+  const reliability = data.reliability;
+  if (
+    reliability &&
+    typeof reliability.score === 'number' &&
+    (reliability.totalAttended ?? 0) >= 3 &&
+    reliability.score < MIN_RELIABILITY_TO_START
+  ) {
+    throw new Error(
+      `Your reliability score (${reliability.score}/100) is too low to start a run. ` +
+      'Show up to your scheduled games to recover your score.',
+    );
+  }
+
+  // ── Weekly cap ───────────────────────────────────────────────────────────
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0 = Sunday
+  const startOfWeek = new Date(now);
+  startOfWeek.setDate(now.getDate() - dayOfWeek);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  // Query only by createdBy (single-field equality — no composite index needed).
+  // Date filtering is done in memory — a user won't have enough runs for this to matter.
+  const allUserRunsSnap = await getDocs(
+    query(collection(db, 'runs'), where('createdBy', '==', uid)),
+  );
+
+  const startOfWeekMs = startOfWeek.getTime();
+  const weeklyCount = allUserRunsSnap.docs.filter((d) => {
+    const data = d.data();
+    if (data.status === 'cancelled') return false;
+    const createdMs = data.createdAt?.toMillis?.();
+    return createdMs && createdMs >= startOfWeekMs;
+  }).length;
+
+  if (weeklyCount >= WEEKLY_RUN_LIMIT) {
+    throw new Error(
+      `You've started ${WEEKLY_RUN_LIMIT} runs this week, which is the current limit. ` +
+      'Your limit resets every Sunday.',
+    );
+  }
+};
+
 // How far apart two runs can be (in ms) and still be merged.
 const MERGE_WINDOW_MS = 60 * 60 * 1000; // 60 minutes
 
@@ -243,9 +318,16 @@ export const startOrJoinRun = async (gymId, gymName, startTime, runLevel = 'mixe
   const snapshot = await getDocs(q);
   const requestedMs = startTime.getTime();
 
-  // Find the first run within ±60 minutes of the requested start time
+  // Find the first run within ±60 minutes of the requested start time.
+  // Skip empty/zombie runs (participantCount <= 0) — these are runs whose last
+  // participant has left. Without this filter the user would be silently
+  // re-added to their own empty run. Replaces the previous status='cancelled'
+  // guard, which was dropped from leaveRun to keep that transaction's write
+  // within the non-creator update allowlist in Firestore rules.
   const matchingRun = snapshot.docs.find((d) => {
-    const runStartMs = d.data().startTime?.toDate().getTime();
+    const data = d.data();
+    if ((data.participantCount ?? 0) <= 0) return false;
+    const runStartMs = data.startTime?.toDate().getTime();
     return runStartMs && Math.abs(runStartMs - requestedMs) <= MERGE_WINDOW_MS;
   });
 
@@ -259,6 +341,10 @@ export const startOrJoinRun = async (gymId, gymName, startTime, runLevel = 'mixe
   }
 
   // ── Create new run ───────────────────────────────────────────────────────
+  // Check weekly cap + reliability before writing anything.
+  // assertCanStartRun only gates creation — joining an existing run (above) is unaffected.
+  await assertCanStartRun(uid);
+
   // Use a writeBatch so the run doc and the user's runsStarted counter are
   // written atomically — both land or neither does. This prevents the counter
   // from drifting out of sync with the actual runs collection.
@@ -395,21 +481,24 @@ export const leaveRun = async (runId) => {
     txn.delete(participantRef);
     // Only decrement if the run exists and count is still positive — prevents
     // participantCount from being driven below 0 during retries or stale-data races.
+    //
+    // IMPORTANT: This update writes ONLY `participantCount`. We do NOT also set
+    // `status: 'cancelled'` here, even when the last participant leaves.
+    //
+    // Why: Firestore rules on `runs/{runId}` allow non-creator updates only when
+    // affectedKeys().hasOnly(['participantCount', 'lastMessageAt']). Writing
+    // `status` alongside `participantCount` fails that check, so a non-creator
+    // last-leaver would see their transaction rejected and be stuck in the run.
+    // Empty-run visibility is already handled downstream: `subscribeToGymRuns`
+    // and `subscribeToAllUpcomingRuns` filter out `participantCount <= 0`, and
+    // the merge-match in `startOrJoinRun` now does the same so users aren't
+    // silently re-added to a zombie run at the same gym.
     const currentCount = runSnap.exists() ? (runSnap.data().participantCount ?? 0) : 0;
     if (currentCount > 0) {
+      txn.update(runRef, { participantCount: increment(-1) });
       if (currentCount === 1) {
-        // Last person leaving — cancel the run entirely so it doesn't become a
-        // ghost run. A cancelled run is excluded from startOrJoinRun's query
-        // (which filters status == 'upcoming'), preventing the user from being
-        // silently re-added to their own empty run the next time they try to
-        // start one at the same gym.
-        txn.update(runRef, {
-          participantCount: increment(-1),
-          status: 'cancelled',
-        });
+        // Last participant out — flag for post-transaction activity cleanup.
         runWasCancelled = true;
-      } else {
-        txn.update(runRef, { participantCount: increment(-1) });
       }
     }
   });

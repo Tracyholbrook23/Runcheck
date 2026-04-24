@@ -94,11 +94,15 @@ export const handleFollowPoints = async (uid, gymId, isFollowing) => {
       // awardedSet won't contain the gymId so we skip silently.
       if (!awardedSet.includes(gymId)) return;
 
-      await updateDoc(userRef, {
-        totalPoints:                    increment(-points),
-        weeklyPoints:                   increment(-points),
-        'pointsAwarded.followedGyms':   arrayRemove(gymId),
-      });
+      // Clamp each field independently so neither goes below 0.
+      const totalDeduction  = Math.min(points, data.totalPoints  ?? 0);
+      const weeklyDeduction = Math.min(points, data.weeklyPoints ?? 0);
+
+      const update = { 'pointsAwarded.followedGyms': arrayRemove(gymId) };
+      if (totalDeduction  > 0) update.totalPoints  = increment(-totalDeduction);
+      if (weeklyDeduction > 0) update.weeklyPoints = increment(-weeklyDeduction);
+
+      await updateDoc(userRef, update);
     }
   } catch (err) {
     if (__DEV__) console.error('handleFollowPoints error:', err);
@@ -305,6 +309,10 @@ export const awardPoints = async (uid, action, idempotencyKey = null, gymId = nu
  * Function-owned.  weeklyPoints are also reduced so the leaderboard
  * stays accurate within the current week.
  *
+ * Both totalPoints and weeklyPoints are clamped independently so neither
+ * field ever goes below 0.  A user who has 0 weeklyPoints this week but
+ * 80 totalPoints cannot end up with a negative weekly score.
+ *
  * @param {string} uid    — Firebase Auth user ID.
  * @param {number} amount — Positive number of points to deduct.
  * @returns {Promise<void>}
@@ -315,15 +323,20 @@ export const penalizePoints = async (uid, amount) => {
   const userRef = doc(db, 'users', uid);
   try {
     const snap = await getDoc(userRef);
-    const current = snap.data()?.totalPoints ?? 0;
-    // Clamp deduction so totalPoints never goes below 0.
-    const deduction = Math.min(amount, current);
-    if (deduction <= 0) return;
+    const data = snap.data() ?? {};
 
-    await updateDoc(userRef, {
-      totalPoints:  increment(-deduction),
-      weeklyPoints: increment(-deduction),
-    });
+    // Clamp each field independently — they can diverge (weeklyPoints resets weekly).
+    const totalDeduction  = Math.min(amount, data.totalPoints  ?? 0);
+    const weeklyDeduction = Math.min(amount, data.weeklyPoints ?? 0);
+
+    // If both floors are already 0 there is nothing to write.
+    if (totalDeduction <= 0 && weeklyDeduction <= 0) return;
+
+    const update = {};
+    if (totalDeduction  > 0) update.totalPoints  = increment(-totalDeduction);
+    if (weeklyDeduction > 0) update.weeklyPoints = increment(-weeklyDeduction);
+
+    await updateDoc(userRef, update);
   } catch (err) {
     if (__DEV__) console.error('penalizePoints error:', err);
   }

@@ -302,7 +302,7 @@ export default function LeaderboardScreen({ navigation }) {
   const ptsToNext        = currentRank.nextRankAt ? currentRank.nextRankAt - currentPoints : 0;
   const myPosition       = allTimeUsers.findIndex((u) => u.id === currentUid) + 1;
 
-  // Format "2026-03-09" → "Mar 9" for the winners card subtitle
+  // Format "2026-03-09" → "Mar 9" for the winners card subtitle ("Week ending Mar 9")
   const formatWeekOf = (weekOfStr) => {
     if (!weekOfStr) return '';
     const [y, m, d] = weekOfStr.split('-').map(Number);
@@ -398,7 +398,7 @@ export default function LeaderboardScreen({ navigation }) {
               {/* Subtitle — week of date */}
               <View style={styles.winnersHeader}>
                 <Ionicons name="trophy" size={16} color="#FFD700" />
-                <Text style={styles.winnersSubtitle}>Week of {formatWeekOf(winnersWeekOf)}</Text>
+                <Text style={styles.winnersSubtitle}>Week ending {formatWeekOf(winnersWeekOf)}</Text>
               </View>
 
               {weeklyWinners.map((w, index) => {
