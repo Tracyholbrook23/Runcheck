@@ -17,7 +17,9 @@
  * Navigation: ProfileStack → SettingsScreen → MyReports
  */
 
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import * as Notifications from 'expo-notifications';
 import {
   View,
   Text,
@@ -34,10 +36,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useProfile } from '../hooks';
-import { auth, db } from '../config/firebase';
+import { auth, db, functions } from '../config/firebase';
 import { signOut } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
+import { httpsCallable } from 'firebase/functions';
 import { registerPushToken, clearPushToken } from '../utils/notifications';
 
 // ── App constants ──────────────────────────────────────────────────────────
@@ -61,6 +63,22 @@ export default function SettingsScreen({ navigation }) {
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { profile } = useProfile();
 
+  // ── Auto Check-In toggle — optimistic local state ───────────────────────
+  const [autoCheckInEnabled, setAutoCheckInEnabled] = useState(
+    profile?.preferences?.autoCheckInEnabled ?? true
+  );
+
+  useEffect(() => {
+    if (profile?.preferences?.autoCheckInEnabled !== undefined) {
+      setAutoCheckInEnabled(profile.preferences.autoCheckInEnabled);
+    }
+  }, [profile?.preferences?.autoCheckInEnabled]);
+
+  const handleToggleAutoCheckIn = (val) => {
+    setAutoCheckInEnabled(val);
+    updatePreference('autoCheckInEnabled', val);
+  };
+
   // ── Community feed toggle — optimistic local state ───────────────────────
   // Local state snaps instantly on press; Firestore write happens in background.
   const [showCommunityFeed, setShowCommunityFeed] = useState(
@@ -79,6 +97,10 @@ export default function SettingsScreen({ navigation }) {
     updatePreference('showCommunityFeed', val);   // background Firestore write
   };
 
+  // ── Collapsible section state ────────────────────────────────────────────
+  const [notifExpanded, setNotifExpanded] = useState(false);
+  const [autoCheckInExpanded, setAutoCheckInExpanded] = useState(false);
+
   // ── Push Notifications toggle — optimistic local state ───────────────────
   const [notificationsEnabled, setNotificationsEnabled] = useState(
     profile?.preferences?.notificationsEnabled ?? true
@@ -91,14 +113,67 @@ export default function SettingsScreen({ navigation }) {
     }
   }, [profile?.preferences?.notificationsEnabled]);
 
-  const handleToggleNotifications = async (val) => {
-    setNotificationsEnabled(val);                              // instant UI snap
-    updatePreference('notificationsEnabled', val);            // background Firestore write
-    if (val) {
-      await registerPushToken();  // re-registers token if permission already granted
-    } else {
-      await clearPushToken();     // removes token so Cloud Functions skip this device
+  // ── OS-level notification permission status ─────────────────────────────
+  // 'granted' | 'denied' | 'undetermined'
+  // Re-checked every time the screen comes into focus so the banner disappears
+  // immediately after the user enables permission in phone Settings and returns.
+  const [osPermission, setOsPermission] = useState('granted');
+
+  const checkOsPermission = useCallback(async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setOsPermission(status);
+    } catch {
+      setOsPermission('granted'); // fail open — don't show a false warning
     }
+  }, []);
+
+  useEffect(() => { checkOsPermission(); }, [checkOsPermission]);
+  useFocusEffect(useCallback(() => { checkOsPermission(); }, [checkOsPermission]));
+
+  const osBlocked = osPermission === 'denied';
+
+  const handleToggleNotifications = async (val) => {
+    if (val && osBlocked) {
+      // Permission is blocked at OS level — toggle can't fix it. Send them to phone Settings.
+      Alert.alert(
+        'Notifications Blocked',
+        'RunCheck doesn\'t have permission to send notifications on this device. Open your phone\'s Settings to enable them.',
+        [
+          { text: 'Not Now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+      return;
+    }
+
+    if (!val) {
+      // Turning OFF — optimistic update, then remove the push token from Firestore.
+      // Cloud Functions check users/{uid}.pushToken before sending — no token = no notifications.
+      setNotificationsEnabled(false);
+      updatePreference('notificationsEnabled', false);
+      await clearPushToken();
+      return;
+    }
+
+    // Turning ON — attempt to register. This will:
+    //   • Show the OS permission prompt if status is 'undetermined'
+    //   • Silently retrieve the token if already granted
+    //   • Return null if the user denies the prompt
+    setNotificationsEnabled(true); // optimistic
+    const token = await registerPushToken();
+
+    if (!token) {
+      // User denied the OS permission dialog — revert the toggle so the UI
+      // stays honest, and re-check OS status so the blocked banner appears.
+      setNotificationsEnabled(false);
+      updatePreference('notificationsEnabled', false);
+      await checkOsPermission();
+      return;
+    }
+
+    // Token saved successfully — persist the preference.
+    updatePreference('notificationsEnabled', true);
   };
 
   // ── Preference updater ──────────────────────────────────────────────────
@@ -148,7 +223,7 @@ export default function SettingsScreen({ navigation }) {
           style: 'destructive',
           onPress: async () => {
             try {
-              const deleteAccountFn = httpsCallable(getFunctions(), 'deleteAccount');
+              const deleteAccountFn = httpsCallable(functions, 'deleteAccount');
               await deleteAccountFn();
 
               try {
@@ -268,38 +343,152 @@ export default function SettingsScreen({ navigation }) {
             <View>
               <Text style={styles.settingLabel}>Push Notifications</Text>
               <Text style={styles.settingHint}>
-                {notificationsEnabled ? 'Alerts are on' : 'Alerts are off'}
+                {osBlocked
+                  ? 'Blocked in phone Settings'
+                  : notificationsEnabled
+                    ? 'Alerts are on'
+                    : 'Alerts are off'}
               </Text>
             </View>
           </View>
           <Switch
-            value={notificationsEnabled}
+            value={notificationsEnabled && !osBlocked}
             onValueChange={handleToggleNotifications}
             trackColor={{ false: colors.border, true: '#FF9F0A' }}
             thumbColor="#FFFFFF"
           />
         </View>
 
-        {/* Notification type list — always visible, dimmed when disabled */}
-        <View style={[styles.notifTypeList, !notificationsEnabled && styles.notifTypeListDimmed]}>
-          {[
-            { icon: '⚡', label: 'Run starting soon', desc: '30 min before your run starts' },
-            { icon: '👥', label: 'Player joined your run', desc: 'When someone joins a run you created' },
-            { icon: '🔥', label: 'Run getting full', desc: 'When your run hits 5, 10, or 20 players' },
-            { icon: '🏀', label: 'New run at your gym', desc: 'Run posted at a gym you follow' },
-            { icon: '📅', label: 'Matches your schedule', desc: 'Run posted during your planned visit' },
-            { icon: '📍', label: 'Gym going live', desc: 'A followed gym reaches 3 or 6 players' },
-            { icon: '💬', label: 'New message', desc: 'Direct message received' },
-          ].map(({ icon, label, desc }) => (
-            <View key={label} style={styles.notifTypeRow}>
-              <Text style={styles.notifTypeIcon}>{icon}</Text>
-              <View style={styles.notifTypeText}>
-                <Text style={styles.notifTypeLabel}>{label}</Text>
-                <Text style={styles.notifTypeDesc}>{desc}</Text>
+        {/* OS permission blocked banner */}
+        {osBlocked && (
+          <View style={styles.notifBlockedBanner}>
+            <Ionicons name="warning-outline" size={16} color="#FF9F0A" style={{ marginTop: 1 }} />
+            <View style={styles.notifBlockedText}>
+              <Text style={styles.notifBlockedTitle}>Notifications are blocked</Text>
+              <Text style={styles.notifBlockedDesc}>
+                RunCheck doesn't have permission to send notifications on this device.
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.notifBlockedButton}
+              onPress={() => Linking.openSettings()}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.notifBlockedButtonText}>Open Settings</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Notification type list — collapsible */}
+        <TouchableOpacity
+          style={styles.expandRow}
+          onPress={() => setNotifExpanded(v => !v)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.expandRowLabel}>Alert types</Text>
+          <Ionicons
+            name={notifExpanded ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+
+        {notifExpanded && (
+          <View style={[styles.notifTypeList, (!notificationsEnabled || osBlocked) && styles.notifTypeListDimmed]}>
+            {[
+              { icon: '⚡', label: 'Run starting soon', desc: '30 min before your run starts' },
+              { icon: '👥', label: 'Player joined your run', desc: 'When someone joins a run you created' },
+              { icon: '🔥', label: 'Run getting full', desc: 'When your run hits 5, 10, or 20 players' },
+              { icon: '🏀', label: 'New run at your gym', desc: 'Run posted at a gym you follow' },
+              { icon: '📅', label: 'Matches your schedule', desc: 'Run posted during your planned visit' },
+              { icon: '📍', label: 'Gym going live', desc: 'A followed gym reaches 3 or 6 players' },
+              { icon: '👋', label: 'Friend request', desc: 'Someone sent you a friend request' },
+              { icon: '🤝', label: 'Friend accepted', desc: 'Someone accepted your friend request' },
+              { icon: '💬', label: 'Run chat message', desc: 'New message in a group run chat' },
+              { icon: '✉️', label: 'Direct message', desc: 'Someone sent you a DM' },
+            ].map(({ icon, label, desc }) => (
+              <View key={label} style={styles.notifTypeRow}>
+                <Text style={styles.notifTypeIcon}>{icon}</Text>
+                <View style={styles.notifTypeText}>
+                  <Text style={styles.notifTypeLabel}>{label}</Text>
+                  <Text style={styles.notifTypeDesc}>{desc}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.menuDivider} />
+
+        {/* Auto Check-In */}
+        <View style={styles.settingRow}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#22C55E22' }]}>
+              <Ionicons name="location" size={18} color="#22C55E" />
+            </View>
+            <View>
+              <Text style={styles.settingLabel}>Auto Check-In</Text>
+              <Text style={styles.settingHint}>
+                {autoCheckInEnabled ? 'On — checks you in automatically' : 'Off'}
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={autoCheckInEnabled}
+            onValueChange={handleToggleAutoCheckIn}
+            trackColor={{ false: colors.border, true: '#22C55E' }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        {/* Auto check-in explanation panel — collapsible */}
+        <TouchableOpacity
+          style={styles.expandRow}
+          onPress={() => setAutoCheckInExpanded(v => !v)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.expandRowLabel}>How it works</Text>
+          <Ionicons
+            name={autoCheckInExpanded ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={colors.textMuted}
+          />
+        </TouchableOpacity>
+
+        {autoCheckInExpanded && (
+          <View style={styles.autoCheckInInfo}>
+            <View style={styles.autoCheckInInfoRow}>
+              <Text style={styles.autoCheckInInfoIcon}>📅</Text>
+              <View style={styles.autoCheckInInfoText}>
+                <Text style={styles.autoCheckInInfoLabel}>Schedule a visit first</Text>
+                <Text style={styles.autoCheckInInfoDesc}>
+                  Go to any gym page and tap "Plan a Visit" to schedule when you'll be there.
+                </Text>
               </View>
             </View>
-          ))}
-        </View>
+            <View style={styles.autoCheckInInfoRow}>
+              <Text style={styles.autoCheckInInfoIcon}>📍</Text>
+              <View style={styles.autoCheckInInfoText}>
+                <Text style={styles.autoCheckInInfoLabel}>Arrive at the gym</Text>
+                <Text style={styles.autoCheckInInfoDesc}>
+                  When you enter the gym's area during your scheduled time, RunCheck checks you in automatically — no tap needed.
+                </Text>
+              </View>
+            </View>
+            <View style={styles.autoCheckInInfoRow}>
+              <Text style={styles.autoCheckInInfoIcon}>⚡</Text>
+              <View style={styles.autoCheckInInfoText}>
+                <Text style={styles.autoCheckInInfoLabel}>Points + reliability</Text>
+                <Text style={styles.autoCheckInInfoDesc}>
+                  You earn your check-in points and your reliability score goes up, just like a manual check-in.
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.autoCheckInNote}>
+              Location is only checked while the app is open. Auto check-in works within 1 hour of your scheduled time.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.menuDivider} />
 
@@ -616,11 +805,104 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.body,
     color: colors.textMuted,
   },
-  // ── Push Notification type list ──────────────────────────────────────────
-  notifTypeList: {
+  // ── Notifications blocked banner ────────────────────────────────────────
+  notifBlockedBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    backgroundColor: '#FF9F0A18',
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: '#FF9F0A44',
+    padding: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  notifBlockedText: {
+    flex: 1,
+  },
+  notifBlockedTitle: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FF9F0A',
+    marginBottom: 2,
+  },
+  notifBlockedDesc: {
+    fontSize: 11,
+    color: '#FF9F0A',
+    opacity: 0.85,
+    lineHeight: 15,
+  },
+  notifBlockedButton: {
+    backgroundColor: '#FF9F0A',
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    alignSelf: 'center',
+  },
+  notifBlockedButtonText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#fff',
+  },
+  // ── Collapsible expand rows ──────────────────────────────────────────────
+  expandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    paddingTop: SPACING.sm,
+  },
+  expandRowLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: colors.textMuted,
+  },
+  // ── Push Notification type list ──────────────────────────────────────────
+  autoCheckInInfo: {
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.xs,
+    gap: SPACING.sm,
+  },
+  autoCheckInInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    paddingVertical: 2,
+  },
+  autoCheckInInfoIcon: {
+    fontSize: 15,
+    lineHeight: 20,
+    width: 22,
+    textAlign: 'center',
+  },
+  autoCheckInInfoText: {
+    flex: 1,
+  },
+  autoCheckInInfoLabel: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: colors.textPrimary,
+    lineHeight: 18,
+  },
+  autoCheckInInfoDesc: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
+    marginTop: 1,
+  },
+  autoCheckInNote: {
+    fontSize: 11,
+    color: colors.textMuted,
+    lineHeight: 15,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    marginTop: SPACING.xs,
+    fontStyle: 'italic',
+  },
+  notifTypeList: {
+    paddingTop: SPACING.xs,
     paddingBottom: SPACING.xs,
     gap: SPACING.sm,
   },

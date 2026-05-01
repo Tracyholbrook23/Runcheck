@@ -86,7 +86,7 @@ export const PresenceList = ({
 
   return (
     <>
-      {items.map((item) => {
+      {items.map((item, idx) => {
         const name = item.userName || 'Anonymous';
         const initial = name.charAt(0).toUpperCase();
         const skillLevel = item.skillLevel;
@@ -135,9 +135,10 @@ export const PresenceList = ({
           </>
         );
 
+        const itemKey = item.id || item.odId || item.userId || String(idx);
         return handlePress ? (
           <TouchableOpacity
-            key={item.id}
+            key={itemKey}
             style={styles.playerCard}
             onPress={handlePress}
             activeOpacity={0.7}
@@ -145,7 +146,7 @@ export const PresenceList = ({
             {rowContent}
           </TouchableOpacity>
         ) : (
-          <View key={item.id} style={styles.playerCard}>
+          <View key={itemKey} style={styles.playerCard}>
             {rowContent}
           </View>
         );

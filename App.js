@@ -428,6 +428,46 @@ export default function App() {
             },
           });
         }
+
+        // ── Friend request notification tap: navigate to their profile ───────
+        if (data?.type === 'friendRequest' && data?.fromUserId && navigationRef.isReady()) {
+          navigationRef.navigate('Main', {
+            screen: 'Profile',
+            params: {
+              screen: 'UserProfile',
+              params: { userId: data.fromUserId },
+            },
+          });
+        }
+
+        // ── Friend accepted notification tap: navigate to their profile ───────
+        if (data?.type === 'friendAccepted' && data?.fromUserId && navigationRef.isReady()) {
+          navigationRef.navigate('Main', {
+            screen: 'Profile',
+            params: {
+              screen: 'UserProfile',
+              params: { userId: data.fromUserId },
+            },
+          });
+        }
+
+        // ── Run chat notification tap: navigate to the group chat ──────────
+        // data.type === 'runChat' is set by the onRunChatMessageCreated CF.
+        // Navigate into HomeStack › RunChat so the user can see the message.
+        if (data?.type === 'runChat' && data?.runId && navigationRef.isReady()) {
+          navigationRef.navigate('Main', {
+            screen: 'Home',
+            params: {
+              screen: 'RunChat',
+              params: {
+                runId: data.runId,
+                gymId: data.gymId ?? null,
+                gymName: data.gymName ?? 'Run Chat',
+                startTime: null,
+              },
+            },
+          });
+        }
       }
     );
 

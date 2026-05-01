@@ -1,18 +1,18 @@
 /**
  * EditProfileScreen.js — Account Info & Profile Editing
  *
- * Lets the signed-in user view and update their account information.
+ * Organised into two sections:
  *
- * Editable fields:
- *   - Display Name   — written to Firestore users/{uid}.name
- *                      and Firebase Auth displayName
- *   - Skill Level    — written to Firestore users/{uid}.skillLevel
- *                      ('Casual' | 'Competitive' | 'Either')
+ *   Public Profile  — what other players see across the app
+ *     • Display Name     — users/{uid}.displayName  (shown everywhere instead of real name)
+ *     • Instagram Handle — users/{uid}.instagramHandle  (optional, shown on profile)
  *
- * Read-only fields:
- *   - Email          — changing email requires reauthentication (out of scope
- *                      for launch). Contact support note shown instead.
- *   - Username       — set at signup; not changeable post-registration.
+ *   Account Info    — private identity data, never shown to other players
+ *     • First Name / Last Name — users/{uid}.firstName / .lastName
+ *     • Email       — read-only; contact support to change
+ *     • Username    — read-only; set at signup, never changeable
+ *
+ *   Game Style      — users/{uid}.skillLevel
  *
  * Navigation: ProfileStack → Settings → EditProfile
  */
@@ -38,7 +38,7 @@ import { useProfile } from '../hooks';
 import { auth, db } from '../config/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { updateProfile } from 'firebase/auth';
-import { sanitizeName } from '../utils/sanitize';
+import { sanitizeName, sanitizePersonName } from '../utils/sanitize';
 
 // Valid skill level options — matches models.js and onboarding
 const SKILL_LEVELS = ['Casual', 'Competitive', 'Either'];
@@ -49,57 +49,92 @@ const SKILL_DESCRIPTIONS = {
   Either:      'Flexible — whatever the run needs',
 };
 
+/** Strip leading @ if user types it, keep the rest */
+function sanitizeInstagram(raw) {
+  return raw.replace(/^@+/, '').replace(/[^a-zA-Z0-9._]/g, '').slice(0, 30);
+}
+
 export default function EditProfileScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
   const { profile } = useProfile();
 
-  const uid        = auth.currentUser?.uid;
-  const email      = auth.currentUser?.email ?? '—';
-  const username   = profile?.username ?? null;
+  const uid      = auth.currentUser?.uid;
+  const email    = auth.currentUser?.email ?? '—';
+  const username = profile?.username ?? null;
 
-  // ── Local form state ────────────────────────────────────────────────────
-  const [name, setName]             = useState('');
+  // ── Local form state ──────────────────────────────────────────────────────
+  // Public
+  const [displayName,      setDisplayName]      = useState('');
+  const [instagramHandle,  setInstagramHandle]  = useState('');
+  // Private (real name — now editable so users can correct typos from signup)
+  const [firstName, setFirstName] = useState('');
+  const [lastName,  setLastName]  = useState('');
+  // Game style
   const [skillLevel, setSkillLevel] = useState('Casual');
-  const [saving, setSaving]         = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+
+  const [saving,      setSaving]      = useState(false);
+  const [hasChanges,  setHasChanges]  = useState(false);
 
   // Seed form from profile once it loads
   useEffect(() => {
     if (profile) {
-      setName(profile.name ?? '');
+      setDisplayName(profile.displayName ?? profile.name ?? '');
+      setInstagramHandle(profile.instagramHandle ?? '');
+      setFirstName(profile.firstName ?? '');
+      setLastName(profile.lastName ?? '');
       setSkillLevel(profile.skillLevel ?? 'Casual');
     }
-  }, [profile?.name, profile?.skillLevel]);
+  }, [profile?.displayName, profile?.instagramHandle, profile?.firstName, profile?.lastName, profile?.skillLevel]);
 
   // Track whether anything has changed vs. saved values
   useEffect(() => {
     if (!profile) return;
-    const nameChanged  = name.trim() !== (profile.name ?? '').trim();
-    const skillChanged = skillLevel !== (profile.skillLevel ?? 'Casual');
-    setHasChanges(nameChanged || skillChanged);
-  }, [name, skillLevel, profile]);
+    const changed =
+      displayName.trim()     !== (profile.displayName ?? profile.name ?? '').trim()  ||
+      instagramHandle.trim() !== (profile.instagramHandle ?? '').trim()               ||
+      firstName.trim()       !== (profile.firstName ?? '').trim()                     ||
+      lastName.trim()        !== (profile.lastName  ?? '').trim()                     ||
+      skillLevel             !== (profile.skillLevel ?? 'Casual');
+    setHasChanges(changed);
+  }, [displayName, instagramHandle, firstName, lastName, skillLevel, profile]);
 
-  // ── Save handler ─────────────────────────────────────────────────────────
+  // ── Save handler ──────────────────────────────────────────────────────────
   const handleSave = async () => {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      Alert.alert('Name required', 'Please enter a display name.');
+    const trimmedDisplay = displayName.trim();
+    if (!trimmedDisplay) {
+      Alert.alert('Display name required', 'Please enter a display name so other players can find you.');
       return;
     }
     if (!uid) return;
 
+    const trimmedFirst = firstName.trim();
+    const trimmedLast  = lastName.trim();
+    const trimmedIG    = instagramHandle.trim();
+
     setSaving(true);
     try {
-      // Write to Firestore
-      await updateDoc(doc(db, 'users', uid), {
-        name:       trimmedName,
+      const updates = {
+        displayName: trimmedDisplay,
+        instagramHandle: trimmedIG,
         skillLevel,
-      });
-      // Sync Firebase Auth display name
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: trimmedName });
+      };
+
+      // Update real name fields only if they have content
+      if (trimmedFirst) updates.firstName = trimmedFirst;
+      if (trimmedLast)  updates.lastName  = trimmedLast;
+      // Keep the legacy `name` field in sync so old code paths still work
+      if (trimmedFirst || trimmedLast) {
+        updates.name = `${trimmedFirst || profile?.firstName || ''} ${trimmedLast || profile?.lastName || ''}`.trim();
       }
+
+      await updateDoc(doc(db, 'users', uid), updates);
+
+      // Sync Firebase Auth displayName with the chosen display name
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: trimmedDisplay });
+      }
+
       setHasChanges(false);
       Alert.alert('Saved', 'Your profile has been updated.', [
         { text: 'OK', onPress: () => navigation.goBack() },
@@ -112,13 +147,35 @@ export default function EditProfileScreen({ navigation }) {
     }
   };
 
-  // ── Read-only field row ──────────────────────────────────────────────────
+  // ── Read-only field row ───────────────────────────────────────────────────
   const ReadOnlyField = ({ label, value, hint }) => (
     <View style={styles.fieldBlock}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <View style={styles.readOnlyRow}>
         <Text style={styles.readOnlyValue}>{value}</Text>
         <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
+      </View>
+      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+    </View>
+  );
+
+  // ── Editable text field ───────────────────────────────────────────────────
+  const EditableField = ({ label, value, onChangeText, placeholder, hint, autoCapitalize = 'words', maxLength = 40, prefix }) => (
+    <View style={styles.fieldBlock}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <View style={styles.inputWrapper}>
+        {prefix ? <Text style={[styles.inputPrefix, { color: colors.textMuted }]}>{prefix}</Text> : null}
+        <TextInput
+          style={[styles.textInput, prefix && styles.textInputWithPrefix]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={colors.textMuted}
+          maxLength={maxLength}
+          autoCorrect={false}
+          autoCapitalize={autoCapitalize}
+          returnKeyType="done"
+        />
       </View>
       {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
     </View>
@@ -136,36 +193,70 @@ export default function EditProfileScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
 
-          {/* ── Section: Identity ─────────────────────────────────────── */}
-          <Text style={styles.sectionTitle}>Identity</Text>
+          {/* ── Section: Public Profile ───────────────────────────────── */}
+          <Text style={styles.sectionTitle}>Public Profile</Text>
+          <Text style={styles.sectionSubtitle}>What other players see across the app</Text>
           <View style={styles.card}>
 
-            {/* Display Name */}
-            <View style={styles.fieldBlock}>
-              <Text style={styles.fieldLabel}>Display Name</Text>
-              <TextInput
-                style={styles.textInput}
-                value={name}
-                onChangeText={(text) => setName(sanitizeName(text))}
-                placeholder="Your name"
-                placeholderTextColor={colors.textMuted}
-                maxLength={40}
-                autoCorrect={false}
-                autoCapitalize="words"
-                returnKeyType="done"
-              />
+            <EditableField
+              label="Display Name"
+              value={displayName}
+              onChangeText={(t) => setDisplayName(sanitizeName(t))}
+              placeholder="Your display name"
+              hint="This is what shows on runs, leaderboards, and your profile."
+              maxLength={40}
+            />
+
+            <View style={styles.divider} />
+
+            <EditableField
+              label="Instagram"
+              value={instagramHandle}
+              onChangeText={(t) => setInstagramHandle(sanitizeInstagram(t))}
+              placeholder="yourhandle"
+              hint="Optional. Other players can tap it to visit your profile."
+              autoCapitalize="none"
+              maxLength={30}
+              prefix="@"
+            />
+
+          </View>
+
+          {/* ── Section: Account Info ─────────────────────────────────── */}
+          <Text style={styles.sectionTitle}>Account Info</Text>
+          <Text style={styles.sectionSubtitle}>Your private identity — not visible to other players</Text>
+          <View style={styles.card}>
+
+            <View style={styles.nameRow}>
+              <View style={styles.nameField}>
+                <EditableField
+                  label="First Name"
+                  value={firstName}
+                  onChangeText={(t) => setFirstName(sanitizePersonName(t))}
+                  placeholder="First"
+                  maxLength={30}
+                />
+              </View>
+              <View style={styles.nameFieldDivider} />
+              <View style={styles.nameField}>
+                <EditableField
+                  label="Last Name"
+                  value={lastName}
+                  onChangeText={(t) => setLastName(sanitizePersonName(t))}
+                  placeholder="Last"
+                  maxLength={30}
+                />
+              </View>
             </View>
 
             <View style={styles.divider} />
 
-            {/* Email — read only */}
             <ReadOnlyField
               label="Email"
               value={email}
               hint="To change your email, contact support."
             />
 
-            {/* Username — read only, only shown if set */}
             {username && (
               <>
                 <View style={styles.divider} />
@@ -246,9 +337,16 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 1,
     textTransform: 'uppercase',
-    marginBottom: SPACING.xs,
+    marginBottom: 2,
     marginTop: SPACING.lg,
     marginLeft: 2,
+  },
+  sectionSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginBottom: SPACING.xs,
+    marginLeft: 2,
+    opacity: 0.7,
   },
   card: {
     backgroundColor: colors.surface,
@@ -262,7 +360,20 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginHorizontal: SPACING.md,
   },
 
-  // ── Fields ──────────────────────────────────────────────────────────────
+  // ── Name row (first + last side by side) ──────────────────────────────────
+  nameRow: {
+    flexDirection: 'row',
+  },
+  nameField: {
+    flex: 1,
+  },
+  nameFieldDivider: {
+    width: 1,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : colors.border,
+    marginVertical: SPACING.md,
+  },
+
+  // ── Fields ────────────────────────────────────────────────────────────────
   fieldBlock: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
@@ -275,15 +386,29 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     letterSpacing: 0.6,
     marginBottom: 6,
   },
-  textInput: {
-    fontSize: FONT_SIZES.body,
-    color: colors.textPrimary,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.background,
     borderRadius: RADIUS.md,
     borderWidth: 1,
     borderColor: isDark ? 'rgba(255,255,255,0.12)' : colors.border,
+    overflow: 'hidden',
+  },
+  inputPrefix: {
+    fontSize: FONT_SIZES.body,
+    paddingLeft: SPACING.md,
+    paddingRight: 2,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  textInputWithPrefix: {
+    paddingLeft: 2,
   },
   readOnlyRow: {
     flexDirection: 'row',
@@ -304,9 +429,10 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: colors.textMuted,
     marginTop: 5,
+    lineHeight: 16,
   },
 
-  // ── Skill level ─────────────────────────────────────────────────────────
+  // ── Skill level ───────────────────────────────────────────────────────────
   skillLabel: {
     fontSize: FONT_SIZES.small,
     color: colors.textSecondary,
@@ -366,7 +492,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginTop: 2,
   },
 
-  // ── Save button ─────────────────────────────────────────────────────────
+  // ── Save button ───────────────────────────────────────────────────────────
   saveButton: {
     marginTop: SPACING.xl,
     backgroundColor: colors.primary,

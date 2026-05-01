@@ -262,6 +262,9 @@ export default function SignupScreen({ navigation }) {
 
       // Step 3: Navigate to verification gate, passing form data so
       // VerifyEmailScreen can write to Firestore once email is confirmed.
+      // displayName defaults to the chosen username — users can customise it
+      // later in Edit Profile. This avoids showing their government name
+      // everywhere while still having a human-readable public identifier.
       navigation.replace('VerifyEmail', {
         signupData: {
           name,
@@ -269,6 +272,7 @@ export default function SignupScreen({ navigation }) {
           lastName: lastName.trim(),
           username,
           usernameLower,
+          displayName: username,
           age,
           skillLevel,
           email,

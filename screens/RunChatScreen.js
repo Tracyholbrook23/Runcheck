@@ -42,9 +42,24 @@ import {
   Platform,
   StyleSheet,
   Image,
+  Modal,
   ActivityIndicator,
   SafeAreaView,
+  Alert,
+  ActionSheetIOS,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { storage } from '../config/firebase';
+
+// ─── Giphy ────────────────────────────────────────────────────────────────────
+const GIPHY_API_KEY = process.env.EXPO_PUBLIC_GIPHY_API_KEY;
+const GIPHY_TRENDING = `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_API_KEY}&limit=24&rating=pg-13`;
+const GIPHY_SEARCH   = (q) => `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(q)}&limit=24&rating=pg-13`;
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../contexts';
@@ -52,7 +67,7 @@ import { FONT_SIZES, SPACING, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { auth } from '../config/firebase';
 import { useProfile } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
-import { subscribeToRunMessages, sendRunMessage, markRunChatSeen, muteRunChat, unmuteRunChat, getRunChatMuteState, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
+import { subscribeToRunMessages, sendRunMessage, sendRunMedia, markRunChatSeen, muteRunChat, unmuteRunChat, getRunChatMuteState, RUN_CHAT_EXPIRY_MS } from '../services/runChatService';
 import { sanitizeFreeText } from '../utils/sanitize';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -121,9 +136,37 @@ function AvatarBubble({ uri, name, size = 32, colors }) {
  * Own messages (isOwn = true) are right-aligned with the primary color.
  * Other messages are left-aligned with sender name + avatar shown.
  */
-function MessageBubble({ message, isOwn, colors }) {
+function ReplyQuote({ replyTo, colors, onPress }) {
+  if (!replyTo) return null;
+  const previewText = replyTo.type === 'image'
+    ? '📷 Photo'
+    : replyTo.type === 'gif'
+      ? '🎞 GIF'
+      : replyTo.text || '';
   return (
-    <View
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={[chatStyles.replyQuote, { backgroundColor: colors.background, borderLeftColor: colors.primary }]}
+    >
+      <Text style={[chatStyles.replyQuoteName, { color: colors.primary }]} numberOfLines={1}>
+        {replyTo.senderName}
+      </Text>
+      <Text style={[chatStyles.replyQuoteText, { color: colors.textMuted }]} numberOfLines={2}>
+        {previewText}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function MessageBubble({ message, isOwn, colors, onLongPress, onReplyQuotePress, onMediaPress }) {
+  const isMedia = message.type === 'image' || message.type === 'gif';
+
+  return (
+    <TouchableOpacity
+      activeOpacity={1}
+      onLongPress={onLongPress}
+      delayLongPress={400}
       style={[
         chatStyles.messageRow,
         isOwn ? chatStyles.messageRowOwn : chatStyles.messageRowOther,
@@ -149,29 +192,57 @@ function MessageBubble({ message, isOwn, colors }) {
           </Text>
         )}
 
-        <View
-          style={[
-            chatStyles.bubble,
-            isOwn
-              ? [chatStyles.bubbleOwn, { backgroundColor: colors.primary }]
-              : [chatStyles.bubbleOther, { backgroundColor: colors.surface, borderColor: colors.border }],
-          ]}
-        >
-          <Text
+        <ReplyQuote
+          replyTo={message.replyTo}
+          colors={colors}
+          onPress={() => onReplyQuotePress?.(message.replyTo?.messageId)}
+        />
+
+        {isMedia ? (
+          /* Image / GIF bubble — tappable to full-screen */
+          <TouchableOpacity
+            activeOpacity={0.9}
+            onPress={() => onMediaPress?.({ uri: message.mediaUrl, type: message.type })}
+            onLongPress={onLongPress}
+            delayLongPress={400}
+            style={chatStyles.mediaBubble}
+          >
+            <Image
+              source={{ uri: message.mediaUrl }}
+              style={chatStyles.mediaImage}
+              resizeMode="cover"
+            />
+            {message.type === 'gif' && (
+              <View style={[chatStyles.gifBadge, { backgroundColor: colors.primary }]}>
+                <Text style={{ color: '#fff', fontSize: 9, fontWeight: FONT_WEIGHTS.bold }}>GIF</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        ) : (
+          <View
             style={[
-              chatStyles.bubbleText,
-              { color: isOwn ? '#FFFFFF' : colors.textPrimary },
+              chatStyles.bubble,
+              isOwn
+                ? [chatStyles.bubbleOwn, { backgroundColor: colors.primary }]
+                : [chatStyles.bubbleOther, { backgroundColor: colors.surface, borderColor: colors.border }],
             ]}
           >
-            {message.text}
-          </Text>
-        </View>
+            <Text
+              style={[
+                chatStyles.bubbleText,
+                { color: isOwn ? '#FFFFFF' : colors.textPrimary },
+              ]}
+            >
+              {message.text}
+            </Text>
+          </View>
+        )}
 
         <Text style={[chatStyles.messageTime, { color: colors.textMuted }]}>
           {formatMessageTime(message.createdAt)}
         </Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -308,12 +379,174 @@ export default function RunChatScreen({ route, navigation }) {
     return () => clearTimeout(timer);
   }, [scrollToBottom]);
 
+  // ── Image / media state ────────────────────────────────────────────────────
+  const [imageUploading, setImageUploading] = useState(false);
+  const [fullScreenMedia, setFullScreenMedia] = useState(null); // { uri, type }
+
+  // ── GIF picker state ───────────────────────────────────────────────────────
+  const [showGifPicker, setShowGifPicker] = useState(false);
+  const [gifQuery, setGifQuery] = useState('');
+  const [gifResults, setGifResults] = useState([]);
+  const [gifSearching, setGifSearching] = useState(false);
+  const gifDebounce = useRef(null);
+
+  // Load trending GIFs when picker opens
+  useEffect(() => {
+    if (!showGifPicker) return;
+    setGifSearching(true);
+    fetch(GIPHY_TRENDING)
+      .then((r) => r.json())
+      .then((json) => setGifResults(json.data || []))
+      .catch(() => setGifResults([]))
+      .finally(() => setGifSearching(false));
+  }, [showGifPicker]);
+
+  // Debounced GIF search
+  useEffect(() => {
+    clearTimeout(gifDebounce.current);
+    if (!gifQuery.trim()) return;
+    setGifSearching(true);
+    gifDebounce.current = setTimeout(() => {
+      fetch(GIPHY_SEARCH(gifQuery.trim()))
+        .then((r) => r.json())
+        .then((json) => setGifResults(json.data || []))
+        .catch(() => setGifResults([]))
+        .finally(() => setGifSearching(false));
+    }, 400);
+    return () => clearTimeout(gifDebounce.current);
+  }, [gifQuery]);
+
+  const handleSendGif = useCallback(async (gif) => {
+    setShowGifPicker(false);
+    setGifQuery('');
+    const gifUrl = gif?.images?.fixed_height?.url || gif?.images?.original?.url;
+    if (!gifUrl || !runId || !uid) return;
+    try {
+      await sendRunMedia({
+        runId,
+        senderId: uid,
+        senderName: profile?.name || 'Player',
+        senderAvatar: profile?.photoURL || null,
+        mediaType: 'gif',
+        mediaUrl: gifUrl,
+      });
+    } catch (err) {
+      if (__DEV__) console.warn('[RunChat] gif send error:', err);
+    }
+  }, [runId, uid, profile]);
+
+  const handleAttach = useCallback(() => {
+    if (!isParticipant || isChatExpired) return;
+
+    const doPickImage = async (source) => {
+      try {
+        let result;
+        if (source === 'camera') {
+          const perm = await ImagePicker.requestCameraPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert('Camera access required', 'Please enable camera access in Settings.');
+            return;
+          }
+          result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.75,
+            allowsEditing: true,
+          });
+        } else {
+          const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!perm.granted) {
+            Alert.alert('Photo access required', 'Please enable photo library access in Settings.');
+            return;
+          }
+          result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.75,
+          });
+        }
+
+        if (result.canceled) return;
+        const asset = result.assets[0];
+        if (!asset?.uri) return;
+
+        setImageUploading(true);
+        // Upload to Firebase Storage
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        const ext = asset.uri.split('.').pop() || 'jpg';
+        const fileName = `${Date.now()}_${uid}.${ext}`;
+        const storageRef = ref(storage, `runChatImages/${runId}/${fileName}`);
+        await new Promise((resolve, reject) => {
+          const task = uploadBytesResumable(storageRef, blob);
+          task.on('state_changed', null, reject, resolve);
+        });
+        const downloadUrl = await getDownloadURL(storageRef);
+
+        await sendRunMedia({
+          runId,
+          senderId: uid,
+          senderName: profile?.name || 'Player',
+          senderAvatar: profile?.photoURL || null,
+          mediaType: 'image',
+          mediaUrl: downloadUrl,
+        });
+      } catch (err) {
+        if (__DEV__) console.error('[RunChatScreen] image upload error:', err);
+        Alert.alert('Upload failed', 'Could not send the photo. Please try again.');
+      } finally {
+        setImageUploading(false);
+      }
+    };
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        { options: ['Cancel', 'Take Photo', 'Choose from Library', 'GIF'], cancelButtonIndex: 0 },
+        (idx) => {
+          if (idx === 1) doPickImage('camera');
+          if (idx === 2) doPickImage('library');
+          if (idx === 3) setShowGifPicker(true);
+        },
+      );
+    } else {
+      Alert.alert('Add Photo', null, [
+        { text: 'Take Photo', onPress: () => doPickImage('camera') },
+        { text: 'Choose from Library', onPress: () => doPickImage('library') },
+        { text: 'GIF', onPress: () => setShowGifPicker(true) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }, [isParticipant, isChatExpired, runId, uid, profile]);
+
+  // ── Reply state ────────────────────────────────────────────────────────────
+  const [replyingTo, setReplyingTo] = useState(null);
+  const inputRef = useRef(null);
+
+  const handleReply = useCallback((message) => {
+    setReplyingTo({
+      messageId: message.id,
+      senderName: message.senderName || 'Player',
+      text: message.text || '',
+      type: message.type || 'text',
+    });
+    setTimeout(() => inputRef.current?.focus(), 50);
+  }, []);
+
+  const handleScrollToMessage = useCallback((messageId) => {
+    if (!messageId || !flatListRef.current) return;
+    const index = messages.findIndex((m) => m.id === messageId);
+    if (index === -1) return;
+    try {
+      flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0.3 });
+    } catch { /* ignore if not yet rendered */ }
+  }, [messages]);
+
   // ── Send message ───────────────────────────────────────────────────────────
   const handleSend = async () => {
-    if (!inputText.trim() || sending || !isParticipant || !uid || isChatExpired) return;  // participation + expiry double-check
+    if (!inputText.trim() || sending || !isParticipant || !uid || isChatExpired) return;
 
     const textToSend = inputText.trim();
+    const currentReply = replyingTo;
     setInputText('');
+    setReplyingTo(null);
     setSending(true);
 
     try {
@@ -323,11 +556,12 @@ export default function RunChatScreen({ route, navigation }) {
         senderName: profile?.name || 'Player',
         senderAvatar: profile?.photoURL || null,
         text: textToSend,
+        replyTo: currentReply,
       });
     } catch (err) {
       if (__DEV__) console.error('[RunChatScreen] send error:', err);
-      // Restore the text if sending failed
       setInputText(textToSend);
+      setReplyingTo(currentReply);
     } finally {
       setSending(false);
     }
@@ -335,14 +569,26 @@ export default function RunChatScreen({ route, navigation }) {
 
   // ── Render message item ────────────────────────────────────────────────────
   const renderMessage = useCallback(
-    ({ item }) => (
-      <MessageBubble
-        message={item}
-        isOwn={item.senderId === uid}
-        colors={colors}
-      />
-    ),
-    [uid, colors],
+    ({ item }) => {
+      const isOwn = item.senderId === uid;
+      const handleLongPress = () => {
+        Alert.alert(null, null, [
+          { text: 'Reply', onPress: () => handleReply(item) },
+          { text: 'Cancel', style: 'cancel' },
+        ]);
+      };
+      return (
+        <MessageBubble
+          message={item}
+          isOwn={isOwn}
+          colors={colors}
+          onLongPress={handleLongPress}
+          onReplyQuotePress={handleScrollToMessage}
+          onMediaPress={setFullScreenMedia}
+        />
+      );
+    },
+    [uid, colors, handleReply, handleScrollToMessage],
   );
 
   const keyExtractor = useCallback((item) => item.id, []);
@@ -489,6 +735,46 @@ export default function RunChatScreen({ route, navigation }) {
                 </Text>
               </View>
             ) : (
+              <>
+                {/* Reply bar — shown when user is replying to a specific message */}
+                {replyingTo && (
+                  <View
+                    style={[
+                      chatStyles.replyBar,
+                      {
+                        backgroundColor: colors.surface,
+                        borderTopColor: colors.border,
+                        borderLeftColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <View style={chatStyles.replyBarContent}>
+                      <Text
+                        style={[chatStyles.replyBarName, { color: colors.primary }]}
+                        numberOfLines={1}
+                      >
+                        Replying to {replyingTo.senderName}
+                      </Text>
+                      <Text
+                        style={[chatStyles.replyBarText, { color: colors.textMuted }]}
+                        numberOfLines={1}
+                      >
+                        {replyingTo.type === 'image'
+                          ? '📷 Photo'
+                          : replyingTo.type === 'gif'
+                            ? '🎞 GIF'
+                            : replyingTo.text}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setReplyingTo(null)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="close" size={18} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+
               <View
                 style={[
                   chatStyles.inputBar,
@@ -499,7 +785,17 @@ export default function RunChatScreen({ route, navigation }) {
                   },
                 ]}
               >
+                {/* Attachment button */}
+                <TouchableOpacity
+                  onPress={handleAttach}
+                  style={chatStyles.attachButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="image-outline" size={24} color={colors.textMuted} />
+                </TouchableOpacity>
+
                 <TextInput
+                  ref={inputRef}
                   style={[
                     chatStyles.textInput,
                     {
@@ -540,10 +836,114 @@ export default function RunChatScreen({ route, navigation }) {
                   )}
                 </TouchableOpacity>
               </View>
+              </>
             )}
           </>
         )}
       </KeyboardAvoidingView>
+
+      {/* Upload progress overlay */}
+      {imageUploading && (
+        <View
+          style={{
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={{ color: '#fff', marginTop: 8, fontSize: FONT_SIZES.small }}>
+            Sending photo…
+          </Text>
+        </View>
+      )}
+
+      {/* GIF picker modal */}
+      <Modal visible={showGifPicker} animationType="slide" onRequestClose={() => setShowGifPicker(false)}>
+        <View style={[chatStyles.gifPickerContainer, { backgroundColor: colors.background }]}>
+          <View style={[chatStyles.gifPickerHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[chatStyles.gifPickerTitle, { color: colors.textPrimary }]}>GIFs</Text>
+            <TouchableOpacity onPress={() => { setShowGifPicker(false); setGifQuery(''); }}>
+              <Ionicons name="close" size={24} color={colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={[chatStyles.gifSearchBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Ionicons name="search-outline" size={16} color={colors.textMuted} />
+            <TextInput
+              style={[chatStyles.gifSearchInput, { color: colors.textPrimary }]}
+              placeholder="Search GIFs..."
+              placeholderTextColor={colors.textMuted}
+              value={gifQuery}
+              onChangeText={setGifQuery}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            {gifQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setGifQuery('')}>
+                <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {gifSearching ? (
+            <View style={chatStyles.gifLoader}>
+              <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+          ) : (
+            <ScrollView contentContainerStyle={chatStyles.gifGrid}>
+              {gifResults.map((gif) => {
+                const preview = gif?.images?.fixed_height_small?.url || gif?.images?.fixed_height?.url;
+                if (!preview) return null;
+                return (
+                  <TouchableOpacity
+                    key={gif.id}
+                    style={chatStyles.gifItem}
+                    onPress={() => handleSendGif(gif)}
+                    activeOpacity={0.8}
+                  >
+                    <Image source={{ uri: preview }} style={chatStyles.gifItemImage} resizeMode="cover" />
+                  </TouchableOpacity>
+                );
+              })}
+              {gifResults.length === 0 && !gifSearching && (
+                <Text style={[chatStyles.gifEmpty, { color: colors.textMuted }]}>
+                  {gifQuery ? 'No GIFs found.' : 'Search for a GIF above.'}
+                </Text>
+              )}
+            </ScrollView>
+          )}
+
+          <View style={[chatStyles.giphyAttrib, { borderTopColor: colors.border }]}>
+            <Text style={[chatStyles.giphyAttribText, { color: colors.textMuted }]}>Powered by GIPHY</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full-screen media viewer */}
+      <Modal
+        visible={!!fullScreenMedia}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFullScreenMedia(null)}
+      >
+        <View style={chatStyles.fullScreenOverlay}>
+          <TouchableOpacity
+            style={chatStyles.fullScreenClose}
+            onPress={() => setFullScreenMedia(null)}
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          {fullScreenMedia && (
+            <Image
+              source={{ uri: fullScreenMedia.uri }}
+              style={chatStyles.fullScreenImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -691,5 +1091,162 @@ const chatStyles = StyleSheet.create({
   gatedSubtext: {
     fontSize: FONT_SIZES.small,
     textAlign: 'center',
+  },
+
+  // Reply bar — shown above input when replying
+  replyBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 3,
+    gap: SPACING.xs,
+  },
+  replyBarContent: {
+    flex: 1,
+  },
+  replyBarName: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  replyBarText: {
+    fontSize: FONT_SIZES.xs,
+    marginTop: 1,
+  },
+
+  // Reply quote — shown inside a bubble when a message has a replyTo
+  replyQuote: {
+    borderLeftWidth: 3,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: SPACING.xs,
+    paddingVertical: 3,
+    marginBottom: 4,
+    maxWidth: '100%',
+  },
+  replyQuoteName: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: FONT_WEIGHTS.semibold,
+    marginBottom: 1,
+  },
+  replyQuoteText: {
+    fontSize: FONT_SIZES.xs,
+    lineHeight: 16,
+  },
+
+  // Attachment button
+  attachButton: {
+    width: 36,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // Image bubble
+  mediaBubble: {
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    maxWidth: 220,
+  },
+  mediaImage: {
+    width: 220,
+    height: 160,
+    borderRadius: RADIUS.md,
+  },
+  gifBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    borderRadius: 3,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+
+  // GIF picker modal
+  gifPickerContainer: {
+    flex: 1,
+  },
+  gifPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    paddingTop: 56,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  gifPickerTitle: {
+    fontSize: FONT_SIZES.large,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  gifSearchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    paddingHorizontal: SPACING.sm,
+    height: 40,
+    gap: 8,
+  },
+  gifSearchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    paddingVertical: 0,
+  },
+  gifGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: SPACING.sm,
+    gap: 4,
+  },
+  gifItem: {
+    width: (SCREEN_WIDTH - SPACING.sm * 2 - 4) / 2,
+    height: (SCREEN_WIDTH - SPACING.sm * 2 - 4) / 2 * 0.65,
+    borderRadius: RADIUS.sm,
+    overflow: 'hidden',
+    backgroundColor: '#1a1a1a',
+  },
+  gifItemImage: {
+    width: '100%',
+    height: '100%',
+  },
+  gifLoader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  gifEmpty: {
+    width: '100%',
+    textAlign: 'center',
+    paddingTop: SPACING.xl,
+    fontSize: FONT_SIZES.body,
+  },
+  giphyAttrib: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  giphyAttribText: {
+    fontSize: FONT_SIZES.xs,
+  },
+
+  // Full-screen image overlay
+  fullScreenOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenClose: {
+    position: 'absolute',
+    top: 48,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+  },
+  fullScreenImage: {
+    width: '100%',
+    height: '80%',
   },
 });

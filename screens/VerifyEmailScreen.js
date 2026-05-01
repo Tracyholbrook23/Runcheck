@@ -106,7 +106,7 @@ export default function VerifyEmailScreen({ navigation, route }) {
 
       if (signupData) {
         // New signup — write profile + reserve username now that email is confirmed.
-        const { name, firstName, lastName, username, usernameLower, age, skillLevel, email } = signupData;
+        const { name, firstName, lastName, username, usernameLower, displayName, age, skillLevel, email } = signupData;
         const usernameRef = doc(db, 'usernames', usernameLower);
         const userRef = doc(db, 'users', user.uid);
 
@@ -118,11 +118,13 @@ export default function VerifyEmailScreen({ navigation, route }) {
           }
           transaction.set(usernameRef, { uid: user.uid, createdAt: new Date() });
           transaction.set(userRef, {
-            name,
+            name,              // real full name (firstName + lastName) — private
             firstName,
             lastName,
+            displayName: displayName || username, // public display name shown across the app
             username,
             usernameLower,
+            instagramHandle: '',  // optional — set later in Edit Profile
             phoneNumber: null,
             // Store as integer so age-group queries and analytics work correctly.
             // SignupScreen validates 13–100 before this point.

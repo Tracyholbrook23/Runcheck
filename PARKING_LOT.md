@@ -23,6 +23,9 @@ Nothing in this file should be worked on during a session unless the user explic
 
 - ~~**Run Chat**~~ — **Done 2026-03-20.** Per-run group chat fully implemented. `RunChatScreen` with real-time Firestore `onSnapshot`, access gated to run participants, Cloud Function push notifications to all participants, gym name + start time shown in Messages inbox, back button wired up in HomeStack and ProfileStack.
 - ~~In-app messaging / DMs~~ — **Code complete 2026-03-21.** Full DM system built: `openOrCreateConversation`, `DMConversationScreen`, `MessagesScreen` (SectionList with DMs + Run Chats), unread count badge on home screen Messages icon. `onDmMessageCreated` Cloud Function implemented and exported in `index.ts`. Firestore rules deployed 2026-03-25 (verified 2026-03-26).
+- **Audio messages in DM chat** — record and send voice clips. Needs `expo-av` for recording + playback, waveform/progress UI, Firebase Storage upload. Good feature but low priority for Austin/Lansing launch demographics.
+- **Reply-to-message in DM chat** — quote a specific message above your reply. Stores `replyTo: { messageId, text, senderName }` on the new message doc. Needs quoted preview bubble, scroll-to-referenced-message, and deleted message fallback handling.
+- **Stickers in DM chat** — curated static pack or Giphy `/stickers/search` endpoint. GIF picker already covers the main use case.
 - "Challenge" system (1v1 or crew vs crew invites)
 - Crew/team creation and management
 - Follow other players (not just gyms)

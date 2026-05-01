@@ -105,7 +105,7 @@ export default function SearchUsersScreen({ navigation }) {
         if (doc.id !== currentUid) {
           users.push({
             uid: doc.id,
-            name: data.name || 'Player',
+            name: data.displayName || data.name || 'Player',
             username: data.username || null,
             photoURL: data.photoURL || null,
           });

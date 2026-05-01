@@ -85,6 +85,9 @@ export function useMyRunChats() {
               // runParticipants doc. Already present in `p` from the live
               // subscribeToAllUserRuns snapshot — no extra read needed.
               isMuted: p.isMuted === true,
+              // isDismissed is written by dismissRunChat() to the runParticipants
+              // doc. Filtered out below so dismissed chats never appear in inbox.
+              isDismissed: p.isDismissed === true,
             };
           } catch {
             // If the docs can't be fetched, fall back gracefully.
@@ -93,15 +96,16 @@ export function useMyRunChats() {
         }),
       );
 
-      // Filter out expired run chats — they should not appear in the Messages
-      // inbox once the chat window has closed.
+      // Filter out expired, dismissed, or unresolvable run chats.
       //
       // Expiry resolution order:
-      //   1. chatExpiresAt field (new runs — explicit server-stored timestamp)
-      //   2. startTime + RUN_CHAT_EXPIRY_MS (old runs without chatExpiresAt)
-      //   3. No time info → show the chat (conservative, avoids hiding valid chats)
+      //   1. isDismissed: true  → always hidden (user explicitly dismissed)
+      //   2. chatExpiresAt field (new runs — explicit server-stored timestamp)
+      //   3. startTime + RUN_CHAT_EXPIRY_MS (old runs without chatExpiresAt)
+      //   4. No time info → hide (stale data; safer than showing forever)
       const now = Date.now();
       const active = enriched.filter((chat) => {
+        if (chat.isDismissed) return false;
         if (chat.chatExpiresAt) {
           const expiresMs = chat.chatExpiresAt.toDate
             ? chat.chatExpiresAt.toDate().getTime()
@@ -114,7 +118,7 @@ export function useMyRunChats() {
             : new Date(chat.startTime).getTime();
           return startMs + RUN_CHAT_EXPIRY_MS > now;
         }
-        return true; // no time info — show conservatively
+        return false; // no time info — hide (almost certainly stale)
       });
 
       setRunChats(active);

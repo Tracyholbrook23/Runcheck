@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -33,7 +34,9 @@ import { Logo } from '../components';
 import { usePresence, useGyms, useProfile, useLivePresenceMap, useProximityCheckIn } from '../hooks';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { isLocationGranted } from '../utils/locationUtils';
-import { hapticLight } from '../utils/haptics';
+import { hapticLight, hapticSuccess } from '../utils/haptics';
+import { subscribeToUserSchedules } from '../services/scheduleService';
+import { auth } from '../config/firebase';
 
 /**
  * GymThumbnail — Small rounded gym image, falling back to an icon.
@@ -74,9 +77,23 @@ export default function CheckInScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
 
-  const { followedGyms } = useProfile();
+  const { followedGyms, profile } = useProfile();
   const { gyms } = useGyms();
   const { countMap: liveCountMap } = useLivePresenceMap();
+
+  // Read auto check-in preference (default true)
+  const autoCheckInEnabled = profile?.preferences?.autoCheckInEnabled ?? true;
+
+  // ── User's active schedules (for auto check-in) ───────────────────────────
+  const [userSchedules, setUserSchedules] = useState([]);
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const unsub = subscribeToUserSchedules(uid, (schedules) => {
+      setUserSchedules(schedules);
+    });
+    return () => unsub();
+  }, []);
 
   const {
     presence: rawPresence,
@@ -112,9 +129,34 @@ export default function CheckInScreen({ navigation }) {
   // Polls GPS every 30 s while the app is active. When the user is inside a
   // gym's check-in radius and hasn't dismissed the prompt in the last 30 min,
   // nearbyGym is set and we show a one-tap check-in card.
+  // If the user has a scheduled visit at the detected gym, we auto check-in
+  // silently and show a brief confirmation banner instead.
+
+  // Banner shown briefly after a successful auto check-in
+  const [autoCheckInBanner, setAutoCheckInBanner] = useState(null); // null | gym object
+
+  const handleAutoCheckIn = useCallback(async (gym) => {
+    try {
+      await checkIn(gym.id);
+      hapticSuccess();
+      setAutoCheckInBanner(gym);
+      // Auto-dismiss banner after 4 seconds
+      setTimeout(() => setAutoCheckInBanner(null), 4000);
+    } catch (err) {
+      if (__DEV__) console.warn('[AUTO CHECK-IN] Failed:', err?.message);
+      // Fall back to a regular alert if auto check-in fails
+      Alert.alert(
+        'Auto Check-In Failed',
+        err?.message || 'Could not check you in automatically. Please tap "Check In" manually.',
+      );
+    }
+  }, [checkIn]);
+
   const { nearbyGym, dismiss: dismissProximity } = useProximityCheckIn({
     gyms,
     isCheckedIn,
+    userSchedules,
+    onAutoCheckIn: autoCheckInEnabled ? handleAutoCheckIn : null,
   });
 
   // ── Proximity check-in handler ────────────────────────────────────────────
@@ -177,6 +219,31 @@ export default function CheckInScreen({ navigation }) {
     );
   };
 
+  /**
+   * handleLocationToggle — called by the location Switch on the Not Checked In screen.
+   *
+   * Toggling ON  → request foreground permission (or open Settings if permanently denied).
+   * Toggling OFF → iOS does not allow revoking permissions from within the app;
+   *                show an alert directing the user to Settings.
+   */
+  const handleLocationToggle = async (value) => {
+    if (value) {
+      // User wants to enable — request permission (or open Settings if hard-denied)
+      await handleEnableLocation();
+      // Re-check actual state after the dialog dismisses
+      checkLocationStatus();
+    } else {
+      Alert.alert(
+        'Location Is Required',
+        'Without location access, you won\'t be able to check in to gyms, get proximity prompts when you arrive, or use auto check-out when you leave. These are core RunCheck features.\n\nTo disable location, go to Settings → Privacy & Security → Location Services.',
+        [
+          { text: 'Keep Enabled', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ],
+      );
+    }
+  };
+
   // Hide the default stack header — this screen uses its own layout
   useEffect(() => {
     navigation.setOptions({ headerShown: false });
@@ -228,6 +295,44 @@ export default function CheckInScreen({ navigation }) {
       .map((gymId) => gyms.find((g) => g.id === gymId))
       .filter(Boolean);
   }, [followedGyms, gyms]);
+
+  /**
+   * todaySchedule / scheduledGym — the user's next scheduled visit today.
+   * Used to show a "Planning to play at X" hero when GPS hasn't detected them yet.
+   */
+  const todaySchedule = useMemo(() => {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay   = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+    return userSchedules
+      .filter((s) => {
+        const t = s.scheduledTime?.toDate?.();
+        return t && t >= startOfDay && t <= endOfDay && s.status === 'scheduled';
+      })
+      .sort((a, b) => a.scheduledTime.toDate() - b.scheduledTime.toDate())[0] ?? null;
+  }, [userSchedules]);
+
+  const scheduledGym = useMemo(() => {
+    if (!todaySchedule || !gyms?.length) return null;
+    return gyms.find((g) => g.id === todaySchedule.gymId) ?? null;
+  }, [todaySchedule, gyms]);
+
+  // Manual check-in handler for the scheduled gym card
+  const [scheduledCheckingIn, setScheduledCheckingIn] = useState(false);
+  const handleScheduledCheckIn = async (gymId) => {
+    if (scheduledCheckingIn) return;
+    setScheduledCheckingIn(true);
+    try {
+      await checkIn(gymId);
+    } catch (err) {
+      Alert.alert(
+        'Check-In Failed',
+        err?.message || 'Make sure you\'re at the gym and within GPS range.',
+      );
+    } finally {
+      setScheduledCheckingIn(false);
+    }
+  };
 
   // ── State 1: Loading ───────────────────────────────────────────────────────
   if (presenceLoading) {
@@ -315,6 +420,202 @@ export default function CheckInScreen({ navigation }) {
   }
 
   // ── State 3: Not Checked In ────────────────────────────────────────────────
+  //
+  // 3A — GPS has detected a nearby gym → hero check-in UI
+  // 3B — User has a scheduled visit today (no nearby gym yet) → planned gym card
+  // 3C — Fallback: nothing detected, nothing scheduled → existing layout
+
+  // ── 3A: GPS-detected nearby gym ───────────────────────────────────────────
+  if (nearbyGym && locationEnabled) {
+    return (
+      <ImageBackground source={require('../assets/images/runs-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.container}>
+            <View style={styles.headerGradient}>
+              <View style={styles.header}>
+                <Text style={styles.screenTitle}>Check In</Text>
+              </View>
+            </View>
+
+            <View style={styles.heroBody}>
+              {/* Auto check-in banner */}
+              {autoCheckInBanner && (
+                <View style={styles.autoCheckInBanner}>
+                  <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+                  <View style={styles.autoCheckInBannerContent}>
+                    <Text style={styles.autoCheckInBannerTitle}>Auto Checked In!</Text>
+                    <Text style={styles.autoCheckInBannerSubtitle}>
+                      Checked in at {autoCheckInBanner.name} based on your scheduled visit.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* GPS label */}
+              <View style={styles.gpsPill}>
+                <View style={styles.gpsDot} />
+                <Text style={styles.gpsPillText}>GPS DETECTED YOU AT</Text>
+              </View>
+
+              {/* Gym name */}
+              <Text style={styles.heroGymName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+                {nearbyGym.name}
+              </Text>
+
+              {/* Gym address / meta */}
+              {nearbyGym.address && (
+                <Text style={styles.heroGymMeta}>{nearbyGym.address}</Text>
+              )}
+
+              {/* Big circular check-in button */}
+              <TouchableOpacity
+                style={[styles.bigCheckInBtn, proximityCheckingIn && styles.bigCheckInBtnDisabled]}
+                onPress={handleProximityCheckIn}
+                disabled={proximityCheckingIn}
+                activeOpacity={0.85}
+              >
+                {proximityCheckingIn ? (
+                  <ActivityIndicator size="large" color="#fff" />
+                ) : (
+                  <>
+                    <Text style={styles.bigCheckInLabel}>TAP TO</Text>
+                    <Text style={styles.bigCheckInText}>Check In</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Wrong gym link */}
+              <TouchableOpacity
+                onPress={() => dismissProximity(nearbyGym.id)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Text style={styles.wrongGymText}>
+                  Wrong gym?{' '}
+                  <Text style={styles.wrongGymLink} onPress={handleFindRun}>Search manually</Text>
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaView>
+      </ImageBackground>
+    );
+  }
+
+  // ── 3B: Scheduled visit today ──────────────────────────────────────────────
+  if (scheduledGym) {
+    const schedTime = todaySchedule?.scheduledTime?.toDate?.();
+    const schedLabel = schedTime
+      ? schedTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : null;
+
+    return (
+      <ImageBackground source={require('../assets/images/runs-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
+        <View style={styles.overlay} />
+        <SafeAreaView style={styles.safe}>
+          <View style={styles.container}>
+            <View style={styles.headerGradient}>
+              <View style={styles.header}>
+                <Text style={styles.screenTitle}>Check In</Text>
+              </View>
+            </View>
+
+            <View style={styles.heroBody}>
+              {/* Eyebrow */}
+              <View style={styles.gpsPill}>
+                <Ionicons name="calendar-outline" size={12} color={colors.primary} style={{ marginRight: 5 }} />
+                <Text style={styles.gpsPillText}>PLANNING TO PLAY TODAY</Text>
+              </View>
+
+              {/* Gym thumbnail */}
+              <View style={styles.scheduledGymThumb}>
+                {(GYM_LOCAL_IMAGES[scheduledGym.id] || scheduledGym.imageUrl) ? (
+                  <Image
+                    source={GYM_LOCAL_IMAGES[scheduledGym.id] ?? { uri: scheduledGym.imageUrl }}
+                    style={styles.scheduledGymThumbImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Ionicons name="basketball-outline" size={36} color={colors.primary} />
+                )}
+              </View>
+
+              {/* Gym name */}
+              <Text style={styles.heroGymName} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>
+                {scheduledGym.name}
+              </Text>
+
+              {schedLabel && (
+                <Text style={styles.heroGymMeta}>Scheduled for {schedLabel}</Text>
+              )}
+
+              {/* Check-in button */}
+              <TouchableOpacity
+                style={[styles.bigCheckInBtn, scheduledCheckingIn && styles.bigCheckInBtnDisabled]}
+                onPress={() => handleScheduledCheckIn(scheduledGym.id)}
+                disabled={scheduledCheckingIn}
+                activeOpacity={0.85}
+              >
+                {scheduledCheckingIn ? (
+                  <ActivityIndicator size="large" color="#fff" />
+                ) : (
+                  <>
+                    <Text style={styles.bigCheckInLabel}>I'M HERE</Text>
+                    <Text style={styles.bigCheckInText}>Check In</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <Text style={styles.heroHint}>GPS confirms you're at the gym when you tap</Text>
+
+              {/* Different gym link */}
+              <TouchableOpacity
+                onPress={handleFindRun}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={{ marginTop: SPACING.sm }}
+              >
+                <Text style={styles.wrongGymText}>
+                  Different gym?{' '}
+                  <Text style={styles.wrongGymLink}>Search manually</Text>
+                </Text>
+              </TouchableOpacity>
+
+              {/* Location settings */}
+              <View style={[styles.settingsCard, { marginTop: SPACING.xl }]}>
+                <View style={styles.settingsRow}>
+                  <View style={[
+                    styles.settingsIconWrap,
+                    locationEnabled ? styles.settingsIconWrapActive : styles.settingsIconWrapInactive,
+                  ]}>
+                    <Ionicons
+                      name={locationEnabled ? 'location' : 'location-outline'}
+                      size={18}
+                      color={locationEnabled ? colors.primary : colors.textMuted}
+                    />
+                  </View>
+                  <View style={styles.settingsContent}>
+                    <Text style={styles.settingsTitle}>Location Services</Text>
+                    <Text style={styles.settingsSubtitle}>
+                      {locationEnabled ? 'Active — GPS check-in enabled' : 'Required for check-in'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={locationEnabled}
+                    onValueChange={handleLocationToggle}
+                    trackColor={{ false: colors.border, true: colors.primary + '66' }}
+                    thumbColor={locationEnabled ? colors.primary : '#9CA3AF'}
+                    ios_backgroundColor={colors.border}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+        </SafeAreaView>
+      </ImageBackground>
+    );
+  }
+
+  // ── 3C: Fallback — nothing detected, nothing scheduled ─────────────────────
   return (
     <ImageBackground source={require('../assets/images/runs-bg.jpg')} style={styles.bgImage} resizeMode="cover" blurRadius={3}>
       <View style={styles.overlay} />
@@ -340,54 +641,15 @@ export default function CheckInScreen({ navigation }) {
             {' '}when you arrive.
           </Text>
 
-          {/* Location permission CTA — shown when location is not granted */}
-          {!locationEnabled && (
-            <TouchableOpacity style={styles.locationCard} activeOpacity={0.8} onPress={handleEnableLocation}>
-              <View style={styles.locationCardIcon}>
-                <Ionicons name="location" size={20} color="#F97316" />
-              </View>
-              <View style={styles.locationCardContent}>
-                <Text style={styles.locationCardTitle}>Enable Location</Text>
-                <Text style={styles.locationCardSubtitle}>
-                  Required for check-in. Also enables automatic check-out.
+          {/* Auto check-in confirmation banner */}
+          {autoCheckInBanner && (
+            <View style={styles.autoCheckInBanner}>
+              <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+              <View style={styles.autoCheckInBannerContent}>
+                <Text style={styles.autoCheckInBannerTitle}>Auto Checked In!</Text>
+                <Text style={styles.autoCheckInBannerSubtitle}>
+                  You were checked in at {autoCheckInBanner.name} based on your scheduled visit.
                 </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-
-          {/* ── Smart proximity prompt ── */}
-          {nearbyGym && locationEnabled && (
-            <View style={styles.proximityCard}>
-              <View style={styles.proximityIconWrap}>
-                <Ionicons name="location" size={22} color="#FF7A45" />
-              </View>
-              <View style={styles.proximityContent}>
-                <Text style={styles.proximityTitle}>You're at {nearbyGym.name}</Text>
-                <Text style={styles.proximitySubtitle}>
-                  Looks like you arrived. Check in to let players know you're here.
-                </Text>
-                <View style={styles.proximityButtons}>
-                  <TouchableOpacity
-                    style={styles.proximityCheckInBtn}
-                    onPress={handleProximityCheckIn}
-                    disabled={proximityCheckingIn}
-                    activeOpacity={0.82}
-                  >
-                    {proximityCheckingIn ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.proximityCheckInText}>Check In</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.proximityDismissBtn}
-                    onPress={() => dismissProximity(nearbyGym.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.proximityDismissText}>Not now</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </View>
           )}
@@ -438,6 +700,38 @@ export default function CheckInScreen({ navigation }) {
               ))}
             </View>
           )}
+
+          {/* Location settings toggle */}
+          <View style={styles.settingsCard}>
+            <Text style={styles.settingsCardTitle}>Settings</Text>
+            <View style={styles.settingsRow}>
+              <View style={[
+                styles.settingsIconWrap,
+                locationEnabled ? styles.settingsIconWrapActive : styles.settingsIconWrapInactive,
+              ]}>
+                <Ionicons
+                  name={locationEnabled ? 'location' : 'location-outline'}
+                  size={18}
+                  color={locationEnabled ? colors.primary : colors.textMuted}
+                />
+              </View>
+              <View style={styles.settingsContent}>
+                <Text style={styles.settingsTitle}>Location Services</Text>
+                <Text style={styles.settingsSubtitle}>
+                  {locationEnabled
+                    ? 'Active — enables GPS check-in and auto check-out'
+                    : 'Required for check-in and proximity detection'}
+                </Text>
+              </View>
+              <Switch
+                value={locationEnabled}
+                onValueChange={handleLocationToggle}
+                trackColor={{ false: colors.border, true: colors.primary + '66' }}
+                thumbColor={locationEnabled ? colors.primary : '#9CA3AF'}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
+          </View>
         </View>
       </View>
     </SafeAreaView>
@@ -571,38 +865,55 @@ const getStyles = (colors, isDark) =>
       color: colors.primary,
     },
 
-    // ── Location CTA card ────────────────────────────────
-    locationCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    // ── Location settings toggle card ──────────────────────────────────────
+    settingsCard: {
+      width: '100%',
       backgroundColor: colors.surface,
       borderRadius: RADIUS.md,
       padding: SPACING.md,
-      marginBottom: SPACING.lg,
-      width: '100%',
-      borderWidth: 1,
-      borderColor: 'rgba(249,115,22,0.25)',
+      marginTop: SPACING.lg,
+      ...(isDark
+        ? { borderWidth: 0 }
+        : { borderWidth: 1, borderColor: colors.border }),
     },
-    locationCardIcon: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      backgroundColor: 'rgba(249,115,22,0.12)',
+    settingsCardTitle: {
+      fontSize: FONT_SIZES.small,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: colors.textSecondary,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
+      marginBottom: SPACING.sm,
+    },
+    settingsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+    },
+    settingsIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 10,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: SPACING.sm,
+      flexShrink: 0,
     },
-    locationCardContent: {
+    settingsIconWrapActive: {
+      backgroundColor: colors.primary + '18',
+    },
+    settingsIconWrapInactive: {
+      backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)',
+    },
+    settingsContent: {
       flex: 1,
     },
-    locationCardTitle: {
+    settingsTitle: {
       fontSize: FONT_SIZES.body,
       fontWeight: FONT_WEIGHTS.semibold,
       color: colors.textPrimary,
       marginBottom: 2,
     },
-    locationCardSubtitle: {
-      fontSize: FONT_SIZES.small,
+    settingsSubtitle: {
+      fontSize: FONT_SIZES.xs,
       color: colors.textMuted,
       lineHeight: 16,
     },
@@ -704,6 +1015,121 @@ const getStyles = (colors, isDark) =>
       paddingLeft: SPACING.xs,
     },
 
+    // ── Hero body (3A + 3B states) ────────────────────────────────────────
+    heroBody: {
+      flex: 1,
+      paddingHorizontal: SPACING.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: -SPACING.xl * 2,
+      paddingBottom: SPACING.xl,
+    },
+
+    // GPS / calendar pill label
+    gpsPill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: SPACING.sm,
+    },
+    gpsDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: '#22C55E',
+      marginRight: 6,
+    },
+    gpsPillText: {
+      fontSize: 11,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: 'rgba(255,255,255,0.7)',
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+
+    // Large gym name on hero states
+    heroGymName: {
+      fontSize: 34,
+      fontWeight: FONT_WEIGHTS.extraBold,
+      color: '#FFFFFF',
+      textAlign: 'center',
+      letterSpacing: -0.5,
+      lineHeight: 38,
+      marginBottom: SPACING.xs,
+      paddingHorizontal: SPACING.sm,
+    },
+    heroGymMeta: {
+      fontSize: FONT_SIZES.small,
+      color: 'rgba(255,255,255,0.55)',
+      textAlign: 'center',
+      marginBottom: SPACING.sm,
+    },
+    heroHint: {
+      fontSize: FONT_SIZES.xs,
+      color: 'rgba(255,255,255,0.40)',
+      textAlign: 'center',
+      marginTop: SPACING.sm,
+    },
+
+    // Big circular check-in button
+    bigCheckInBtn: {
+      width: 180,
+      height: 180,
+      borderRadius: 90,
+      backgroundColor: colors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginVertical: SPACING.xl,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.55,
+      shadowRadius: 28,
+      elevation: 16,
+    },
+    bigCheckInBtnDisabled: {
+      opacity: 0.7,
+    },
+    bigCheckInLabel: {
+      fontSize: 12,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: 'rgba(255,255,255,0.75)',
+      letterSpacing: 1.5,
+      textTransform: 'uppercase',
+      marginBottom: 2,
+    },
+    bigCheckInText: {
+      fontSize: 28,
+      fontWeight: FONT_WEIGHTS.extraBold,
+      color: '#FFFFFF',
+      letterSpacing: -0.5,
+    },
+
+    // "Wrong gym? Search manually" link
+    wrongGymText: {
+      fontSize: FONT_SIZES.small,
+      color: 'rgba(255,255,255,0.5)',
+      textAlign: 'center',
+    },
+    wrongGymLink: {
+      color: colors.primary,
+      fontWeight: FONT_WEIGHTS.semibold,
+    },
+
+    // Scheduled gym thumbnail (3B)
+    scheduledGymThumb: {
+      width: 80,
+      height: 80,
+      borderRadius: RADIUS.md,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: SPACING.md,
+      overflow: 'hidden',
+    },
+    scheduledGymThumbImage: {
+      width: 80,
+      height: 80,
+    },
+
     // ── Smart proximity prompt card ───────────────────────────────────────
     proximityCard: {
       flexDirection: 'row',
@@ -767,5 +1193,31 @@ const getStyles = (colors, isDark) =>
       color: colors.textMuted,
       fontSize: FONT_SIZES.small,
       fontWeight: FONT_WEIGHTS.medium,
+    },
+    autoCheckInBanner: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      width: '100%',
+      backgroundColor: isDark ? '#0A1F10' : '#F0FDF4',
+      borderRadius: RADIUS.md,
+      borderWidth: 1,
+      borderColor: isDark ? 'rgba(34,197,94,0.30)' : 'rgba(34,197,94,0.35)',
+      padding: SPACING.md,
+      marginBottom: SPACING.md,
+      gap: SPACING.sm,
+    },
+    autoCheckInBannerContent: {
+      flex: 1,
+    },
+    autoCheckInBannerTitle: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.bold,
+      color: isDark ? '#4ADE80' : '#16A34A',
+      marginBottom: 3,
+    },
+    autoCheckInBannerSubtitle: {
+      fontSize: FONT_SIZES.small,
+      color: colors.textSecondary,
+      lineHeight: 18,
     },
   });

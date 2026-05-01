@@ -1,14 +1,14 @@
 /**
- * CreatePrivateRunScreen.js — Private & Paid Run Creator (Premium Teaser)
+ * CreatePrivateRunScreen.js — Private & Paid Run Creator (Pro Teaser)
  *
- * UI-only teaser for two upcoming Premium features:
+ * UI-only teaser for two upcoming Pro features:
  *
  *   1. Private Run (Invite Only) — organizer controls who gets in via invite.
  *   2. Paid Run — organizer sets an entry fee; players pay in-app and the
  *      organizer receives the bulk of the payout (RunCheck keeps a small cut).
  *
  * The entire form is interactive so users can explore the experience, but
- * the final CTA button surfaces a "Coming Soon / Premium Only" block screen
+ * the final CTA button surfaces a "Coming Soon / Pro Only" block screen
  * instead of actually creating anything.
  *
  * Designed as a full-screen navigation push so it feels like a real flow.
@@ -173,7 +173,7 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
           {/* ── Premium badge ─────────────────────────────────────────────── */}
           <View style={styles.premiumBadgeRow}>
             <Ionicons name="flash" size={13} color="#FF6B35" style={{ marginRight: 4 }} />
-            <Text style={styles.premiumBadgeText}>Premium Feature — Coming Soon</Text>
+            <Text style={styles.premiumBadgeText}>Pro Feature — Coming Soon</Text>
           </View>
 
           {/* ── Coming Soon teaser ────────────────────────────────────────── */}
@@ -191,8 +191,8 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
             </Text>
             <Text style={styles.teaserSubtitle}>
               {runType === 'private'
-                ? 'Invite-only runs with full roster and skill control. Coming with Premium.'
-                : 'Set an entry fee, cap the roster, collect your payout. Coming with Premium.'}
+                ? 'Invite-only runs with full roster and skill control. Coming with Pro.'
+                : 'Set an entry fee, cap the roster, collect your payout. Coming with Pro.'}
             </Text>
 
             {/* Feature bullets */}
@@ -225,7 +225,7 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
               activeOpacity={0.85}
             >
               <Ionicons name="flash" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.teaserBtnText}>See Premium Features</Text>
+              <Text style={styles.teaserBtnText}>See Pro Features</Text>
             </TouchableOpacity>
           </View>
 
@@ -248,11 +248,11 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
             </View>
 
             {/* Headline */}
-            <Text style={styles.gateTitle}>Premium Feature</Text>
+            <Text style={styles.gateTitle}>Pro Feature</Text>
             <Text style={styles.gateSubtitle}>
               {runType === 'private'
-                ? 'Private invite-only runs are available to RunCheck Premium subscribers.'
-                : 'Hosting paid runs and collecting entry fees is a Premium-only feature.'}
+                ? 'Private invite-only runs are available to RunCheck Pro subscribers.'
+                : 'Hosting paid runs and collecting entry fees is a Pro-only feature.'}
             </Text>
 
             {/* Coming soon badge */}
@@ -262,8 +262,8 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
 
             <Text style={styles.gateBody}>
               {runType === 'paid'
-                ? `You built a great run — ${gymName || 'your gym'}, ${maxPlayers} players at ${formatCurrency(entryFee)} each. When Premium launches you'll be ready to host it and collect ${formatCurrency(youReceiveFull > 0 ? youReceiveFull : 0)}.`
-                : `Your private run at ${gymName || 'your gym'} is ready to go. Upgrade to Premium when it launches to start inviting players.`}
+                ? `You built a great run — ${gymName || 'your gym'}, ${maxPlayers} players at ${formatCurrency(entryFee)} each. When Pro launches you'll be ready to host it and collect ${formatCurrency(youReceiveFull > 0 ? youReceiveFull : 0)}.`
+                : `Your private run at ${gymName || 'your gym'} is ready to go. Upgrade to Pro when it launches to start inviting players.`}
             </Text>
 
             {/* Actions */}
@@ -276,7 +276,7 @@ export default function CreatePrivateRunScreen({ route, navigation }) {
               activeOpacity={0.85}
             >
               <Ionicons name="flash" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.gateUpgradeBtnText}>See Premium Features</Text>
+              <Text style={styles.gateUpgradeBtnText}>See Pro Features</Text>
             </TouchableOpacity>
 
             <TouchableOpacity

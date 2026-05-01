@@ -57,32 +57,32 @@ const TROPHY_COLORS = { 1: '#FFD700', 2: '#A8A9AD', 3: '#CD7F32' };
 
 // ─── Rank copy — short taglines for the list, full descriptions for the modal ─
 const RANK_TAGLINES = {
-  Bronze:   'Just getting started.',
-  Silver:   'Players know you show up.',
-  Gold:     'Reliable hooper.',
-  Platinum: 'Most trusted on the court.',
-  Diamond:  'The court respects your grind.',
-  Legend:   'RunCheck royalty.',
+  Rookie:    'Just getting started. Earn your spot.',
+  Regular:   'Players are starting to recognize you.',
+  Reliable:  "You don't flake. People notice.",
+  Certified: 'Known at multiple courts.',
+  Elite:     'One of the most consistent hoopers in your city.',
+  Legend:    'The standard others measure themselves by.',
 };
 
 const RANK_FULL_DESCRIPTIONS = {
-  Bronze:   "You're in the game. Keep showing up and build your reputation.",
-  Silver:   'The community recognizes you. You show up consistently and players respect that.',
-  Gold:     'Elite status. Your name carries weight on the court and your presence matters.',
-  Platinum: "Top tier. You're one of RunCheck's most trusted hoopers.",
-  Diamond:  'Legendary grinder. Your dedication to the game sets you apart from everyone else.',
-  Legend:   'Hall of Fame. You are RunCheck royalty — the best of the best.',
+  Rookie:    "You're in the game. Keep showing up and start building your rep.",
+  Regular:   'The community is starting to notice. You show up and players respect that.',
+  Reliable:  "People trust you to be there. You don't flake — and that matters.",
+  Certified: 'Known at multiple courts. Your consistency speaks for itself.',
+  Elite:     'One of the most consistent hoopers in your city. Your name carries weight.',
+  Legend:    'Everyone knows you. You are the standard others measure themselves by.',
 };
 
 // ─── Player-facing perk labels per tier (no developer-facing IDs) ────────────
-// Keyed by rank id. Bronze intentionally empty.
+// Keyed by rank id. Bronze (Rookie) intentionally empty.
 const RANK_PERKS_DISPLAY = {
   bronze:   [],
-  silver:   ['Player Spotlight eligibility', 'Private run access'],
-  gold:     ['Player Spotlight eligibility', 'Private run access', 'Trusted player recognition'],
-  platinum: ['Player Spotlight eligibility', 'Expanded private run access', 'Trusted player recognition', 'Profile glow effect'],
-  diamond:  ['Player Spotlight eligibility', 'Priority private run access', 'Trusted player recognition', 'Profile glow effect'],
-  legend:   ['Player Spotlight eligibility', 'Top-tier private run access', 'Trusted player recognition', 'Profile glow effect', 'Hall of Fame recognition'],
+  silver:   ['Player Spotlight eligibility', 'Private run invite eligibility', 'Early access to future perks'],
+  gold:     ['Player Spotlight eligibility', 'Private run invite eligibility', 'Trusted player badge', 'Early access to future perks'],
+  platinum: ['Player Spotlight eligibility', 'Private run invite eligibility', 'Trusted player badge', 'Profile glow effect', 'Early access to future perks'],
+  diamond:  ['Player Spotlight eligibility', 'Private run invite eligibility', 'Trusted player badge', 'Profile glow effect', 'Early access to future perks'],
+  legend:   ['Weekly Winner spotlight eligibility', 'Private run invite eligibility', 'Trusted player badge', 'Profile glow effect', 'Hall of Fame eligibility', 'Early access to future perks'],
 };
 
 // ─── RankBadgePill ────────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ function RankBadgePill({ rank, small = false }) {
   const sparkleAnim = useRef(new Animated.Value(0.3)).current;
 
   // Tiers that get the pulse-glow animation
-  const hasPulse = rank.name === 'Platinum' || rank.name === 'Diamond' || rank.name === 'Legend';
+  const hasPulse = rank.name === 'Certified' || rank.name === 'Elite' || rank.name === 'Legend';
   // Tiers that get the sparkle animation
   const hasSparkle = rank.name === 'Gold' || rank.name === 'Legend';
 
@@ -302,12 +302,22 @@ export default function LeaderboardScreen({ navigation }) {
   const ptsToNext        = currentRank.nextRankAt ? currentRank.nextRankAt - currentPoints : 0;
   const myPosition       = allTimeUsers.findIndex((u) => u.id === currentUid) + 1;
 
-  // Format "2026-03-09" → "Mar 9" for the winners card subtitle ("Week ending Mar 9")
-  const formatWeekOf = (weekOfStr) => {
+  // formatWeekRange — converts a "YYYY-MM-DD" end-of-week string into a
+  // human-readable date range, e.g. "Apr 24 - 30" or "Mar 29 - Apr 4".
+  const formatWeekRange = (weekOfStr) => {
     if (!weekOfStr) return '';
     const [y, m, d] = weekOfStr.split('-').map(Number);
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return `${months[m - 1]} ${d}`;
+    const endDate   = new Date(y, m - 1, d);
+    const startDate = new Date(y, m - 1, d - 6);
+    const endMonth   = months[endDate.getMonth()];
+    const startMonth = months[startDate.getMonth()];
+    const endDay   = endDate.getDate();
+    const startDay = startDate.getDate();
+    if (startDate.getMonth() === endDate.getMonth()) {
+      return `${startMonth} ${startDay} - ${endDay}`;   // e.g. "Apr 24 - 30"
+    }
+    return `${startMonth} ${startDay} - ${endMonth} ${endDay}`; // e.g. "Mar 29 - Apr 4"
   };
 
   // ── Rank detail bottom sheet helpers ──────────────────────────────────────
@@ -382,11 +392,11 @@ export default function LeaderboardScreen({ navigation }) {
           {currentRank.nextRankAt ? (
             <View style={styles.nextUnlockWrap}>
               <Text style={[styles.nextUnlockLabel, { color: nextRankEntry?.color }]}>
-                {nextRankEntry?.icon}  {nextRankEntry?.name} · {ptsToNext} pts away
+                {nextRankEntry?.icon}  {nextRankEntry?.name} · ~{Math.ceil(ptsToNext / 20)} runs away
               </Text>
             </View>
           ) : (
-            <Text style={styles.progressLabel}>Max rank achieved</Text>
+            <Text style={styles.progressLabel}>Max rank achieved 👑</Text>
           )}
         </View>
 
@@ -398,12 +408,12 @@ export default function LeaderboardScreen({ navigation }) {
               {/* Subtitle — week of date */}
               <View style={styles.winnersHeader}>
                 <Ionicons name="trophy" size={16} color="#FFD700" />
-                <Text style={styles.winnersSubtitle}>Week ending {formatWeekOf(winnersWeekOf)}</Text>
+                <Text style={styles.winnersSubtitle}>{formatWeekRange(winnersWeekOf)}</Text>
               </View>
 
               {weeklyWinners.map((w, index) => {
                 const trophyColor = TROPHY_COLORS[w.place] ?? colors.textMuted;
-                const initials = (w.name || 'U')
+                const initials = (w.displayName || w.name || 'U')
                   .split(' ')
                   .map((part) => part[0])
                   .join('')
@@ -453,7 +463,7 @@ export default function LeaderboardScreen({ navigation }) {
                           style={[styles.userName, isMe && { color: colors.primary }]}
                           numberOfLines={1}
                         >
-                          {w.name || 'Anonymous'}
+                          {w.displayName || w.name || 'Anonymous'}
                         </Text>
                         {isMe && (
                           <View style={styles.youBadge}>
@@ -520,7 +530,7 @@ export default function LeaderboardScreen({ navigation }) {
               const position = index + 1;
               const isMe = user.id === currentUid;
               const rank = getUserRank(user.totalPoints || 0);
-              const initials = (user.name || 'U')
+              const initials = (user.displayName || user.name || 'U')
                 .split(' ')
                 .map((w) => w[0])
                 .join('')
@@ -541,7 +551,7 @@ export default function LeaderboardScreen({ navigation }) {
                 : user.weeklyPoints || 0
               ).toLocaleString();
 
-              const displayName = user.name || 'Anonymous';
+              const displayName = user.displayName || user.name || 'Anonymous';
 
               return (
                 <TouchableOpacity
@@ -753,18 +763,21 @@ export default function LeaderboardScreen({ navigation }) {
               color: '#FFD700',
               label: 'Weekly Winner',
               desc: 'Top hooper of the week earns recognition across the community.',
+              live: true,
             },
             {
               icon: 'megaphone-outline',
               color: '#5B8FF9',
               label: 'Player Spotlight',
               desc: "Winner gets featured on RunCheck's social channels.",
+              live: false,
             },
             {
               icon: 'lock-open-outline',
               color: '#52C41A',
               label: 'Exclusive Access',
               desc: 'Rank milestones unlock special app perks for top players.',
+              live: false,
             },
           ].map((item, index, arr) => (
             <View
@@ -778,9 +791,15 @@ export default function LeaderboardScreen({ navigation }) {
                 <Text style={styles.actionLabel}>{item.label}</Text>
                 <Text style={styles.actionNote}>{item.desc}</Text>
               </View>
-              <View style={styles.comingSoonPill}>
-                <Text style={styles.comingSoonText}>Coming Soon</Text>
-              </View>
+              {item.live ? (
+                <View style={[styles.comingSoonPill, { backgroundColor: 'rgba(34,197,94,0.15)' }]}>
+                  <Text style={[styles.comingSoonText, { color: '#22C55E' }]}>Live</Text>
+                </View>
+              ) : (
+                <View style={styles.comingSoonPill}>
+                  <Text style={styles.comingSoonText}>Coming Soon</Text>
+                </View>
+              )}
             </View>
           ))}
         </View>

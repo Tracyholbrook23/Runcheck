@@ -105,19 +105,11 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
     throw new Error('Unauthorized: Must be logged in as this user');
   }
 
-  // Get user data for name
-  const userRef = doc(db, 'users', odId);
-  const userDoc = await getDoc(userRef);
-  const userName = userDoc.exists() ? userDoc.data().name : 'Anonymous';
-  const userAvatar = userDoc.exists() ? (userDoc.data().photoURL || null) : null;
-
-  // Validate time is in the future
+  // Validate time before touching the network
   const now = new Date();
   if (scheduledTime <= now) {
     throw new Error('Cannot schedule a session in the past');
   }
-
-  // Validate not too far in the future (max 7 days)
   const maxDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   if (scheduledTime > maxDate) {
     throw new Error('Cannot schedule more than 7 days in advance');
@@ -126,10 +118,22 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
   const timeSlot = formatTimeSlot(scheduledTime);
   const scheduleId = getScheduleId(odId, timeSlot);
 
-  // Check for existing schedule at this time slot (prevent duplicates)
+  const userRef = doc(db, 'users', odId);
   const existingScheduleRef = doc(db, 'schedules', scheduleId);
-  const existingSchedule = await getDoc(existingScheduleRef);
 
+  // ── Fire all reads in parallel ───────────────────────────────────────────
+  // Previously: 3 sequential round-trips (user doc, existing schedule, active
+  // schedules query). Now they resolve concurrently in ~1 round-trip time.
+  const [userDoc, existingSchedule, activeSchedules] = await Promise.all([
+    getDoc(userRef),
+    getDoc(existingScheduleRef),
+    getActiveSchedules(odId),
+  ]);
+
+  const userName   = userDoc.exists() ? (userDoc.data().displayName || userDoc.data().name || 'Anonymous') : 'Anonymous';
+  const userAvatar = userDoc.exists() ? (userDoc.data().photoURL || null) : null;
+
+  // Check for existing schedule at this time slot (prevent duplicates)
   if (existingSchedule.exists()) {
     const data = existingSchedule.data();
     if (data.status === SCHEDULE_STATUS.SCHEDULED) {
@@ -138,7 +142,6 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
   }
 
   // Check user's total active schedules (max 5)
-  const activeSchedules = await getActiveSchedules(odId);
   if (activeSchedules.length >= MAX_ACTIVE_SCHEDULES) {
     throw new Error(`You can only have ${MAX_ACTIVE_SCHEDULES} scheduled sessions at a time`);
   }

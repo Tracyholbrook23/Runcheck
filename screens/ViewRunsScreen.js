@@ -63,6 +63,7 @@ import {
 import { handleFollowPoints } from '../services/pointsService';
 import { subscribeToAllUpcomingRuns } from '../services/runService';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
+import { hapticLight } from '../utils/haptics';
 
 /**
  * ViewRunsScreen — Gym discovery list screen.
@@ -104,6 +105,37 @@ const STATE_LABELS = {
   TX: 'Texas',
   MI: 'Michigan',
 };
+
+// ── State representative coordinates ─────────────────────────────────────────
+// Used by detectNearestState() to auto-select the default state filter on open.
+// Each entry is the center of the primary metro area we serve in that state.
+// Add a new entry here whenever a new state/market is launched.
+const STATE_CENTERS = {
+  TX: { latitude: 30.2672, longitude: -97.7431 }, // Austin, TX
+  MI: { latitude: 42.7325, longitude: -84.5555 }, // Lansing, MI
+};
+
+/**
+ * detectNearestState — Returns the state abbreviation whose metro center is
+ * closest to the given coordinates. Used to auto-set the default state filter
+ * so users see their local gyms on first open without having to filter manually.
+ *
+ * @param {{ latitude: number, longitude: number }} coords
+ * @returns {string | null}  State abbreviation (e.g. 'TX' | 'MI'), or null if
+ *                           STATE_CENTERS is empty.
+ */
+function detectNearestState(coords) {
+  let nearest = null;
+  let minDist = Infinity;
+  Object.entries(STATE_CENTERS).forEach(([state, center]) => {
+    const dist = calculateDistanceMeters(coords, center);
+    if (dist < minDist) {
+      minDist = dist;
+      nearest = state;
+    }
+  });
+  return nearest;
+}
 
 /**
  * formatGymDistance — Builds the location string shown on gym cards.
@@ -157,7 +189,9 @@ function usePulse(active) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// GymCard — individual card row with its own pulse animation for the status dot.
+// GymCard — Variant D · Full-Bleed.
+// Full-width photo card with gradient overlay. Content (live pill, Notify Me,
+// gym name, meta row) is layered absolutely on top of the image.
 // Extracted from ViewRunsScreen so each card independently owns a hook instance
 // (hooks cannot be called inside .map() callbacks).
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,6 +204,7 @@ function GymCard({
 
   return (
     <TouchableOpacity
+      activeOpacity={0.85}
       style={[styles.gymCard, isHomeCourt && styles.homeCourtCard]}
       onPress={() =>
         navigation.navigate('RunDetails', {
@@ -183,9 +218,7 @@ function GymCard({
         })
       }
     >
-      {/* Left accent bar for home court */}
-      {isHomeCourt && <View style={styles.homeCourtAccent} />}
-
+      {/* a. Background image — full-bleed, absolutely positioned */}
       <Image
         source={
           GYM_LOCAL_IMAGES[gym.id]
@@ -194,108 +227,92 @@ function GymCard({
             ? { uri: gym.imageUrl }
             : require('../assets/images/court-bg.jpg')
         }
-        style={styles.thumbnail}
+        style={styles.cardBgImage}
+        resizeMode="cover"
       />
 
-      <View style={styles.gymInfo}>
+      {/* b. Dark gradient overlay — top transparent → bottom dark */}
+      <LinearGradient
+        colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.85)']}
+        locations={[0, 1]}
+        style={styles.cardGradient}
+      />
+
+      {/* c. Live status pill — top-left, only when players are present */}
+      {runStatus.pulse && count > 0 && (
+        <View style={styles.livePill}>
+          <Animated.View
+            style={[styles.liveDot, { backgroundColor: runStatus.color, opacity: pulseAnim }]}
+          />
+          <Text style={styles.livePillText}>LIVE · {count} playing</Text>
+        </View>
+      )}
+
+      {/* d. Notify Me button — top-right, filled when followed */}
+      <TouchableOpacity
+        style={[styles.notifyButton, isFollowed && styles.notifyButtonActive]}
+        onPress={() => { hapticLight(); onToggleFollow(gym.id, isFollowed); }}
+        activeOpacity={0.7}
+        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+      >
+        <Ionicons
+          name={isFollowed ? 'notifications' : 'notifications-outline'}
+          size={11}
+          color={isFollowed ? '#FFFFFF' : '#FF6B35'}
+          style={{ marginRight: 4 }}
+        />
+        <Text style={[styles.notifyButtonText, isFollowed && styles.notifyButtonTextActive]}>
+          {isFollowed ? 'Notified' : 'Notify Me'}
+        </Text>
+      </TouchableOpacity>
+
+      {/* e. Bottom content — home court eyebrow, gym name, meta row */}
+      <View style={styles.cardBottom}>
+        {/* 1. "Your Home Court" eyebrow */}
         {isHomeCourt && (
-          <View style={styles.homeCourtBadge}>
-            <Ionicons name="home" size={10} color="#F97316" />
-            <Text style={styles.homeCourtBadgeText}>Your Home Court</Text>
+          <View style={styles.homeCourtEyebrow}>
+            <Ionicons name="home" size={11} color="#FF6B35" />
+            <Text style={styles.homeCourtEyebrowText}>YOUR HOME COURT</Text>
           </View>
         )}
 
-        {/* Row 1 — Gym name + Follow */}
-        <View style={styles.nameRow}>
-          <Text style={styles.gymName} numberOfLines={2} ellipsizeMode="tail">{gym.name}</Text>
-          <TouchableOpacity
-            style={[styles.followButton, isFollowed && styles.followButtonActive]}
-            onPress={() => onToggleFollow(gym.id, isFollowed)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isFollowed ? 'notifications' : 'notifications-outline'}
-              size={11}
-              color={isFollowed ? 'rgba(255,255,255,0.70)' : '#F97316'}
-              style={{ marginRight: 3 }}
-            />
-            <Text style={[styles.followButtonText, isFollowed && styles.followButtonTextActive]}>
-              {isFollowed ? 'Notified' : 'Notify Me'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {/* 2. Gym name */}
+        <Text style={styles.cardGymName} numberOfLines={2} ellipsizeMode="tail">
+          {gym.name}
+        </Text>
 
-        {/* Row 2 — Run status dot (pulsing when live) + label + access pill */}
-        <View style={styles.statusRow}>
-          <View style={styles.statusLeft}>
-            <Animated.View
-              style={[
-                styles.statusDot,
-                { backgroundColor: runStatus.color, opacity: pulseAnim },
-              ]}
-            />
-            <Text style={[styles.statusText, { color: runStatus.color }]}>
-              {runStatus.label}{runStatus.countText ? ` ${runStatus.countText}` : ''}
-            </Text>
-          </View>
-          {gym.accessType && (
-            <View style={[
-              styles.inlineAccessPill,
-              {
-                backgroundColor: gym.accessType === 'free' ? 'rgba(34,197,94,0.15)' : 'rgba(245,158,11,0.15)',
-                borderColor: gym.accessType === 'free' ? '#22C55E' : '#F59E0B',
-              },
-            ]}>
-              <Text style={[styles.inlineAccessPillText, { color: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
-                {gym.accessType === 'free' ? 'Free' : 'Member / Day Pass'}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Row 2b — Run level badge */}
-        {gymRunLevel !== null && (() => {
-          const levelColor =
-            gymRunLevel === 'competitive' ? '#EF4444' :
-            gymRunLevel === 'casual'      ? '#22C55E' : '#94A3B8';
-          return (
-            <TouchableOpacity
-              onPress={onRunLevelPress}
-              activeOpacity={0.7}
-              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            >
-              <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
-                <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
-                  {gymRunLevel === 'mixed' ? 'Balanced' : gymRunLevel.charAt(0).toUpperCase() + gymRunLevel.slice(1)}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })()}
-
-        {/* Row 3 — Distance / city + directions */}
-        <View style={styles.addressRow}>
-          <Text style={styles.gymAddress} numberOfLines={1}>
+        {/* 3. Meta row — distance · city · access · run level */}
+        <View style={styles.cardMetaRow}>
+          <Text style={styles.cardMetaText}>
             {formatGymDistance(userLocation, gym.location, gym.city)}
           </Text>
-          {gym.location && (
-            <TouchableOpacity
-              onPress={() => openDirections(gym.location, gym.name)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="navigate-outline" size={15} color={colors.primary} />
-            </TouchableOpacity>
+          {gym.accessType && (
+            <>
+              <Text style={styles.cardMetaDot}>·</Text>
+              <Text style={[
+                styles.cardAccessLabel,
+                { color: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' },
+              ]}>
+                {gym.accessType === 'free' ? 'FREE COURT' : 'MEMBERSHIP'}
+              </Text>
+            </>
+          )}
+          {gymRunLevel !== null && (
+            <>
+              <Text style={styles.cardMetaDot}>·</Text>
+              <Text style={[
+                styles.cardAccessLabel,
+                {
+                  color:
+                    gymRunLevel === 'competitive' ? '#EF4444' :
+                    gymRunLevel === 'casual'      ? '#22C55E' : '#94A3B8',
+                },
+              ]}>
+                {gymRunLevel === 'mixed' ? 'BALANCED' : gymRunLevel.toUpperCase()}
+              </Text>
+            </>
           )}
         </View>
-
-        {gym.plannedTomorrow > 0 && (
-          <View style={styles.plannedRow}>
-            <Ionicons name="calendar-outline" size={11} color={colors.primary} />
-            <Text style={styles.plannedText}>
-              {gym.plannedTomorrow} planning tomorrow
-            </Text>
-          </View>
-        )}
       </View>
     </TouchableOpacity>
   );
@@ -305,6 +322,9 @@ export default function ViewRunsScreen({ navigation, route }) {
   const { gyms, loading, error: fetchError } = useGyms();
   const { followedGyms, homeCourtId } = useProfile();
   const [refreshing, setRefreshing] = useState(false);
+  // Optimistic follow state: gymId → true (optimistically followed) or false (unfollowed).
+  // Takes precedence over followedGyms until the Firestore subscription catches up.
+  const [optimisticFollowMap, setOptimisticFollowMap] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState(null);         // null | 'indoor' | 'outdoor'
   const [accessFilter, setAccessFilter] = useState(null);     // null | 'free' | 'membership'
@@ -317,6 +337,9 @@ export default function ViewRunsScreen({ navigation, route }) {
   const [sortByNearest, setSortByNearest] = useState(false);
   const [filterSheetVisible, setFilterSheetVisible] = useState(false);
   const [runLevelInfoVisible, setRunLevelInfoVisible] = useState(false); // run style explainer sheet
+  // Tracks whether the one-shot state auto-detection has already run.
+  // Prevents re-applying a state filter after the user manually clears it.
+  const hasAutoDetectedRef = useRef(false);
 
   // Subscribe to all upcoming runs so the run level filter can match gym IDs.
   // Same subscription used by PlanVisitScreen — no new index needed.
@@ -343,6 +366,54 @@ export default function ViewRunsScreen({ navigation, route }) {
     });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-detect nearest state on first open ───────────────────────────────
+  // Sets stateFilter once so users see their local gyms by default instead of
+  // seeing gyms from every state. Runs only once per mount (guarded by ref) so
+  // manual filter changes or "Clear Filters" are never overridden.
+  //
+  // Detection priority:
+  //   1. GPS already available in state (fastest — no extra async)
+  //   2. Passive GPS fetch (if permission was previously granted)
+  //   3. Home court state (works without GPS)
+  //   4. No default — show all gyms (current behavior, fallback)
+  useEffect(() => {
+    if (hasAutoDetectedRef.current) return; // already ran — don't override user choice
+    if (gyms.length === 0) return; // wait for gyms to load before home-court fallback works
+
+    hasAutoDetectedRef.current = true; // mark done — this block runs exactly once
+
+    // Path 1: GPS coords already in state (populated by the passive fetch above)
+    if (userLocation) {
+      const state = detectNearestState(userLocation);
+      if (state) setStateFilter(state);
+      return;
+    }
+
+    // Path 2 & 3: async — try GPS, then fall back to home court state
+    let cancelled = false;
+    isLocationGranted().then(async (granted) => {
+      if (cancelled) return;
+      if (granted) {
+        try {
+          const coords = await getCurrentLocation();
+          if (!cancelled) {
+            const state = detectNearestState(coords);
+            if (state) setStateFilter(state);
+            return;
+          }
+        } catch (_) {
+          // GPS unavailable indoors or timed out — fall through to home court
+        }
+      }
+      // Path 3: no GPS — use the state of the user's home court gym
+      if (!cancelled && homeCourtId) {
+        const homeCourt = gyms.find((g) => g.id === homeCourtId);
+        if (homeCourt?.state) setStateFilter(homeCourt.state);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [gyms, homeCourtId, userLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Count how many filters/sorts are active so we can badge the Filter button
   const activeFilterCount = (typeFilter ? 1 : 0) + (accessFilter ? 1 : 0) + (stateFilter ? 1 : 0) + (cityFilter ? 1 : 0) + (runLevelFilter ? 1 : 0) + (sortByNearest ? 1 : 0);
@@ -525,13 +596,25 @@ export default function ViewRunsScreen({ navigation, route }) {
   const toggleFollow = async (gymId, isFollowed) => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
+
+    // Optimistic: immediately flip the button — revert only on error.
+    setOptimisticFollowMap((prev) => ({ ...prev, [gymId]: !isFollowed }));
     try {
       await updateDoc(doc(db, 'users', uid), {
         followedGyms: isFollowed ? arrayRemove(gymId) : arrayUnion(gymId),
       });
       // Award or deduct points based on new follow state (exploit-safe)
       handleFollowPoints(uid, gymId, !isFollowed);
+      // Once Firestore confirms, clear the optimistic override so the live
+      // subscription takes over cleanly.
+      setOptimisticFollowMap((prev) => {
+        const next = { ...prev };
+        delete next[gymId];
+        return next;
+      });
     } catch (err) {
+      // Revert optimistic state — the write did not succeed.
+      setOptimisticFollowMap((prev) => ({ ...prev, [gymId]: isFollowed }));
       if (__DEV__) console.error('toggleFollow error:', err);
     }
   };
@@ -923,7 +1006,9 @@ export default function ViewRunsScreen({ navigation, route }) {
             {filteredGyms.map((gym) => {
               const count      = liveCountMap[gym.id] ?? 0;
               const runStatus  = getRunStatusLabel(count);
-              const isFollowed = followedGyms.includes(gym.id);
+              const isFollowed = gym.id in optimisticFollowMap
+                ? optimisticFollowMap[gym.id]
+                : followedGyms.includes(gym.id);
               const isHomeCourt = homeCourtId === gym.id;
 
               // Dominant run level — competitive > casual > mixed
@@ -1449,155 +1534,131 @@ loadingText: {
     fontWeight: FONT_WEIGHTS.semiBold,
     color: colors.primary,
   },
+  // ── GymCard · Variant D · Full-Bleed ────────────────────────────────────
   gymCard: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(18,18,18,0.82)',
-    borderRadius: RADIUS.lg,
+    height: 180,
+    borderRadius: 18,
     marginBottom: 12,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 8,
   },
   homeCourtCard: {
-    // No border — accent bar handles the visual cue
+    borderWidth: 1.5,
+    borderColor: '#FF6B35',
   },
-  homeCourtAccent: {
-    width: 3,
-    backgroundColor: '#F97316',
+  // a. Background image
+  cardBgImage: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    width: '100%',
+    height: '100%',
   },
-  homeCourtBadge: {
+  // b. Gradient overlay
+  cardGradient: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+  },
+  // c. Live pill — top-left
+  livePill: {
+    position: 'absolute',
+    top: 12,
+    left: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 4,
+    gap: 6,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  homeCourtBadgeText: {
-    fontSize: 10,
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  livePillText: {
+    fontSize: 12,
     fontWeight: '700',
-    color: '#F97316',
-    letterSpacing: 0.3,
-    textTransform: 'uppercase',
-  },
-  thumbnail: {
-    width: 100,
-    height: 100,
-    borderRadius: 0,
-  },
-  gymInfo: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: SPACING.md,
-    gap: 3,
-  },
-  // ── Card Row 1: gym name + follow ─────────────────────────────────────────
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
-  gymName: {
-    fontSize: FONT_SIZES.h3,
-    fontWeight: FONT_WEIGHTS.bold,
     color: '#FFFFFF',
     letterSpacing: 0.2,
-    flex: 1,
-    marginRight: SPACING.xs,
+    textTransform: 'uppercase',
   },
-  followButton: {
+  // d. Notify Me button — top-right
+  notifyButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
+    backgroundColor: 'rgba(0,0,0,0.45)',
     borderWidth: 1,
-    borderColor: '#F97316',
-    backgroundColor: 'transparent',
+    borderColor: '#FF6B35',
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
-  followButtonActive: {
-    backgroundColor: 'rgba(249,115,22,0.10)',
-    borderColor: 'rgba(249,115,22,0.35)',
+  notifyButtonActive: {
+    backgroundColor: '#FF6B35',
+    borderColor: '#FF6B35',
   },
-  followButtonText: {
-    fontSize: 11,
-    fontWeight: FONT_WEIGHTS.semibold,
-    color: '#F97316',
+  notifyButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FF6B35',
   },
-  followButtonTextActive: {
-    color: 'rgba(255,255,255,0.70)',
+  notifyButtonTextActive: {
+    color: '#FFFFFF',
   },
-  // ── Card Row 2: run status + access pill ──────────────────────────────────
-  statusRow: {
+  // e. Bottom content stack
+  cardBottom: {
+    position: 'absolute',
+    bottom: 14,
+    left: 16,
+    right: 16,
+  },
+  homeCourtEyebrow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 5,
+    gap: 5,
+    marginBottom: 6,
   },
-  statusLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  statusText: {
-    fontSize: FONT_SIZES.small,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  inlineAccessPill: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-    borderWidth: 0.5,
-    marginLeft: SPACING.xs,
-    opacity: 0.65,
-  },
-  inlineAccessPillText: {
+  homeCourtEyebrowText: {
     fontSize: 10,
-    fontWeight: FONT_WEIGHTS.medium,
+    fontWeight: '800',
+    color: '#FF6B35',
+    letterSpacing: 1,
+    textTransform: 'uppercase',
   },
-  addressRow: {
+  cardGymName: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+    lineHeight: 24,
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowRadius: 12,
+    textShadowOffset: { width: 0, height: 2 },
+  },
+  cardMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
   },
-  gymAddress: {
-    fontSize: FONT_SIZES.xs,
-    color: 'rgba(255,255,255,0.50)',
-    flex: 1,
+  cardMetaText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
   },
-  plannedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
+  cardMetaDot: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.85)',
+    opacity: 0.5,
   },
-  plannedText: {
-    fontSize: FONT_SIZES.xs,
-    color: colors.primary,
-    fontWeight: FONT_WEIGHTS.semibold,
-  },
-  // ── Run level badge (on gym cards — mirrors RunDetailsScreen badge exactly) ─
-  runLevelBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: RADIUS.sm,
-    borderWidth: 1,
-    marginBottom: 4,
-  },
-  runLevelBadgeText: {
-    fontSize: FONT_SIZES.xs,
-    fontWeight: FONT_WEIGHTS.semibold,
+  cardAccessLabel: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   // ── Run style info sheet (reuses sheetHandle and sheetBackdrop) ───────────
   infoSheetContainer: {

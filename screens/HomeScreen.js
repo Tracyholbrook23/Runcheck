@@ -58,7 +58,8 @@ import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { useSchedules } from '../hooks/useSchedules';
 import { Logo } from '../components';
 import { db, auth } from '../config/firebase';
-import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { Switch } from 'react-native';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { joinExistingRun } from '../services/runService';
 
@@ -142,6 +143,20 @@ const HomeScreen = ({ navigation }) => {
   const { homeCourtId, profile } = useProfile();
   // Community feed visibility — persisted to Firestore, defaults to shown
   const showCommunityFeed = profile?.preferences?.showCommunityFeed ?? true;
+  // Auto check-in preference + nudge card dismissal (session-only)
+  const autoCheckInEnabled = profile?.preferences?.autoCheckInEnabled ?? true;
+  const [autoCheckInNudgeDismissed, setAutoCheckInNudgeDismissed] = useState(false);
+
+  const handleEnableAutoCheckIn = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      await updateDoc(doc(db, 'users', uid), { 'preferences.autoCheckInEnabled': true });
+      setAutoCheckInNudgeDismissed(true); // card disappears once turned on
+    } catch (err) {
+      if (__DEV__) console.warn('[HomeScreen] autoCheckIn pref write error:', err);
+    }
+  };
   const { unreadCount: dmUnreadCount } = useConversations();
   const { runChats, runChatUnreadCount } = useMyRunChats();
   const joinedRunIds = useMemo(() => new Set(runChats.map((c) => c.runId)), [runChats]);
@@ -816,17 +831,52 @@ const HomeScreen = ({ navigation }) => {
             />
           }
         >
-          {/* Welcome hero text — copy adapts to checked-in state */}
-          <View style={[styles.welcomeSection, isCheckedIn && styles.welcomeSectionActive]}>
-            <Text style={styles.welcomeTitle}>
-              {isCheckedIn ? 'Run in Progress' : 'Find Your\nNext Run'}
-            </Text>
-            <Text style={styles.welcomeSubtitle}>
-              {isCheckedIn
-                ? presence?.gymName || 'Session in progress'
-                : 'Join a pickup run near you'}
-            </Text>
-          </View>
+          {/* Welcome hero — V1 · Big Name First */}
+          {(() => {
+            const firstName = profile?.firstName
+              || profile?.name?.split(' ')[0]
+              || profile?.username
+              || null;
+            const liveRunCount = liveRuns.length;
+            const city = profile?.city || null;
+            return (
+              <View style={[styles.welcomeSection, isCheckedIn && styles.welcomeSectionActive]}>
+                <Text style={styles.welcomeEyebrow}>
+                  {firstName ? 'Welcome back,' : 'Welcome to RunCheck'}
+                </Text>
+                <Text
+                  style={styles.welcomeName}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  accessibilityRole="header"
+                >
+                  {firstName || 'Hey there'}
+                  <Text style={styles.welcomeNameEmoji}> 👋</Text>
+                </Text>
+                <Text style={styles.welcomeSupporting}>
+                  {isCheckedIn ? (
+                    <>
+                      <Text style={styles.welcomeAccent}>You're checked in</Text>
+                      {' at '}{presence?.gymName || 'a gym'}.
+                    </>
+                  ) : liveRunCount > 0 ? (
+                    <>
+                      <Text style={styles.welcomeAccent}>
+                        {liveRunCount} {liveRunCount === 1 ? 'run' : 'runs'}
+                      </Text>
+                      {' happening '}{city ? `near you in ${city}` : 'near you'}.
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.welcomeAccent}>No runs yet</Text>
+                      {' — start one and let people know.'}
+                    </>
+                  )}
+                </Text>
+              </View>
+            );
+          })()}
 
           {/*
            * Presence Card — only shown when user is checked in.
@@ -921,6 +971,38 @@ const HomeScreen = ({ navigation }) => {
                   </Text>
                 </BlurView>
               </TouchableOpacity>
+            )}
+
+            {/* Auto Check-In nudge — shown when user has scheduled visits but feature is off */}
+            {schedules.length > 0 && !autoCheckInEnabled && !autoCheckInNudgeDismissed && (
+              <BlurView intensity={60} tint="dark" style={styles.autoCheckInNudge}>
+                <View style={styles.autoCheckInNudgeLeft}>
+                  <View style={styles.autoCheckInNudgeIconWrap}>
+                    <Ionicons name="location" size={20} color="#22C55E" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.autoCheckInNudgeTitle}>Auto Check-In is off</Text>
+                    <Text style={styles.autoCheckInNudgeSub}>
+                      You have visits planned — turn this on and RunCheck checks you in when you arrive
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.autoCheckInNudgeActions}>
+                  <TouchableOpacity
+                    style={styles.autoCheckInNudgeButton}
+                    onPress={handleEnableAutoCheckIn}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.autoCheckInNudgeButtonText}>Turn On</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setAutoCheckInNudgeDismissed(true)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons name="close" size={16} color="rgba(255,255,255,0.45)" />
+                  </TouchableOpacity>
+                </View>
+              </BlurView>
             )}
 
             {/* START A RUN — primary CTA, always visible */}
@@ -1506,7 +1588,7 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.typeSheetOptionDesc}>Invite only · Set skill requirements</Text>
             </View>
             <View style={styles.typeSheetPremiumChip}>
-              <Text style={styles.typeSheetPremiumChipText}>⚡ Premium</Text>
+              <Text style={styles.typeSheetPremiumChipText}>⚡ Pro</Text>
             </View>
           </TouchableOpacity>
 
@@ -1532,7 +1614,7 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.typeSheetOptionDesc}>Charge entry · Collect earnings</Text>
             </View>
             <View style={styles.typeSheetPremiumChip}>
-              <Text style={styles.typeSheetPremiumChipText}>⚡ Premium</Text>
+              <Text style={styles.typeSheetPremiumChipText}>⚡ Pro</Text>
             </View>
           </TouchableOpacity>
         </View>
@@ -1604,25 +1686,39 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     paddingBottom: SPACING.xl,
   },
   welcomeSection: {
-    marginBottom: SPACING.lg,
     marginTop: SPACING.xs,
+    marginBottom: SPACING.lg,
   },
   // Tighter bottom gap when the presence card follows immediately below
   welcomeSectionActive: {
     marginBottom: SPACING.xs,
   },
-  welcomeTitle: {
-    fontSize: FONT_SIZES.hero,
+  welcomeEyebrow: {
+    fontSize: 13,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: 'rgba(255,255,255,0.6)',
+    letterSpacing: 0.3,
+    marginBottom: 4,
+  },
+  welcomeName: {
+    fontSize: 56,
     fontWeight: FONT_WEIGHTS.extraBold,
     color: '#FFFFFF',
-    marginBottom: SPACING.xs,
-    lineHeight: 46,
-    letterSpacing: -0.5,
+    letterSpacing: -2,
+    lineHeight: 56,
   },
-  welcomeSubtitle: {
-    fontSize: FONT_SIZES.body,
-    color: 'rgba(255,255,255,0.75)',
-    letterSpacing: 0.2,
+  welcomeNameEmoji: {
+    fontSize: 44,
+  },
+  welcomeSupporting: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 16,
+  },
+  welcomeAccent: {
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.bold,
   },
   presenceCard: {
     borderRadius: RADIUS.md,
@@ -1736,6 +1832,57 @@ actionCard: {
     fontWeight: FONT_WEIGHTS.extraBold,
     color: '#FFFFFF',
     letterSpacing: 0.8,
+  },
+  autoCheckInNudge: {
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.30)',
+    gap: SPACING.sm,
+  },
+  autoCheckInNudgeLeft: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    flex: 1,
+  },
+  autoCheckInNudgeIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(34,197,94,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  autoCheckInNudgeTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  autoCheckInNudgeSub: {
+    fontSize: FONT_SIZES.small,
+    color: 'rgba(255,255,255,0.70)',
+    lineHeight: 17,
+  },
+  autoCheckInNudgeActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: SPACING.md,
+  },
+  autoCheckInNudgeButton: {
+    backgroundColor: '#22C55E',
+    borderRadius: RADIUS.sm,
+    paddingVertical: 8,
+    paddingHorizontal: SPACING.md,
+  },
+  autoCheckInNudgeButtonText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
   },
   actionCardTitle: {
     fontSize: FONT_SIZES.h3,

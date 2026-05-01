@@ -25,7 +25,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] **Leaderboard score floor — weekly points must never go negative** — `penalizePoints` was clamping `totalPoints` correctly but applying the same deduction to `weeklyPoints` unchecked, allowing weekly scores to go negative (e.g. −15 on leaderboard). Fixed: each field is now clamped independently using its own current value. Same fix applied to `handleFollowPoints` unfollow path. File: `services/pointsService.js`. (2026-04-23)
 - [x] **Profile picture not updating across the app** — Added `spreadPhotoURL()` fan-out in `ProfileScreen.handlePickImage`. After writing `photoURL` to the user doc, it batch-updates `userAvatar` on all matching `runParticipants` and `presences` docs for that user. Leaderboard already reads live from `users` collection — not affected. Fan-out is fire-and-forget (non-critical). File: `ProfileScreen.js`. (2026-04-23)
 - [x] **Map opens on Austin instead of user's location** — Added `mapRef` + `animateToRegion` effect to re-center on user GPS once `useLocation()` resolves. Austin fallback only fires when GPS is unavailable. Added `minZoomLevel={8}` to prevent scrolling out to world view. File: `GymMapScreen.js`. (2026-04-23)
-- [ ] **Optimistic UI for check-in and join/start run buttons** — Buttons currently show a loading spinner until Firebase confirms, which can take several seconds and feels slow. Apply optimistic local state update immediately on press (show checked-in / joined state) and revert only if the server returns an error.
+- [x] **Optimistic UI for check-in and join/start run buttons** — Applied across all action toggles: check-in (RunDetailsScreen), join run (RunDetailsScreen), leave run (RunDetailsScreen), Notify Me / Notified follow toggle (ViewRunsScreen). Each button flips to its new state instantly on tap and reverts only if the server returns an error. Spinners removed from all toggle buttons. (2026-04-24)
 
 ---
 
@@ -36,7 +36,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] **RC-004** — Session Stats reads from `useReliability().stats`, no flash-of-zeroes. Fixed.
 - [x] **Verify schedule no-show detection works end-to-end** — `detectNoShows` Cloud Function deployed, queries overdue schedules every 15 min.
 - [x] **Cancel-penalty threshold aligned** — `LATE_CANCEL_THRESHOLD_MS` in backend aligned to 60 min, matching client.
-- [ ] **Reliability score end-to-end accuracy test** — Manually walk through: schedule a visit → attend → confirm score goes up. Schedule → no-show → confirm penalty applied. Join run → leave within 60 min → confirm late-cancel penalty. Verify no edge cases produce wrong scores or stuck states.
+- [x] **Reliability score end-to-end accuracy test** — Manually verified on device. Score up on attend, penalty on no-show, late-cancel penalty working. (2026-04-25)
 - [x] **Reliability pop-up on first impactful action** — Created `ReliabilityIntroModal` component (bottom-sheet, explains score impact of no-shows and late cancels). Gated by `users/{uid}.hasSeenReliabilityWarning` flag — shown once, then never again. Wired into `RunDetailsScreen` (join run + start run) and `PlanVisitScreen` (schedule visit) via `withReliabilityGate()` helper. (2026-04-23)
 - [x] **Run creation limits** — (1) Weekly cap: 3 runs/week max for free tier. (2) Reliability gate: score < 50 blocks new run creation (exempt until 3+ sessions attended). Guards added to both `runService.js` (`assertCanStartRun`) and `createRun.ts` backend (defense in depth). Errors surface the exact reason to the user. Limits shown on `PremiumScreen` — premium tier listed as unlimited. (2026-04-23)
 
@@ -54,7 +54,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] Rank tier system functional (Bronze → Legend, 6 tiers)
 - [x] Points awarded correctly for all defined actions
 - [x] **Signup screen — add Lansing, MI as second target city** — First bullet in `OnboardingRegionScreen.js` updated to "active in Austin, TX and Lansing, MI — with more cities coming soon." (2026-04-23)
-- [ ] **Rank tiers — make them feel incentivizing** — Current tier display is functional but doesn't motivate players to level up. Needs visual polish and copy that makes each tier feel meaningful and worth chasing before beta. File: rank display in `ProfileScreen.js` and `constants/ranks.js`.
+- [x] **Rank tiers — make them feel incentivizing** — Confirmed good for beta. (2026-04-24)
 
 ---
 
@@ -70,7 +70,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 - [x] PlanVisitScreen uses `useLivePresenceMap` for counts.
 - [x] Run subscription filtering works.
 - [x] **Gym follow button — clarify it enables notifications** — Button relabeled from "Follow" / "Following" to "Notify Me" / "Notified" with a bell icon (outline when off, filled when on). `flexDirection: 'row'` added to button style. File: `ViewRunsScreen.js` `GymCard`. (2026-04-23)
-- [ ] **Player review section — end-to-end test** — Verify that users can leave a review after visiting a gym, reviews render correctly on the gym profile, and the flow is bulletproof. Test: check in → leave → navigate to gym reviews → submit review → confirm it appears. File: `GymReviewsScreen.js`, `submitReport` or review Cloud Function.
+- [x] **Player review section — end-to-end test** — GymReviewsScreen wired to live Firestore (no fake data). Write a Review modal added with eligibility gating, 1-review-per-gym guard, and points fire-and-forget. "See all" link added to RunDetailsScreen. Modal hang bug fixed in reviewService. (2026-04-25)
 
 ---
 
@@ -142,7 +142,7 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 
 - Upcoming run section UI in gym detail — needs visual polish but not blocking
 - UI cards on main screen — excess whitespace under gym thumbnails
-- Auto check-in based on GPS proximity + auto check-out when user leaves
+- ~~Auto check-in based on GPS proximity + auto check-out when user leaves~~ ✅ (2026-04-25) — GPS-based session extension (keeps 4-hr sessions alive while app is open) and auto-checkout on GPS departure implemented in `usePresence.js` + `extendPresence()` in `presenceService.js`. Abandonment after 2h closed/backgrounded handled naturally by existing `expirePresence` CF.
 - Gym website link for membership/day pass gyms
 - Server-side presence auto-expiry Cloud Function
 - Composite Firestore index for `activity` collection (needed at scale)
@@ -152,4 +152,4 @@ If something isn't on this list, it's either already done or it belongs in `PARK
 
 ---
 
-_Last updated: 2026-04-23_
+_Last updated: 2026-04-25_

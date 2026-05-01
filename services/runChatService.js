@@ -37,7 +37,7 @@ const MAX_MESSAGE_LENGTH = 500;
  *
  * Default: 4 hours (14_400_000 ms). Adjust here to change it everywhere.
  */
-export const RUN_CHAT_EXPIRY_MS = 4 * 60 * 60 * 1000; // 4 hours
+export const RUN_CHAT_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /**
  * subscribeToRunMessages — Real-time listener for a run's chat messages.
@@ -93,7 +93,7 @@ export function subscribeToRunMessages(runId, callback) {
  * @returns {Promise<void>}
  * @throws {Error} If text is empty after trimming, or if senderId/runId are missing.
  */
-export async function sendRunMessage({ runId, senderId, senderName, senderAvatar, text }) {
+export async function sendRunMessage({ runId, senderId, senderName, senderAvatar, text, replyTo = null }) {
   if (!runId) throw new Error('runId is required');
   if (!senderId) throw new Error('senderId is required');
 
@@ -110,11 +110,46 @@ export async function sendRunMessage({ runId, senderId, senderName, senderAvatar
     senderAvatar: senderAvatar || null,
     text: safeText,
     createdAt: serverTimestamp(),
+    replyTo: replyTo ?? null,
     type: 'text',
   });
 
   // Stamp lastMessageAt on the run doc so useMyRunChats can detect unread chats.
   // Fire-and-forget — never blocks sending and never throws to the caller.
+  updateDoc(doc(db, 'runs', runId), { lastMessageAt: serverTimestamp() }).catch(() => {});
+}
+
+/**
+ * sendRunMedia — Writes a new image or gif message to a run's chat subcollection.
+ *
+ * @param {object} params
+ * @param {string} params.runId        — Firestore run document ID.
+ * @param {string} params.senderId     — Firebase Auth UID of the sender.
+ * @param {string} params.senderName   — Display name of the sender.
+ * @param {string|null} params.senderAvatar — Avatar URL or null.
+ * @param {'image'|'gif'} params.mediaType — Type of media.
+ * @param {string} params.mediaUrl     — Publicly accessible download URL.
+ * @returns {Promise<void>}
+ */
+export async function sendRunMedia({ runId, senderId, senderName, senderAvatar, mediaType, mediaUrl }) {
+  if (!runId) throw new Error('runId is required');
+  if (!senderId) throw new Error('senderId is required');
+  if (!mediaUrl) throw new Error('mediaUrl is required');
+
+  const messagesRef = collection(db, 'runs', runId, 'messages');
+
+  await addDoc(messagesRef, {
+    senderId,
+    senderName: senderName || 'Player',
+    senderAvatar: senderAvatar || null,
+    type: mediaType === 'gif' ? 'gif' : 'image',
+    mediaUrl,
+    text: '',
+    createdAt: serverTimestamp(),
+    replyTo: null,
+  });
+
+  // Stamp lastMessageAt so unread badge updates
   updateDoc(doc(db, 'runs', runId), { lastMessageAt: serverTimestamp() }).catch(() => {});
 }
 
@@ -182,5 +217,27 @@ export async function markRunChatSeen(runId, uid) {
   } catch (err) {
     // Non-fatal — unread count may be stale but app continues normally.
     if (__DEV__) console.warn('[runChatService] markRunChatSeen error:', err.code);
+  }
+}
+
+/**
+ * dismissRunChat — Hides a run chat from the user's Messages inbox.
+ *
+ * Writes `isDismissed: true` to `runParticipants/{runId}_{uid}`.
+ * The chat will be filtered out by useMyRunChats on next render.
+ * This is per-user — other participants are unaffected.
+ *
+ * @param {string} runId — Firestore run document ID.
+ * @param {string} uid   — Firebase Auth UID of the dismissing user.
+ * @returns {Promise<void>}
+ */
+export async function dismissRunChat(runId, uid) {
+  if (!runId || !uid) return;
+  try {
+    await updateDoc(doc(db, 'runParticipants', `${runId}_${uid}`), {
+      isDismissed: true,
+    });
+  } catch (err) {
+    if (__DEV__) console.warn('[runChatService] dismissRunChat error:', err.code);
   }
 }

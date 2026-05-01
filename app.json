@@ -2,6 +2,7 @@
   "expo": {
     "name": "RunCheck",
     "slug": "runcheck-new",
+    "scheme": "runcheck",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -9,6 +10,7 @@
     "description": "Find and join basketball pickup games nearby in real-time. Check in at gyms, see who's playing, and build your reliability score.",
     "privacy": "unlisted",
     "newArchEnabled": true,
+    "runtimeVersion": "1.0.0",
     "splash": {
       "image": "./assets/logo/runcheck-logo-full.png",
       "resizeMode": "contain",
@@ -18,11 +20,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.runcheck.app",
       "buildNumber": "2",
-      "runtimeVersion": "1.0.0",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
-          "comgooglemaps"
+          "comgooglemaps",
+          "instagram"
         ],
         "NSUserNotificationUsageDescription": "RunCheck sends notifications for runs at your gyms and activity from players you follow.",
         "NSCameraUsageDescription": "RunCheck uses your camera to record and share game clips.",
@@ -49,12 +51,29 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.WRITE_EXTERNAL_STORAGE"
-      ],
-      "runtimeVersion": "1.0.0"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1A1A2E",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RunCheck uses your photo library to let you share images in chats.",
+          "cameraPermission": "RunCheck uses your camera to send photos in chats."
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "bbdc4eed-d1b9-4a11-87bb-b9f8dcd8f55d"

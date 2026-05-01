@@ -279,7 +279,7 @@ export default function ProfileScreen({ navigation }) {
 
   // High-tier pulsing glow — scale between 1.0 and 1.05 on loop
   // Applies to Platinum, Diamond, and Legend tiers
-  const HIGH_GLOW_TIERS = ['Platinum', 'Diamond', 'Legend'];
+  const HIGH_GLOW_TIERS = ['Certified', 'Elite', 'Legend'];
   const hasHighGlow = HIGH_GLOW_TIERS.includes(userRank.name);
   const platinumPulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -548,7 +548,7 @@ export default function ProfileScreen({ navigation }) {
               id: s.id,                          // requester uid — used as row key and processingRequestId
               fromUid: s.id,
               toUid: user.uid,
-              senderName: s.data().name || 'Player',
+              senderName: s.data().displayName || s.data().name || 'Player',
               senderPhotoURL: s.data().photoURL || null,
             }));
 
@@ -766,7 +766,7 @@ export default function ProfileScreen({ navigation }) {
                 ) : (
                   <View style={[styles.avatarImage, styles.avatarPlaceholder]}>
                     <Text style={styles.avatarInitial}>
-                      {(liveProfile?.name || profile?.name || user?.displayName || '?')[0].toUpperCase()}
+                      {(liveProfile?.displayName || liveProfile?.name || profile?.displayName || profile?.name || user?.displayName || '?')[0].toUpperCase()}
                     </Text>
                   </View>
                 )}
@@ -785,7 +785,7 @@ export default function ProfileScreen({ navigation }) {
               </View>
             )}
           </TouchableOpacity>
-          <Text style={styles.name}>{liveProfile?.name || profile?.name || user?.displayName || 'Player'}</Text>
+          <Text style={styles.name}>{liveProfile?.displayName || liveProfile?.name || profile?.displayName || profile?.name || user?.displayName || 'Player'}</Text>
           {(profile?.username || liveProfile?.username) ? (
             <Text style={styles.usernameText}>@{profile?.username || liveProfile?.username}</Text>
           ) : null}
@@ -818,6 +818,11 @@ export default function ProfileScreen({ navigation }) {
               )}
             </View>
 
+            {/* Description */}
+            {userRank.description ? (
+              <Text style={styles.rankDescription}>{userRank.description}</Text>
+            ) : null}
+
             {/* Points */}
             <Text style={[styles.rankPoints, { color: userRank.color + 'CC' }]}>{totalPoints} pts</Text>
 
@@ -834,7 +839,7 @@ export default function ProfileScreen({ navigation }) {
             {/* Label */}
             {userRank.nextRankAt ? (
               <Text style={styles.rankProgressLabel}>
-                {pointsToNext} pts to {RANKS[RANKS.indexOf(userRank) + 1]?.name ?? ''}
+                ~{Math.ceil(pointsToNext / 20)} more runs to reach {RANKS[RANKS.indexOf(userRank) + 1]?.name ?? ''}
               </Text>
             ) : (
               <Text style={styles.rankProgressLabel}>Max rank achieved 👑</Text>
@@ -1109,7 +1114,7 @@ export default function ProfileScreen({ navigation }) {
                     )}
                   </View>
                   <Text style={styles.friendName} numberOfLines={1}>
-                    {friend.name || 'Player'}
+                    {friend.displayName || friend.name || 'Player'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1421,7 +1426,7 @@ export default function ProfileScreen({ navigation }) {
             </View>
             <View style={styles.premiumText}>
               <View style={styles.premiumTitleRow}>
-                <Text style={styles.premiumTitle}>RunCheck Premium</Text>
+                <Text style={styles.premiumTitle}>RunCheck Pro</Text>
                 <View style={styles.premiumPill}>
                   <Text style={styles.premiumPillText}>Coming Soon</Text>
                 </View>
@@ -2262,6 +2267,12 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.body,
       fontWeight: FONT_WEIGHTS.bold,
       letterSpacing: 0.4,
+    },
+    rankDescription: {
+      fontSize: FONT_SIZES.small,
+      color: 'rgba(255,255,255,0.60)',
+      marginTop: SPACING.xs,
+      fontStyle: 'italic',
     },
     rankPoints: {
       fontSize: FONT_SIZES.small,

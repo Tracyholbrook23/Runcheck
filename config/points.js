@@ -10,21 +10,25 @@
  *
  * Changing a value here automatically updates both.
  *
- * Point system notes:
- *   - Planning a visit earns 0 pts. Points are only awarded on attendance.
- *   - Checking in when you had a scheduled plan → 15 pts (10 + 5 bonus).
- *   - Checking in without a prior plan → 10 pts.
+ * Point system philosophy:
+ *   Showing up > everything else. Points are weighted to reward consistency
+ *   and follow-through — not passive actions like tapping buttons.
+ *
+ *   - Showing up to an active run is the highest-value action (+20).
+ *   - Attending a visit you had planned rewards follow-through (+25 total).
+ *   - Basic check-ins still count but carry less weight (+5).
+ *   - Passive actions (follow, review) are minimal (+1–5).
  */
 
 /**
  * POINT_VALUES — maps action type strings to their point reward.
  */
 export const POINT_VALUES = {
-  checkin:          10, // Standard check-in (no prior plan)
-  checkinWithPlan:  15, // Check-in that fulfils a scheduled plan (+5 bonus)
-  runComplete:      10, // Check in to a gym when you're a run participant — show-up bonus
-  review:           15,
-  followGym:         2,
+  checkin:          5,  // Standard check-in (no prior plan)
+  checkinWithPlan:  25, // Check-in that fulfils a scheduled plan (+20 follow-through bonus)
+  runComplete:      20, // Show up to an active run — the core action we reward most
+  review:           5,
+  followGym:        1,
   completeProfile:  10,
 };
 
@@ -38,22 +42,13 @@ export const POINT_VALUES = {
  */
 export const ACTION_LABELS = [
   {
-    action: 'checkin',
-    label: 'Check in at a gym',
-    icon: '✅',
-    ionicon: 'location',
-    iconColor: null,          // use colors.primary from theme
-    points: POINT_VALUES.checkin,
-    note: null,
-  },
-  {
     action: 'checkinWithPlan',
     label: 'Attend a planned visit',
     icon: '📅',
-    ionicon: 'calendar-check',
+    ionicon: 'calendar-outline',
     iconColor: null,          // use colors.primary from theme
     points: POINT_VALUES.checkinWithPlan,
-    note: '+5 follow-through bonus',
+    note: '+20 follow-through bonus',
   },
   {
     action: 'runComplete',
@@ -62,7 +57,25 @@ export const ACTION_LABELS = [
     ionicon: 'flag',
     iconColor: '#6366F1',     // indigo
     points: POINT_VALUES.runComplete,
-    note: '+10 show-up bonus',
+    note: null,
+  },
+  {
+    action: 'completeProfile',
+    label: 'Complete your profile',
+    icon: '👤',
+    ionicon: 'person-circle',
+    iconColor: '#22C55E',     // green
+    points: POINT_VALUES.completeProfile,
+    note: 'one time',
+  },
+  {
+    action: 'checkin',
+    label: 'Check in at a gym',
+    icon: '✅',
+    ionicon: 'location',
+    iconColor: null,          // use colors.primary from theme
+    points: POINT_VALUES.checkin,
+    note: null,
   },
   {
     action: 'review',
@@ -81,14 +94,5 @@ export const ACTION_LABELS = [
     iconColor: '#EF4444',     // red
     points: POINT_VALUES.followGym,
     note: null,
-  },
-  {
-    action: 'completeProfile',
-    label: 'Complete your profile',
-    icon: '👤',
-    ionicon: 'person-circle',
-    iconColor: '#22C55E',     // green
-    points: POINT_VALUES.completeProfile,
-    note: 'one time',
   },
 ];

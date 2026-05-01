@@ -1,14 +1,14 @@
 /**
- * PremiumScreen.js — RunCheck Premium Teaser
+ * PremiumScreen.js — RunCheck Pro Teaser
  *
  * UI-only. No billing, no Stripe, no RevenueCat, no in-app purchases.
- * Shows upcoming Premium features and pricing. CTA button fires a Coming Soon
+ * Shows upcoming Pro features and pricing. CTA button fires a Coming Soon
  * alert — nothing more.
  *
  * Design follows the RunCheck dark theme:
  *   - useTheme for colors / isDark
  *   - Same card / spacing / typography tokens as ProfileScreen
- *   - RunCheck signature orange (#FF6B35) as the Premium accent
+ *   - RunCheck signature orange (#FF6B35) as the Pro accent
  */
 
 import React, { useMemo, useState } from 'react';
@@ -95,7 +95,7 @@ const FEATURES = [
     icon: 'videocam-outline',
     title: 'Unlimited Run Clips',
     description:
-      'Free users have clip upload limits. Premium removes them entirely.',
+      'Free users have clip upload limits. Pro removes them entirely.',
     freeVsPremium: {
       free: ['1 clip per run', '3 clips per week'],
       premium: ['Unlimited clips', 'Full highlight reel profile'],
@@ -106,7 +106,7 @@ const FEATURES = [
   {
     id: 'badge',
     icon: 'shield-checkmark-outline',
-    title: 'Premium Player Badge',
+    title: 'Pro Player Badge',
     description:
       'Get a visible Verified Hooper badge on your profile and in every run you join.',
     bullets: [
@@ -171,7 +171,7 @@ const FREE_FEATURES = [
   },
 ];
 
-// ─── Free vs Premium comparison table ────────────────────────────────────────
+// ─── Free vs Pro comparison table ────────────────────────────────────────
 // Each row: { feature, free, premium }
 // free / premium can be: true (checkmark), false (✗), or a string (custom label)
 
@@ -181,7 +181,7 @@ const COMPARE_ROWS = [
   { feature: 'Host paid private runs',        free: false,             premium: true },
   { feature: 'Skill level filtering',         free: false,             premium: true },
   { feature: 'Smart run alerts',              free: false,             premium: true },
-  { feature: 'Premium player badge',          free: false,             premium: true },
+  { feature: 'Pro player badge',          free: false,             premium: true },
   { feature: 'Start runs per week',            free: '3 / week',        premium: 'Unlimited' },
   { feature: 'Run clips',                     free: '1/run · 3/week',  premium: 'Unlimited' },
   // Free features below the fold
@@ -217,7 +217,7 @@ const PRICING = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * PremiumScreen — RunCheck Premium teaser. No billing logic.
+ * PremiumScreen — RunCheck Pro teaser. No billing logic.
  *
  * @param {object}  props
  * @param {import('@react-navigation/native').NavigationProp<any>} props.navigation
@@ -225,13 +225,12 @@ const PRICING = [
 export default function PremiumScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
-  const [activeTab, setActiveTab] = useState('premium'); // 'free' | 'premium'
   const [selectedPlan, setSelectedPlan] = useState('annual'); // 'monthly' | 'annual'
 
   const handleCtaPress = () => {
     Alert.alert(
       'Coming Soon',
-      "RunCheck Premium is still in development. We'll notify you as soon as it launches.",
+      "RunCheck Pro is still in development. We'll notify you as soon as it launches.",
       [{ text: 'Got It', style: 'cancel' }]
     );
   };
@@ -260,92 +259,23 @@ export default function PremiumScreen({ navigation }) {
           <Text style={styles.heroTitle}>RunCheck</Text>
         </View>
 
-        {/* ── Free / Premium tab toggle ────────────────────────────────────── */}
+        {/* Premium badge */}
         <View style={styles.tabToggle}>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'free' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('free')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.tabBtnText, activeTab === 'free' && styles.tabBtnTextActive]}>
-              Free
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabBtn, activeTab === 'premium' && styles.tabBtnActivePremium]}
-            onPress={() => setActiveTab('premium')}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="flash"
-              size={13}
-              color={activeTab === 'premium' ? '#FFFFFF' : colors.textMuted}
-              style={{ marginRight: 4 }}
-            />
-            <Text style={[styles.tabBtnText, activeTab === 'premium' && styles.tabBtnTextActive]}>
-              Premium
-            </Text>
+          <View style={[styles.tabBtn, styles.tabBtnActivePremium]}>
+            <Ionicons name="flash" size={13} color="#FFFFFF" style={{ marginRight: 4 }} />
+            <Text style={[styles.tabBtnText, styles.tabBtnTextActive]}>Pro</Text>
             <View style={styles.comingSoonChip}>
               <Text style={styles.comingSoonChipText}>Soon</Text>
             </View>
-          </TouchableOpacity>
+          </View>
         </View>
 
         {/* ══════════════════════════════════════════════════════════════════
-            FREE TAB
+            PRO TEASER
         ══════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'free' && (
-          <>
-            <Text style={styles.tabHeadline}>Everything on the free plan</Text>
-            <Text style={styles.tabSubline}>No credit card. No limits on what matters.</Text>
-
-            {FREE_FEATURES.map((f) => (
-              <View key={f.title} style={styles.freeFeatureCard}>
-                <View style={styles.freeFeatureIconWrap}>
-                  <Ionicons name={f.icon} size={20} color="#22C55E" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.freeFeatureTitle}>{f.title}</Text>
-                  <Text style={styles.freeFeatureDesc}>{f.description}</Text>
-                  {f.limit && (
-                    <View style={styles.freeLimitChip}>
-                      <Ionicons name="alert-circle-outline" size={11} color="#F59E0B" style={{ marginRight: 3 }} />
-                      <Text style={styles.freeLimitText}>{f.limit}</Text>
-                    </View>
-                  )}
-                </View>
-                <Ionicons name="checkmark-circle" size={20} color="#22C55E" style={{ marginLeft: SPACING.sm, flexShrink: 0 }} />
-              </View>
-            ))}
-
-            {/* Tease premium */}
-            <View style={styles.premiumTeaseCard}>
-              <View style={styles.premiumTeaseHeader}>
-                <Ionicons name="flash" size={16} color="#FF6B35" style={{ marginRight: 6 }} />
-                <Text style={styles.premiumTeaseTitle}>Want more? Upgrade to Premium</Text>
-              </View>
-              <Text style={styles.premiumTeaseDesc}>
-                Private runs, paid runs, skill filtering, smart alerts, unlimited clips, and a Premium badge.
-              </Text>
-              <TouchableOpacity
-                style={styles.premiumTeaseBtn}
-                onPress={() => setActiveTab('premium')}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.premiumTeaseBtnText}>See Premium Features</Text>
-                <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════════
-            PREMIUM TAB
-        ══════════════════════════════════════════════════════════════════ */}
-        {activeTab === 'premium' && (
-          <>
+        <>
             <Text style={styles.tabHeadline}>5 features you don't have yet.</Text>
-            <Text style={styles.tabSubline}>Free gets you in the door. Premium changes how you play.</Text>
+            <Text style={styles.tabSubline}>Free gets you in the door. Pro changes how you play.</Text>
 
             {/* ── "What you're locked out of" hook card ─────────────────── */}
             <View style={styles.lockoutCard}>
@@ -357,7 +287,7 @@ export default function PremiumScreen({ navigation }) {
                 </View>
                 <View style={styles.lockoutDivider} />
                 <View style={[styles.lockoutSide, styles.lockoutSidePremium]}>
-                  <Text style={[styles.lockoutSideLabel, { color: '#FF6B35' }]}>Premium unlocks</Text>
+                  <Text style={[styles.lockoutSideLabel, { color: '#FF6B35' }]}>Pro unlocks</Text>
                   <Text style={[styles.lockoutSideNumber, { color: '#FF6B35' }]}>+5</Text>
                   <Text style={[styles.lockoutSideUnit, { color: '#FF6B3599' }]}>more</Text>
                 </View>
@@ -367,7 +297,7 @@ export default function PremiumScreen({ navigation }) {
               </Text>
             </View>
 
-            {/* ── Free vs Premium comparison table ──────────────────────── */}
+            {/* ── Free vs Pro comparison table ──────────────────────── */}
             <View style={styles.compareCard}>
               {/* Column headers */}
               <View style={styles.compareHeaderRow}>
@@ -378,7 +308,7 @@ export default function PremiumScreen({ navigation }) {
                 <View style={styles.compareValueCol}>
                   <View style={styles.compareHeaderPremiumWrap}>
                     <Ionicons name="flash" size={11} color="#FF6B35" style={{ marginRight: 3 }} />
-                    <Text style={styles.compareHeaderPremiumText}>Premium</Text>
+                    <Text style={styles.compareHeaderPremiumText}>Pro</Text>
                   </View>
                 </View>
               </View>
@@ -503,7 +433,7 @@ export default function PremiumScreen({ navigation }) {
                   </View>
                 )}
 
-                {/* Free vs Premium comparison (Clips only) */}
+                {/* Free vs Pro comparison (Clips only) */}
                 {feature.freeVsPremium && (
                   <View style={styles.comparisonWrap}>
                     <View style={styles.comparisonCol}>
@@ -518,7 +448,7 @@ export default function PremiumScreen({ navigation }) {
                     <View style={styles.comparisonDivider} />
                     <View style={styles.comparisonCol}>
                       <Text style={[styles.comparisonHeader, styles.comparisonHeaderPremium]}>
-                        Premium
+                        Pro
                       </Text>
                       {feature.freeVsPremium.premium.map((item) => (
                         <View key={item} style={styles.comparisonRow}>
@@ -557,15 +487,14 @@ export default function PremiumScreen({ navigation }) {
             >
               <Ionicons name="flash" size={18} color="#FFFFFF" style={{ marginRight: SPACING.xs }} />
               <Text style={styles.ctaButtonText}>
-                Get Premium {selectedPlan === 'annual' ? '· $29.99/yr' : '· $4.99/mo'} — Coming Soon
+                Get Pro {selectedPlan === 'annual' ? '· $29.99/yr' : '· $4.99/mo'} — Coming Soon
               </Text>
             </TouchableOpacity>
 
             <Text style={styles.ctaDisclaimer}>
-              No payment required. We'll notify you when Premium launches.
+              No payment required. We'll notify you when Pro launches.
             </Text>
           </>
-        )}
 
       </ScrollView>
     </SafeAreaView>
@@ -854,7 +783,7 @@ const getStyles = (colors, isDark) =>
       lineHeight: 17,
     },
 
-    // Free vs Premium comparison (clips)
+    // Free vs Pro comparison (clips)
     comparisonWrap: {
       flexDirection: 'row',
       backgroundColor: isDark ? colors.surfaceLight : '#F9FAFB',

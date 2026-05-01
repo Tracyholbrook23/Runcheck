@@ -14,6 +14,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 import { auth } from '../config/firebase';
 import {
   subscribeToGymRuns,
@@ -58,8 +59,10 @@ export const useGymRuns = (gymId) => {
     setRunsReady(false);
 
     const unsubscribe = subscribeToGymRuns(gymId, (newRuns) => {
-      setRuns(newRuns);
-      setRunsReady(true);
+      unstable_batchedUpdates(() => {
+        setRuns(newRuns);
+        setRunsReady(true);
+      });
     });
 
     return () => {
@@ -79,8 +82,10 @@ export const useGymRuns = (gymId) => {
     setParticipantsReady(false);
 
     const unsubscribe = subscribeToUserRunsAtGym(uid, gymId, (participants) => {
-      setUserParticipants(participants);
-      setParticipantsReady(true);
+      unstable_batchedUpdates(() => {
+        setUserParticipants(participants);
+        setParticipantsReady(true);
+      });
     });
 
     return () => {

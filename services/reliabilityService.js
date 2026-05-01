@@ -32,13 +32,12 @@ import {
 } from 'firebase/firestore';
 
 // Scoring constants (used by calculateReliabilityScore display fallback)
-// Must stay in sync with the backend formula in onScheduleWrite.ts and
-// detectRunNoShows.ts:  score = clamp(100 − 20·noShows − 8·lateCancels, 0, 100)
+// Must stay in sync with the backend formula in onScheduleWrite.ts,
+// detectRunNoShows.ts, and repairReliabilityScores.ts:
+//   score = max(20, round(attended / (attended + noShows + 0.5·lateCancels) × 100))
+// Lock: score stays at 100 until totalAttended >= 3.
 const INITIAL_SCORE = 100;
-const NO_SHOW_PENALTY = 20;       // was 10 — updated to match backend
-const LATE_CANCEL_PENALTY = 8;    // matches backend totalLateCancelled penalty
-const MIN_SCORE = 0;
-const MAX_SCORE = 100;
+const SCORE_FLOOR = 20; // recoverable minimum — matches backend
 
 /**
  * Get user's reliability data
@@ -104,25 +103,27 @@ export const incrementScheduledCount = async (_odId) => {
 };
 
 /**
- * Calculate reliability score from raw stats
- * Useful for recalculating if data gets out of sync
+ * Calculate reliability score from raw stats.
+ * Used as a display fallback if the Firestore score field is missing.
+ * Mirrors the backend formula exactly (onScheduleWrite.ts / detectRunNoShows.ts
+ * / repairReliabilityScores.ts).
  *
- * @param {Object} stats - { totalScheduled, totalAttended, totalNoShow, totalCancelled }
- * @returns {number} Calculated score (0-100)
+ * @param {Object} stats - { totalAttended, totalNoShow, totalLateCancelled }
+ * @returns {number} Calculated score (20-100, or 100 if still locked)
  */
 export const calculateReliabilityScore = (stats) => {
-  const { totalNoShow, totalLateCancelled, totalAttended } = stats;
+  const totalAttended      = stats.totalAttended      ?? 0;
+  const totalNoShow        = stats.totalNoShow        ?? 0;
+  const totalLateCancelled = stats.totalLateCancelled ?? 0;
 
-  // Mirrors backend formula exactly (onScheduleWrite.ts / detectRunNoShows.ts):
-  //   - Locked at 100 until the user has attended 3 or more runs.
-  //   - Once unlocked: score = clamp(100 − 20·noShows − 8·lateCancels, 0, 100)
-  if ((totalAttended ?? 0) < 3) return INITIAL_SCORE;
+  // Lock: new users stay at 100 until they've attended 3+ sessions.
+  if (totalAttended < 3) return INITIAL_SCORE;
 
-  const score = INITIAL_SCORE
-    - (totalNoShow        ?? 0) * NO_SHOW_PENALTY
-    - (totalLateCancelled ?? 0) * LATE_CANCEL_PENALTY;
-
-  return Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
+  // Ratio-based: attending sessions naturally recovers the score over time.
+  // Late cancels count as half a no-show. Floor of 20 keeps it recoverable.
+  const totalSessions = totalAttended + totalNoShow + (totalLateCancelled * 0.5);
+  const raw = Math.round((totalAttended / totalSessions) * 100);
+  return Math.max(SCORE_FLOOR, raw);
 };
 
 /**

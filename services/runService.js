@@ -101,7 +101,7 @@ const TEST_USER_UIDS = new Set([
 
 /** Reliability score below which a user is blocked from starting a run.
  *  Only enforced once they have attended 3+ sessions (new users are exempt). */
-const MIN_RELIABILITY_TO_START = 50;
+const MIN_RELIABILITY_TO_START = 65;
 
 /**
  * assertCanStartRun — Pre-creation guard for starting (not joining) a run.
@@ -117,6 +117,15 @@ const assertCanStartRun = async (uid) => {
 
   const userSnap = await getDoc(doc(db, 'users', uid));
   const data = userSnap.data() ?? {};
+
+  // ── Cancellation ban ────────────────────────────────────────────────────
+  // Set by the onRunCancelled Cloud Function when a host cancels 5+ runs in a row.
+  if (data.canStartRun === false) {
+    throw new Error(
+      'You\'ve cancelled too many runs in a row and can no longer start new runs. ' +
+      'Contact support if you believe this is a mistake.',
+    );
+  }
 
   // ── Reliability gate ─────────────────────────────────────────────────────
   const reliability = data.reliability;
@@ -197,7 +206,7 @@ const fetchUserDisplayInfo = async () => {
     const snap = await getDoc(doc(db, 'users', uid));
     const data = snap.data() || {};
     return {
-      userName: data.name || auth.currentUser.displayName || 'Player',
+      userName: data.displayName || data.name || auth.currentUser.displayName || 'Player',
       userAvatar: data.photoURL || null,
       // Skill snapshot — written onto runParticipants docs so the competitive
       // meter can reflect actual player composition for future runs, without
@@ -290,9 +299,7 @@ export const startOrJoinRun = async (gymId, gymName, startTime, runLevel = 'mixe
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Must be logged in to start or join a run');
 
-  await assertNotSuspended();
-
-  // Validate startTime
+  // Validate startTime before touching the network.
   const now = new Date();
   if (startTime <= now) {
     throw new Error('Run start time must be in the future');
@@ -301,30 +308,54 @@ export const startOrJoinRun = async (gymId, gymName, startTime, runLevel = 'mixe
     throw new Error('Cannot schedule a run more than 7 days in advance');
   }
 
-  const userInfo = await fetchUserDisplayInfo();
-
-  // ── Check for an existing mergeable run ──────────────────────────────────
-  // Query all upcoming runs at this gym. We do a client-side time filter
-  // because Firestore doesn't support range queries on two fields simultaneously
-  // without a composite index on startTime. This keeps index requirements minimal.
+  // ── Fire all reads in parallel ───────────────────────────────────────────
+  // Previously these were 4 sequential round-trips (3× user doc + 1× runs query
+  // + 1× all-user-runs query), which caused 30-60 s delays on cold connections.
+  // Now they resolve concurrently in ~1 round-trip time.
   const runsRef = collection(db, 'runs');
-  const q = query(
+  const gymRunsQuery = query(
     runsRef,
     where('gymId', '==', gymId),
     where('status', '==', 'upcoming'),
-    orderBy('startTime', 'asc')
+    orderBy('startTime', 'asc'),
   );
+  const userRunsQuery = TEST_USER_UIDS.has(uid)
+    ? null // test accounts skip the weekly-cap query entirely
+    : query(collection(db, 'runs'), where('createdBy', '==', uid));
 
-  const snapshot = await getDocs(q);
+  const [userSnap, gymRunsSnap, userRunsSnap] = await Promise.all([
+    getDoc(doc(db, 'users', uid)),
+    getDocs(gymRunsQuery),
+    userRunsQuery ? getDocs(userRunsQuery) : Promise.resolve(null),
+  ]);
+
+  const userData = userSnap.data() ?? {};
+
+  // ── Suspension check ─────────────────────────────────────────────────────
+  if (userData.isSuspended === true) {
+    const endsAt = userData.suspensionEndsAt?.toDate?.();
+    if (!endsAt || endsAt > new Date()) {
+      throw new Error('Your account is suspended. You cannot perform this action.');
+    }
+  }
+
+  // ── User display info (from the same snap — no extra read) ───────────────
+  const userInfo = {
+    userName:   userData.displayName || userData.name || auth.currentUser?.displayName || 'Player',
+    userAvatar: userData.photoURL || null,
+    skillLevel: userData.skillLevel || null,
+  };
+
+  // ── Check for an existing mergeable run ──────────────────────────────────
+  // Client-side time filter — Firestore doesn't support range queries on two
+  // fields without a composite index, so we filter in memory.
   const requestedMs = startTime.getTime();
 
   // Find the first run within ±60 minutes of the requested start time.
   // Skip empty/zombie runs (participantCount <= 0) — these are runs whose last
   // participant has left. Without this filter the user would be silently
-  // re-added to their own empty run. Replaces the previous status='cancelled'
-  // guard, which was dropped from leaveRun to keep that transaction's write
-  // within the non-creator update allowlist in Firestore rules.
-  const matchingRun = snapshot.docs.find((d) => {
+  // re-added to their own empty run.
+  const matchingRun = gymRunsSnap.docs.find((d) => {
     const data = d.data();
     if ((data.participantCount ?? 0) <= 0) return false;
     const runStartMs = data.startTime?.toDate().getTime();
@@ -340,10 +371,52 @@ export const startOrJoinRun = async (gymId, gymName, startTime, runLevel = 'mixe
     return { runId, created: false };
   }
 
-  // ── Create new run ───────────────────────────────────────────────────────
-  // Check weekly cap + reliability before writing anything.
-  // assertCanStartRun only gates creation — joining an existing run (above) is unaffected.
-  await assertCanStartRun(uid);
+  // ── Creation guards (weekly cap + reliability + cancellation ban) ──────────
+  // Only reached when no merge match was found — joining an existing run is
+  // always allowed regardless of cap or score.
+  if (!TEST_USER_UIDS.has(uid)) {
+    // Cancellation ban gate
+    if (userData.canStartRun === false) {
+      throw new Error(
+        'You\'ve cancelled too many runs in a row and can no longer start new runs. ' +
+        'Contact support if you believe this is a mistake.',
+      );
+    }
+
+    // Reliability gate
+    const reliability = userData.reliability;
+    if (
+      reliability &&
+      typeof reliability.score === 'number' &&
+      (reliability.totalAttended ?? 0) >= 3 &&
+      reliability.score < MIN_RELIABILITY_TO_START
+    ) {
+      throw new Error(
+        `Your reliability score (${reliability.score}/100) is too low to start a run. ` +
+        'Show up to your scheduled games to recover your score.',
+      );
+    }
+
+    // Weekly cap — computed from the already-fetched snapshot
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const startOfWeekMs = startOfWeek.getTime();
+
+    const weeklyCount = (userRunsSnap?.docs ?? []).filter((d) => {
+      const data = d.data();
+      if (data.status === 'cancelled') return false;
+      const createdMs = data.createdAt?.toMillis?.();
+      return createdMs && createdMs >= startOfWeekMs;
+    }).length;
+
+    if (weeklyCount >= WEEKLY_RUN_LIMIT) {
+      throw new Error(
+        `You've started ${WEEKLY_RUN_LIMIT} runs this week, which is the current limit. ` +
+        'Your limit resets every Sunday.',
+      );
+    }
+  }
 
   // Use a writeBatch so the run doc and the user's runsStarted counter are
   // written atomically — both land or neither does. This prevents the counter
@@ -413,9 +486,24 @@ export const joinExistingRun = async (runId, gymId, gymName) => {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Not authenticated');
 
-  await assertNotSuspended();
+  // Read user doc once — used for both the suspension check and display info.
+  const userSnap = await getDoc(doc(db, 'users', uid));
+  const userData = userSnap.data() ?? {};
 
-  const userInfo = await fetchUserDisplayInfo();
+  // Suspension check
+  if (userData.isSuspended === true) {
+    const endsAt = userData.suspensionEndsAt?.toDate?.();
+    if (!endsAt || endsAt > new Date()) {
+      throw new Error('Your account is suspended. You cannot perform this action.');
+    }
+  }
+
+  const userInfo = {
+    userName:   userData.displayName || userData.name || auth.currentUser?.displayName || 'Player',
+    userAvatar: userData.photoURL || null,
+    skillLevel: userData.skillLevel || null,
+  };
+
   await joinRun(runId, gymId, gymName, userInfo);
   // No activity write for joining — only 'started a run at' is kept. See RC-002.
 };

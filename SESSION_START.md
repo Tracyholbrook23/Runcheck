@@ -13,6 +13,31 @@ Tech: React Native 0.81.5 + Expo SDK 54 + Firebase v12 (Firestore, Auth, Storage
 
 ---
 
+## Deploy Commands
+
+**OTA update** (JS/asset changes — no new build needed):
+```
+eas update --channel production
+```
+
+**New native iOS build** (required after any native/config change):
+```
+eas build --platform ios --profile production
+```
+Build number auto-increments. No manual edits needed.
+
+**Cloud Functions deploy:**
+```
+cd ~/runcheck-backend/functions && npm run deploy
+```
+
+**Firestore rules deploy:**
+```
+cd ~/runcheck-backend && firebase deploy --only firestore:rules
+```
+
+---
+
 ## Current Phase
 
 **PRE-LAUNCH / FOUNDATION MODE**

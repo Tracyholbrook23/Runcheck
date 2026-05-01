@@ -121,7 +121,7 @@ export async function openOrCreateConversation({ currentUid, otherUid, otherName
     throw new Error('Cannot start a conversation with this user.');
   }
 
-  const currentName = currentUserData.name || auth.currentUser?.displayName || 'Player';
+  const currentName = currentUserData.displayName || currentUserData.name || auth.currentUser?.displayName || 'Player';
   const currentAvatar = currentUserData.photoURL || null;
 
   await setDoc(conversationRef, {
@@ -189,6 +189,25 @@ export function subscribeToConversations(uid, callback) {
  * @param {function(object[], Error|null): void} callback
  * @returns {function} Unsubscribe function
  */
+/**
+ * subscribeToConversation — Real-time listener for a single conversation doc.
+ *
+ * Used to track the other participant's `lastSeenAt` timestamp so the sender
+ * can display a "Read" receipt under their last message.
+ *
+ * @param {string} conversationId
+ * @param {function(object): void} callback — Called with the conversation data on each update.
+ * @returns {function} Unsubscribe function.
+ */
+export function subscribeToConversation(conversationId, callback) {
+  const convRef = doc(db, 'conversations', conversationId);
+  return onSnapshot(
+    convRef,
+    (snap) => { if (snap.exists()) callback(snap.data()); },
+    (err) => { if (__DEV__) console.warn('[dmService] subscribeToConversation error:', err.code); },
+  );
+}
+
 export function subscribeToConversationMessages(conversationId, callback) {
   const messagesRef = collection(db, 'conversations', conversationId, 'messages');
   const q = query(messagesRef, orderBy('createdAt', 'asc'));
@@ -225,7 +244,7 @@ export function subscribeToConversationMessages(conversationId, callback) {
  * @returns {Promise<void>}
  * @throws {Error} If text is empty after trimming, or required params are missing
  */
-export async function sendDMMessage({ conversationId, senderId, recipientId, text }) {
+export async function sendDMMessage({ conversationId, senderId, recipientId, text, replyTo = null }) {
   if (!conversationId) throw new Error('conversationId is required');
   if (!senderId) throw new Error('senderId is required');
 
@@ -268,6 +287,10 @@ export async function sendDMMessage({ conversationId, senderId, recipientId, tex
     senderId,
     text: safeText,
     createdAt: serverTimestamp(),
+    // replyTo — populated when the user long-presses and taps Reply.
+    // Stored as a snapshot so the quoted block renders even if the original
+    // message is later removed. Null for normal (non-reply) messages.
+    replyTo: replyTo ?? null,
   });
 
   // Update conversation metadata after the message lands.
@@ -275,6 +298,49 @@ export async function sendDMMessage({ conversationId, senderId, recipientId, tex
   const conversationRef = doc(db, 'conversations', conversationId);
   await updateDoc(conversationRef, {
     lastMessage: { text: safeText, senderId, createdAt: serverTimestamp() },
+    lastActivityAt: serverTimestamp(),
+    [`lastSeenAt.${senderId}`]: serverTimestamp(),
+  });
+}
+
+/**
+ * sendDMMedia — Sends an image or GIF message to a conversation.
+ *
+ * Writes a message doc with `type: 'image'` or `type: 'gif'` and updates
+ * the conversation's lastMessage preview. The caller is responsible for
+ * uploading the file to Storage first (for images) or resolving the GIF URL
+ * (for Giphy responses). This function only writes to Firestore.
+ *
+ * @param {object} params
+ * @param {string} params.conversationId
+ * @param {string} params.senderId
+ * @param {string} params.senderName
+ * @param {string|null} params.senderAvatar
+ * @param {'image'|'gif'} params.mediaType  — message type
+ * @param {string} params.mediaUrl          — Storage download URL (image) or Giphy URL (gif)
+ * @returns {Promise<void>}
+ */
+export async function sendDMMedia({ conversationId, senderId, senderName, senderAvatar, mediaType, mediaUrl }) {
+  if (!conversationId || !senderId) throw new Error('conversationId and senderId are required');
+  if (!mediaUrl) throw new Error('mediaUrl is required');
+
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const previewText = mediaType === 'gif' ? '🎞 GIF' : '📷 Photo';
+
+  await addDoc(messagesRef, {
+    senderId,
+    senderName: senderName || 'Player',
+    senderAvatar: senderAvatar || null,
+    type: mediaType,
+    mediaUrl,
+    text: '',
+    createdAt: serverTimestamp(),
+  });
+
+  // Update conversation metadata so the inbox preview refreshes.
+  const conversationRef = doc(db, 'conversations', conversationId);
+  await updateDoc(conversationRef, {
+    lastMessage: { text: previewText, senderId, createdAt: serverTimestamp() },
     lastActivityAt: serverTimestamp(),
     [`lastSeenAt.${senderId}`]: serverTimestamp(),
   });

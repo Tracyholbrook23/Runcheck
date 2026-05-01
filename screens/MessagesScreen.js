@@ -46,7 +46,7 @@ import {
 import { useConversations } from '../hooks';
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { openOrCreateConversation, muteConversation, unmuteConversation } from '../services/dmService';
-import { muteRunChat, unmuteRunChat } from '../services/runChatService';
+import { muteRunChat, unmuteRunChat, dismissRunChat } from '../services/runChatService';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { sanitizeSearch } from '../utils/sanitize';
@@ -306,35 +306,64 @@ function RunChatRow({ item, uid, colors, navigation }) {
     }
   };
 
+  const handleDismiss = () => {
+    swipeableRef.current?.close();
+    Alert.alert(
+      'Remove from inbox',
+      'This run chat will be removed from your Messages. You can still access it from the run.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => dismissRunChat(item.runId, uid).catch(() => {}),
+        },
+      ],
+    );
+  };
+
   const handleLongPress = () => {
     Alert.alert(
       rowTitle,
-      isMuted
-        ? 'You won\'t receive notifications from this run chat.'
-        : 'You\'ll stop receiving notifications from this run chat.',
+      null,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: isMuted ? 'Unmute notifications' : 'Mute notifications',
           onPress: handleMuteToggle,
         },
+        {
+          text: 'Remove from inbox',
+          style: 'destructive',
+          onPress: () => dismissRunChat(item.runId, uid).catch(() => {}),
+        },
       ],
     );
   };
 
   const renderRightActions = () => (
-    <TouchableOpacity
-      style={[styles.swipeAction, { backgroundColor: isMuted ? '#34C759' : '#636366' }]}
-      onPress={handleMuteToggle}
-      activeOpacity={0.85}
-    >
-      <Ionicons
-        name={isMuted ? 'notifications-outline' : 'notifications-off-outline'}
-        size={22}
-        color="#fff"
-      />
-      <Text style={styles.swipeActionText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
-    </TouchableOpacity>
+    <View style={styles.swipeActionsRow}>
+      <TouchableOpacity
+        style={[styles.swipeAction, { backgroundColor: isMuted ? '#34C759' : '#636366' }]}
+        onPress={handleMuteToggle}
+        activeOpacity={0.85}
+      >
+        <Ionicons
+          name={isMuted ? 'notifications-outline' : 'notifications-off-outline'}
+          size={22}
+          color="#fff"
+        />
+        <Text style={styles.swipeActionText}>{isMuted ? 'Unmute' : 'Mute'}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.swipeAction, { backgroundColor: '#FF3B30' }]}
+        onPress={handleDismiss}
+        activeOpacity={0.85}
+      >
+        <Ionicons name="trash-outline" size={22} color="#fff" />
+        <Text style={styles.swipeActionText}>Remove</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -908,7 +937,10 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
 
-  // Swipe-to-reveal mute action
+  // Swipe-to-reveal actions
+  swipeActionsRow: {
+    flexDirection: 'row',
+  },
   swipeAction: {
     justifyContent: 'center',
     alignItems: 'center',

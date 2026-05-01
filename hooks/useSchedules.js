@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 import { auth } from '../config/firebase';
 import {
   subscribeToUserSchedules,
@@ -51,8 +52,10 @@ export const useSchedules = () => {
     }
 
     const unsubscribe = subscribeToUserSchedules(auth.currentUser.uid, (scheduleData) => {
-      setSchedules(scheduleData);
-      setLoading(false);
+      unstable_batchedUpdates(() => {
+        setSchedules(scheduleData);
+        setLoading(false);
+      });
     });
 
     return unsubscribe;

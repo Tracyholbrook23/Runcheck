@@ -230,7 +230,7 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   const userRef = doc(db, 'users', odId);
   const userDoc = await getDoc(userRef);
   const userData = userDoc.exists() ? userDoc.data() : {};
-  const userName = userData.name || 'Anonymous';
+  const userName = userData.displayName || userData.name || 'Anonymous';
   const skillLevel = userData.skillLevel || 'Casual';
 
   // Check if this fulfills a scheduled session (outside transaction)
@@ -515,6 +515,49 @@ const markPresenceExpired = async (presenceId, gymId) => {
   } catch (error) {
     if (__DEV__) console.error('Error marking presence expired:', error);
   }
+};
+
+/**
+ * Extend an active presence session by resetting expiresAt to now + DEFAULT_EXPIRE_MINUTES.
+ *
+ * Called by the GPS monitoring effect in usePresence when the user is still physically
+ * at the gym and the session is approaching its expiry window. This allows a 4-hour run
+ * to stay active without the 2-hour forced checkout, as long as the app is open and GPS
+ * confirms presence.
+ *
+ * Uses a transaction to guard against extending an already-expired or checked-out session.
+ * If the presence is not active the transaction is a silent no-op.
+ *
+ * @param {string} odId  - User ID
+ * @param {string} gymId - Gym ID
+ * @returns {Promise<import('firebase/firestore').Timestamp>} The new expiresAt timestamp
+ */
+export const extendPresence = async (odId, gymId) => {
+  const presenceId  = getPresenceId(odId, gymId);
+  const presenceRef = doc(db, 'presence', presenceId);
+  const userRef     = doc(db, 'users', odId);
+  const newExpiresAt = calculateExpiryTime(DEFAULT_EXPIRE_MINUTES);
+
+  await runTransaction(db, async (transaction) => {
+    const presenceDoc = await transaction.get(presenceRef);
+
+    // Guard: only extend a currently-active presence. If another process already
+    // checked out or expired this session, skip silently.
+    if (!presenceDoc.exists() || presenceDoc.data().status !== PRESENCE_STATUS.ACTIVE) {
+      return;
+    }
+
+    // Bump expiresAt on the presence doc (read by subscribeToGymPresences + CF)
+    transaction.update(presenceRef, { expiresAt: newExpiresAt });
+
+    // Keep the denormalized copy on the user doc in sync so getTimeRemaining()
+    // and the CheckInScreen countdown reflect the extended window.
+    transaction.update(userRef, {
+      'activePresence.expiresAt': newExpiresAt,
+    });
+  });
+
+  return newExpiresAt;
 };
 
 /**

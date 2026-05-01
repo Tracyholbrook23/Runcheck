@@ -46,8 +46,10 @@ import {
   Platform,
   Alert,
   Linking,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Ionicons } from '@expo/vector-icons';
@@ -57,13 +59,14 @@ import { openDirections } from '../utils/openMapsDirections';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import * as Location from 'expo-location';
 import { isLocationGranted } from '../utils/locationUtils';
-import { hapticSuccess } from '../utils/haptics';
+import { hapticSuccess, hapticLight, hapticMedium, hapticHeavy } from '../utils/haptics';
 import { useTheme } from '../contexts';
 
 const courtImage = require('../assets/images/court-bg.jpg');
 import { useGym, useGymPresences, useGymSchedules, useProfile, usePresence, useProximityCheckIn } from '../hooks';
 import { useGymRuns } from '../hooks/useGymRuns';
 import { startOrJoinRun, joinExistingRun, leaveRun, subscribeToRunParticipants } from '../services/runService';
+import { subscribeToUserSchedules } from '../services/scheduleService';
 import { auth, db } from '../config/firebase';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -359,11 +362,45 @@ export default function RunDetailsScreen({ route, navigation }) {
   // Compared by gymId so a user checked into a different gym still sees "Check In Here".
   const isCheckedInHere = !!presence && presence.gymId === gymId;
 
+  // ── User's active schedules (for auto check-in on this gym) ─────────────
+  const [userSchedules, setUserSchedules] = useState([]);
+  useEffect(() => {
+    if (!uid) return;
+    const unsub = subscribeToUserSchedules(uid, (schedules) => {
+      setUserSchedules(schedules);
+    });
+    return () => unsub();
+  }, [uid]);
+
+  // Auto check-in banner state
+  const [autoCheckInBanner, setAutoCheckInBanner] = useState(false);
+
+  const handleAutoCheckIn = useCallback(async (gym) => {
+    try {
+      await checkIn(gym.id);
+      hapticSuccess();
+      setAutoCheckInBanner(true);
+      setTimeout(() => setAutoCheckInBanner(false), 4000);
+    } catch (err) {
+      if (__DEV__) console.warn('[AUTO CHECK-IN] Failed:', err?.message);
+      Alert.alert(
+        'Auto Check-In Failed',
+        err?.message || 'Could not check you in automatically. Please tap "Check In Here" manually.',
+      );
+    }
+  }, [checkIn]);
+
+  // Read auto check-in preference (default true)
+  const autoCheckInEnabled = profile?.preferences?.autoCheckInEnabled ?? true;
+
   // ── Smart proximity check-in ──────────────────────────────────────────────
   // Only monitors THIS gym (not the full list) — we're already on its page.
+  // If the user has a scheduled visit here, auto check-in fires silently.
   const { nearbyGym, dismiss: dismissProximity } = useProximityCheckIn({
     gyms: gym ? [gym] : [],
     isCheckedIn: isCheckedInHere,
+    userSchedules,
+    onAutoCheckIn: autoCheckInEnabled ? handleAutoCheckIn : null,
   });
   const [proximityCheckingIn, setProximityCheckingIn] = useState(false);
 
@@ -439,6 +476,13 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [startingRun, setStartingRun] = useState(false);
   const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
   const [joiningRunId, setJoiningRunId] = useState(null);       // runId being joined
+
+  // ── Optimistic UI state ─────────────────────────────────────────────────────
+  // These flip instantly on tap and revert only if the server returns an error,
+  // so the UI feels immediate even when Firebase takes a few seconds to respond.
+  const [optimisticCheckedIn, setOptimisticCheckedIn] = useState(false);
+  const [optimisticJoinedIds, setOptimisticJoinedIds] = useState(new Set());
+  const [optimisticLeftIds,   setOptimisticLeftIds]   = useState(new Set());
 
   // ── Report modal state ──────────────────────────────────────────────────
   const [reportVisible, setReportVisible] = useState(false);
@@ -593,20 +637,30 @@ export default function RunDetailsScreen({ route, navigation }) {
    * Delegates to runService.startOrJoinRun() which implements the merge rule.
    */
   const handleStartOrJoinRun = async () => {
-    if (!selectedRunSlot) return;
+    if (!selectedRunSlot || startingRun) return; // prevent double-tap
+    hapticMedium();
     const gymDisplayName = gym?.name || gymName;
-    setStartingRun(true);
+
+    // Snapshot the values we need before resetting state.
+    const runDate         = selectedRunSlot.date;
+    const runLevelSnap    = runLevel;
+
+    // ── Close the modal immediately — don't wait for the write ──────────────
+    // The Firestore write runs in the background. The run list updates via the
+    // live useGymRuns subscription once the write lands (usually < 1s).
+    setRunModalVisible(false);
+    setSelectedRunDay(null);
+    setSelectedRunSlot(null);
+    setRunLevel('mixed');
+    setStartingRun(true); // blocks a second tap until the write settles
+
     try {
       const { created } = await startOrJoinRun(
         gymId,
         gymDisplayName,
-        selectedRunSlot.date,
-        runLevel
+        runDate,
+        runLevelSnap,
       );
-      setRunModalVisible(false);
-      setSelectedRunDay(null);
-      setSelectedRunSlot(null);
-      setRunLevel('mixed'); // reset so next open starts fresh
       if (created) {
         Alert.alert(
           'Run Started!',
@@ -621,7 +675,9 @@ export default function RunDetailsScreen({ route, navigation }) {
         );
       }
     } catch (err) {
-      Alert.alert('Error', err.message || 'Could not start run. Please try again.');
+      // Write failed — modal is already closed so just surface the error.
+      // The run list never updated (no write landed) so nothing to roll back.
+      Alert.alert('Couldn\'t Start Run', err.message || 'Please try again.');
     } finally {
       setStartingRun(false);
     }
@@ -636,7 +692,11 @@ export default function RunDetailsScreen({ route, navigation }) {
   const handleJoinRun = async (run) => {
     if (joiningRunId === run.id) return;  // already in flight for this run
     const gymDisplayName = gym?.name || gymName;
-    setJoiningRunId(run.id);
+
+    // Optimistic: immediately show "Going" badge — revert only on error.
+    setOptimisticJoinedIds((prev) => new Set([...prev, run.id]));
+    setOptimisticLeftIds((prev) => { const n = new Set(prev); n.delete(run.id); return n; });
+    setJoiningRunId(run.id); // still track to block duplicate taps while in-flight
     try {
       await joinExistingRun(run.id, gymId, gymDisplayName);
       hapticSuccess();
@@ -646,6 +706,8 @@ export default function RunDetailsScreen({ route, navigation }) {
         [{ text: 'Let\'s go!' }]
       );
     } catch (err) {
+      // Revert optimistic state — join did not succeed.
+      setOptimisticJoinedIds((prev) => { const n = new Set(prev); n.delete(run.id); return n; });
       Alert.alert('Error', err.message || 'Could not join run. Please try again.');
     } finally {
       setJoiningRunId(null);
@@ -656,10 +718,16 @@ export default function RunDetailsScreen({ route, navigation }) {
    * handleLeaveRun — Removes the current user from a run.
    */
   const handleLeaveRun = async (runId) => {
+    hapticHeavy();
+    // Optimistic: immediately revert button to "Join Run" — revert only on error.
+    setOptimisticLeftIds((prev) => new Set([...prev, runId]));
+    setOptimisticJoinedIds((prev) => { const n = new Set(prev); n.delete(runId); return n; });
     setLeavingRunId(runId);
     try {
       await leaveRun(runId);
     } catch (err) {
+      // Revert optimistic state — leave did not succeed.
+      setOptimisticLeftIds((prev) => { const n = new Set(prev); n.delete(runId); return n; });
       Alert.alert('Error', err.message || 'Could not leave run. Please try again.');
     } finally {
       setLeavingRunId(null);
@@ -675,6 +743,9 @@ export default function RunDetailsScreen({ route, navigation }) {
    * surfaces the updated player list automatically.
    */
   const handleCheckInHere = async () => {
+    // Optimistic: flip the button to "You're Checked In" immediately.
+    // The real Firestore presence subscription will catch up in the background.
+    setOptimisticCheckedIn(true);
     try {
       const gymDisplayName = gym?.name || gymName;
 
@@ -698,6 +769,9 @@ export default function RunDetailsScreen({ route, navigation }) {
         [{ text: 'OK' }]
       );
     } catch (error) {
+      // Revert optimistic state — the check-in did not succeed.
+      setOptimisticCheckedIn(false);
+
       // Expected check-in failures (too far, no permission) are normal UX —
       // log at warn level, not error, to avoid noisy dev output.
       if (__DEV__) console.warn('[RunDetails] Check-in:', error.message);
@@ -1053,6 +1127,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   const toggleFollow = async () => {
     const uid = auth.currentUser?.uid;
     if (!uid) return;
+    hapticLight();
     setFollowLoading(true);
     try {
       await updateDoc(doc(db, 'users', uid), {
@@ -1107,6 +1182,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            hapticHeavy();
             try {
               await deleteDoc(doc(db, 'gyms', gymId, 'reviews', reviewId));
             } catch (err) {
@@ -1251,13 +1327,14 @@ export default function RunDetailsScreen({ route, navigation }) {
         Alert.alert('Error', 'Could not submit your review. Please try again.');
         return;
       }
+      // Review written — close modal and reset form immediately.
+      // Points are awarded fire-and-forget in reviewService so they never
+      // block this path.
+      hapticSuccess();
       setReviewModalVisible(false);
       setSelectedRating(0);
       setReviewText('');
-      const message = pointsResult?.rankChanged
-        ? `Review submitted! You ranked up to ${pointsResult.newRank?.name}! 🎉`
-        : 'Review submitted! +15 pts 🎉';
-      Alert.alert(message);
+      Alert.alert('Review submitted! ✓');
     } catch (err) {
       if (__DEV__) console.error('handleSubmitReview error:', err);
       Alert.alert('Error', 'Could not submit your review. Please try again.');
@@ -1620,7 +1697,7 @@ export default function RunDetailsScreen({ route, navigation }) {
           />
         }
       >
-        {/* Hero image header with an absolute-positioned back button */}
+        {/* ── V3 Magazine Hero ─────────────────────────────────────────────── */}
         <View style={styles.heroContainer}>
           <Image
             source={
@@ -1633,19 +1710,71 @@ export default function RunDetailsScreen({ route, navigation }) {
             style={styles.heroImage}
             resizeMode="cover"
           />
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() =>
-              navigation.canGoBack()
-                ? navigation.goBack()
-                : navigation.navigate('ViewRunsMain')
-            }
-          >
-            <Ionicons name="chevron-back" size={24} color="#fff" />
-          </TouchableOpacity>
+          {/* Gradient overlay — dark at top + heavy at bottom so title is legible */}
+          <LinearGradient
+            colors={['rgba(0,0,0,0.5)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.88)']}
+            locations={[0, 0.25, 1]}
+            style={StyleSheet.absoluteFill}
+            pointerEvents="none"
+          />
+          {/* Top nav bar */}
+          <View style={styles.heroNav}>
+            <TouchableOpacity
+              style={styles.heroNavBtn}
+              onPress={() => navigation.canGoBack() ? navigation.goBack() : navigation.navigate('ViewRunsMain')}
+            >
+              <Ionicons name="chevron-back" size={22} color="#fff" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.heroNavBtn}
+              onPress={() => Alert.alert(
+                gym?.name || gymName,
+                undefined,
+                [
+                  {
+                    text: isHomeCourt ? 'Remove Home Court' : 'Set as Home Court',
+                    onPress: toggleHomeCourt,
+                  },
+                  {
+                    text: 'Report Gym',
+                    style: 'destructive',
+                    onPress: () => { setReportType('gym'); setReportTargetId(gymId); setReportVisible(true); },
+                  },
+                  { text: 'Cancel', style: 'cancel' },
+                ],
+              )}
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
+          {/* Title block — overlaid at the bottom of the hero photo */}
+          <View style={styles.heroTitleBlock}>
+            <View style={styles.heroPillRow}>
+              {gym?.accessType === 'free' && (
+                <View style={styles.heroPillFree}>
+                  <Text style={styles.heroPillFreeText}>FREE</Text>
+                </View>
+              )}
+              {gym?.type && (
+                <Text style={styles.heroPillMeta}>
+                  {gym?.accessType === 'free' ? '· ' : ''}{gym.type === 'outdoor' ? 'OUTDOOR' : 'INDOOR'}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.heroGymName} numberOfLines={2}>{gym?.name || gymName}</Text>
+            <Text style={styles.heroSubText}>
+              {reviews.length > 0
+                ? (() => {
+                    const avg = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length;
+                    return `★ ${avg.toFixed(1)}  ·  ${playerCount} here now  ·  ${reviews.length} ${reviews.length === 1 ? 'review' : 'reviews'}`;
+                  })()
+                : `${playerCount} here now`
+              }
+            </Text>
+          </View>
         </View>
 
-        {/* Dismissible error banner — shown when reviews or clips snapshot fails */}
+        {/* Dismissible error banner */}
         {fetchError && (
           <TouchableOpacity style={styles.errorBanner} onPress={() => setFetchError(false)} activeOpacity={0.8}>
             <Ionicons name="alert-circle-outline" size={16} color="#fff" />
@@ -1654,296 +1783,231 @@ export default function RunDetailsScreen({ route, navigation }) {
           </TouchableOpacity>
         )}
 
-        {/* Gym name, address, directions button, and type badge */}
-        <View style={styles.header}>
-          {/* Gym name — full-width row so long names wrap naturally */}
-          <Text style={styles.gymName} numberOfLines={2}>{gym?.name || gymName}</Text>
-
-          {/* Action buttons row — sits below the name so it never competes for space */}
-          <View style={styles.gymActionRow}>
-            <TouchableOpacity
-              style={[
-                styles.followButton,
-                isFollowed && styles.followButtonActive,
-              ]}
-              onPress={toggleFollow}
-              disabled={followLoading}
-            >
-              <Ionicons
-                name={isFollowed ? 'heart' : 'heart-outline'}
-                size={16}
-                color={isFollowed ? '#EF4444' : colors.textSecondary}
-                style={{ marginRight: 4 }}
-              />
-              <Text
-                style={[
-                  styles.followButtonText,
-                  isFollowed && styles.followButtonTextActive,
-                ]}
-              >
-                {isFollowed ? 'Following' : 'Follow'}
+        {/* Auto check-in confirmation banner */}
+        {autoCheckInBanner && (
+          <View style={styles.autoCheckInBanner}>
+            <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+            <View style={styles.autoCheckInBannerContent}>
+              <Text style={styles.autoCheckInBannerTitle}>Auto Checked In!</Text>
+              <Text style={styles.autoCheckInBannerSubtitle}>
+                You were automatically checked in based on your scheduled visit.
               </Text>
-            </TouchableOpacity>
-            {/* Home Court toggle — separate from Follow/heart */}
-            <TouchableOpacity
-              style={[
-                styles.followButton,
-                isHomeCourt && { backgroundColor: '#6366F120', borderColor: '#6366F155' },
-              ]}
-              onPress={toggleHomeCourt}
-              disabled={homeCourtLoading}
-            >
-              <Ionicons
-                name={isHomeCourt ? 'home' : 'home-outline'}
-                size={16}
-                color={isHomeCourt ? '#6366F1' : colors.textSecondary}
-                style={{ marginRight: 4 }}
-              />
-              <Text
-                style={[
-                  styles.followButtonText,
-                  isHomeCourt && { color: '#6366F1' },
-                ]}
-              >
-                {isHomeCourt ? 'Home Court' : 'Set Home'}
-              </Text>
-            </TouchableOpacity>
-            {/* Report gym */}
-            <TouchableOpacity
-              style={styles.followButton}
-              onPress={() => { setReportType('gym'); setReportTargetId(gymId); setReportVisible(true); }}
-            >
-              <Ionicons name="flag-outline" size={16} color={colors.textSecondary} style={{ marginRight: 4 }} />
-              <Text style={styles.followButtonText}>Report</Text>
-            </TouchableOpacity>
+            </View>
           </View>
-          {/* Access type badge — shown immediately below the name */}
-          {gym?.accessType && (
-            <View style={[styles.accessBadge, { backgroundColor: gym.accessType === 'free' ? '#22C55E' : '#F59E0B' }]}>
-              <Text style={styles.accessBadgeText}>
-                {gym.accessType === 'free' ? 'Free' : 'Membership / Day Pass'}
-              </Text>
+        )}
+
+        {/* Smart proximity prompt */}
+        {nearbyGym && locationEnabled && !isCheckedInHere && !optimisticCheckedIn && (
+          <View style={styles.proximityCard}>
+            <View style={styles.proximityIconWrap}>
+              <Ionicons name="location" size={22} color="#FF7A45" />
             </View>
-          )}
-
-          {/* Smart proximity prompt — shown when user is physically at this gym */}
-          {nearbyGym && locationEnabled && !isCheckedInHere && (
-            <View style={styles.proximityCard}>
-              <View style={styles.proximityIconWrap}>
-                <Ionicons name="location" size={22} color="#FF7A45" />
-              </View>
-              <View style={styles.proximityContent}>
-                <Text style={styles.proximityTitle}>You're at {nearbyGym.name}</Text>
-                <Text style={styles.proximitySubtitle}>
-                  Looks like you arrived. Check in to let players know you're here.
-                </Text>
-                <View style={styles.proximityButtons}>
-                  <TouchableOpacity
-                    style={styles.proximityCheckInBtn}
-                    onPress={handleProximityCheckIn}
-                    disabled={proximityCheckingIn}
-                    activeOpacity={0.82}
-                  >
-                    {proximityCheckingIn ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.proximityCheckInText}>Check In</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.proximityDismissBtn}
-                    onPress={() => dismissProximity(nearbyGym.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.proximityDismissText}>Not now</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Primary CTA — one-tap check-in directly into this gym */}
-          <TouchableOpacity
-            style={[
-              styles.checkInButton,
-              isCheckedInHere && styles.checkInButtonCheckedIn,
-              (checkingIn || isCheckedInHere) && { opacity: isCheckedInHere ? 1 : 0.6 },
-            ]}
-            onPress={handleCheckInHere}
-            disabled={checkingIn || isCheckedInHere}
-          >
-            {checkingIn ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : isCheckedInHere ? (
-              <>
-                <Ionicons name="checkmark-circle" size={16} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.checkInButtonText}>You're Checked In</Text>
-              </>
-            ) : (
-              <Text style={styles.checkInButtonText}>Check In Here</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Check-in helper text */}
-          {!isCheckedInHere && (
-            <Text style={styles.checkInHelper}>
-              You must be at the gym to check in.
-            </Text>
-          )}
-
-          {/* Start a Run — secondary CTA, visually distinct from Check In */}
-          <TouchableOpacity
-            style={styles.startRunCTA}
-            onPress={() => withReliabilityGate(() => setRunModalVisible(true))}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
-            <Text style={styles.startRunCTAText}>Start a Run</Text>
-          </TouchableOpacity>
-
-          {/* Location permission CTA — shown when not granted and not already checked in */}
-          {!locationEnabled && !isCheckedInHere && (
-            <TouchableOpacity style={styles.locationCTA} activeOpacity={0.8} onPress={handleEnableLocation}>
-              <Ionicons name="location" size={16} color="#F97316" />
-              <Text style={styles.locationCTAText}>Enable location for check-in</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-            </TouchableOpacity>
-          )}
-
-          {/* Location block — address, directions, type, and notes grouped together */}
-          <View style={styles.locationBlock}>
-            <Text style={styles.gymAddress}>{gym?.address}</Text>
-            {gym?.location && (
-              <TouchableOpacity
-                style={styles.directionsButton}
-                onPress={() => openDirections(gym.location, gym.name)}
-              >
-                <Ionicons name="navigate-outline" size={16} color={colors.infoText} style={{ marginRight: 6 }} />
-                <Text style={styles.directionsButtonText}>Get Directions</Text>
-              </TouchableOpacity>
-            )}
-            {gym?.type && (
-              <Text style={styles.gymType}>
-                {gym.type === 'outdoor' ? 'Outdoor' : 'Indoor'}
+            <View style={styles.proximityContent}>
+              <Text style={styles.proximityTitle}>You're at {nearbyGym.name}</Text>
+              <Text style={styles.proximitySubtitle}>
+                Looks like you arrived. Check in to let players know you're here.
               </Text>
-            )}
-            {/* Access info — only for paid gyms; explains day pass option so users
-                don't assume they need a full membership to play */}
-            {gym?.accessType && gym.accessType !== 'free' && (
-              <View style={styles.accessInfoRow}>
-                <Ionicons name="information-circle-outline" size={15} color="#F59E0B" style={{ marginRight: 8, marginTop: 1 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.accessInfoTitle}>Membership or day pass required</Text>
-                  <Text style={styles.accessInfoBody}>
-                    Day passes are typically available at the front desk. Call ahead to confirm pricing and availability.
-                  </Text>
-                </View>
-              </View>
-            )}
-            {gym?.notes ? (
-              <Text style={styles.gymNotes}>{gym.notes}</Text>
-            ) : null}
-
-            {/* ── Hours of operation ─────────────────────────────────────────
-                Stored in Firestore as gym.hours = { monday: { open: "HH:MM", close: "HH:MM" }, ... }
-                Today's hours shown inline; tap the row to expand the full week.
-            ──────────────────────────────────────────────────────────────── */}
-            {gym?.hours && (() => {
-              const todayKey = DAYS_OF_WEEK[new Date().getDay()];
-              const todayHours = gym.hours[todayKey];
-              return (
-                <View style={styles.hoursBlock}>
-                  <TouchableOpacity
-                    style={styles.hoursHeader}
-                    onPress={() => setHoursExpanded((prev) => !prev)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.hoursHeaderLeft}>
-                      <Ionicons name="time-outline" size={14} color={colors.primary} style={{ marginRight: 6 }} />
-                      <Text style={styles.hoursToday}>
-                        Today: <Text style={styles.hoursTodayValue}>{formatHoursRange(todayHours)}</Text>
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name={hoursExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={14}
-                      color={colors.textMuted}
-                    />
-                  </TouchableOpacity>
-
-                  {hoursExpanded && (
-                    <View style={styles.hoursWeek}>
-                      {DAYS_OF_WEEK.map((day) => {
-                        const isCurrentDay = day === todayKey;
-                        return (
-                          <View key={day} style={styles.hoursRow}>
-                            <Text style={[styles.hoursDay, isCurrentDay && styles.hoursDayToday]}>
-                              {day.charAt(0).toUpperCase() + day.slice(1, 3)}
-                            </Text>
-                            <Text style={[styles.hoursTime, isCurrentDay && styles.hoursTimeToday]}>
-                              {formatHoursRange(gym.hours[day])}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
+              <View style={styles.proximityButtons}>
+                <TouchableOpacity
+                  style={styles.proximityCheckInBtn}
+                  onPress={handleProximityCheckIn}
+                  disabled={proximityCheckingIn}
+                  activeOpacity={0.82}
+                >
+                  {proximityCheckingIn ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.proximityCheckInText}>Check In</Text>
                   )}
-                </View>
-              );
-            })()}
-
-            {/* ── Gym website — shown only for membership/day-pass gyms ──────
-                Lets players visit the gym's site for membership pricing info.
-                Stored in Firestore as gym.websiteUrl (string URL).
-            ──────────────────────────────────────────────────────────────── */}
-            {gym?.websiteUrl && gym?.accessType !== 'free' && (
-              <TouchableOpacity
-                style={styles.websiteButton}
-                onPress={() => Linking.openURL(gym.websiteUrl).catch(() => {})}
-                activeOpacity={0.75}
-              >
-                <Ionicons name="globe-outline" size={15} color={colors.infoText} style={{ marginRight: 6 }} />
-                <Text style={styles.websiteButtonText}>Visit Gym Website</Text>
-                <Ionicons name="open-outline" size={12} color={colors.infoText} style={{ marginLeft: 4 }} />
-              </TouchableOpacity>
-            )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.proximityDismissBtn}
+                  onPress={() => dismissProximity(nearbyGym.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.proximityDismissText}>Not now</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
+        )}
+
+        {/* Location permission CTA */}
+        {!locationEnabled && !isCheckedInHere && !optimisticCheckedIn && (
+          <TouchableOpacity style={styles.locationCTA} activeOpacity={0.8} onPress={handleEnableLocation}>
+            <Ionicons name="location" size={16} color="#F97316" />
+            <Text style={styles.locationCTAText}>Enable location for check-in</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
+
+        {/* ── Action toolbar — Directions / Save / Share ──────────────────── */}
+        <View style={styles.actionToolbar}>
+          {[
+            {
+              label: 'Directions',
+              icon: 'navigate-outline',
+              onPress: () => gym?.location && openDirections(gym.location, gym.name),
+            },
+            {
+              label: isFollowed ? 'Saved ✓' : 'Save',
+              icon: isFollowed ? 'bookmark' : 'bookmark-outline',
+              onPress: toggleFollow,
+            },
+            {
+              label: 'Share',
+              icon: 'share-outline',
+              onPress: () => {
+                const name = gym?.name || gymName;
+                Share.share({
+                  title: name,
+                  message: `Check out ${name} on RunCheck — find real pickup basketball runs near you. https://theruncheck.app`,
+                }).catch(() => {});
+              },
+            },
+          ].map(({ label, icon, onPress }) => (
+            <TouchableOpacity key={label} style={styles.toolbarBtn} onPress={onPress} activeOpacity={0.7}>
+              <Ionicons name={icon} size={18} color="rgba(255,255,255,0.85)" />
+              <Text style={styles.toolbarBtnLabel}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {/* Stats card — Players Here (with pulse dot), Planning Today, Planning Tomorrow */}
-        <View style={styles.statsCard}>
-          {/* Live now stat */}
-          <View style={styles.statItem}>
-            <View style={styles.statRow}>
-              {playerCount > 0 && (
-                // Pulsing dot only shown when at least one player is checked in
-                <Animated.View style={[styles.pulseDot, { opacity: pulseAnim }]} />
-              )}
-              <Text style={styles.statNumber}>{playerCount}</Text>
+        {/* ── HAPPENING HERE ──────────────────────────────────────────────── */}
+        <View style={styles.happeningHeader}>
+          <Text style={styles.happeningTitle}>HAPPENING HERE</Text>
+        </View>
+
+        {playerCount === 0 ? (
+          <View style={styles.emptyStateCard}>
+            <View style={[styles.emptyStateIcon, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}40` }]}>
+              <Text style={{ fontSize: 22 }}>🏀</Text>
             </View>
-            <Text style={styles.statLabel}>
-              {playerCount === 1 ? 'Player' : 'Players'} Here
-            </Text>
-            {playerCount > 0 && (
-              <Text style={styles.gameOnLabel}>Game On</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.emptyStateTitle}>No one's playing yet</Text>
+              <Text style={styles.emptyStateSub}>Be the first to start a run today.</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyStateCard}>
+            <View style={[styles.emptyStateIcon, { backgroundColor: `${colors.primary}18`, borderColor: `${colors.primary}40` }]}>
+              <Animated.View style={{ opacity: pulseAnim }}>
+                <Text style={{ fontSize: 22 }}>🏀</Text>
+              </Animated.View>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.emptyStateTitle}>
+                {playerCount} {playerCount === 1 ? 'player' : 'players'} here now
+              </Text>
+              <Text style={styles.emptyStateSub}>Live · updated in real time</Text>
+            </View>
+          </View>
+        )}
+
+        {/* ── Info rows — Address / Hours / Reviews ───────────────────────── */}
+        <View style={styles.infoRows}>
+          {/* Address */}
+          {gym?.address && (
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Address</Text>
+              <Text style={styles.infoValue} numberOfLines={1}>{gym.address}</Text>
+            </View>
+          )}
+
+          {/* Hours */}
+          {gym?.hours && (() => {
+            const todayKey = DAYS_OF_WEEK[new Date().getDay()];
+            const todayHours = gym.hours[todayKey];
+            const hoursStr = formatHoursRange(todayHours);
+            const isOpen = hoursStr !== 'Closed';
+            return (
+              <TouchableOpacity
+                style={styles.infoRow}
+                onPress={() => setHoursExpanded((prev) => !prev)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.infoLabel}>Hours</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={[styles.infoValue, isOpen && { color: '#22C55E' }]}>{hoursStr}</Text>
+                  <Ionicons
+                    name={hoursExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={12}
+                    color="rgba(255,255,255,0.4)"
+                  />
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
+
+          {/* Hours expanded — full week */}
+          {gym?.hours && hoursExpanded && (() => {
+            const todayKey = DAYS_OF_WEEK[new Date().getDay()];
+            return (
+              <View style={styles.hoursWeekExpanded}>
+                {DAYS_OF_WEEK.map((day) => (
+                  <View key={day} style={styles.hoursRow}>
+                    <Text style={[styles.hoursDay, day === todayKey && styles.hoursDayToday]}>
+                      {day.charAt(0).toUpperCase() + day.slice(1, 3)}
+                    </Text>
+                    <Text style={[styles.hoursTime, day === todayKey && styles.hoursTimeToday]}>
+                      {formatHoursRange(gym.hours[day])}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })()}
+
+          {/* Reviews */}
+          <TouchableOpacity
+            style={styles.infoRow}
+            onPress={() => navigation.navigate('GymReviews', { gymId, gymName: gym?.name || gymName })}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.infoLabel}>Reviews</Text>
+            {reviews.length > 0 ? (() => {
+              const avg = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length;
+              return (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Text style={{ color: '#FACC15', fontSize: 13 }}>
+                    {'★'.repeat(Math.round(avg))}{'☆'.repeat(5 - Math.round(avg))}
+                  </Text>
+                  <Text style={styles.infoValue}>See all ({reviews.length})</Text>
+                </View>
+              );
+            })() : (
+              <Text style={[styles.infoValue, { color: 'rgba(255,255,255,0.3)' }]}>No reviews yet</Text>
             )}
-          </View>
+          </TouchableOpacity>
 
-          <View style={styles.statDivider} />
+          {/* Access info — paid gyms only */}
+          {gym?.accessType && gym.accessType !== 'free' && (
+            <View style={styles.accessInfoRow}>
+              <Ionicons name="information-circle-outline" size={15} color="#F59E0B" style={{ marginRight: 8, marginTop: 1 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.accessInfoTitle}>Membership or day pass required</Text>
+                <Text style={styles.accessInfoBody}>
+                  Day passes are typically available at the front desk. Call ahead to confirm pricing and availability.
+                </Text>
+              </View>
+            </View>
+          )}
 
-          {/* Planning today stat */}
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{todayCount}</Text>
-            <Text style={styles.statLabel}>Planning{'\n'}Today</Text>
-          </View>
+          {/* Notes */}
+          {gym?.notes ? <Text style={styles.gymNotes}>{gym.notes}</Text> : null}
 
-          <View style={styles.statDivider} />
-
-          {/* Planning tomorrow stat */}
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{tomorrowCount}</Text>
-            <Text style={styles.statLabel}>Planning{'\n'}Tomorrow</Text>
-          </View>
+          {/* Website */}
+          {gym?.websiteUrl && gym?.accessType !== 'free' && (
+            <TouchableOpacity
+              style={styles.websiteButton}
+              onPress={() => Linking.openURL(gym.websiteUrl).catch(() => {})}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="globe-outline" size={15} color={colors.infoText} style={{ marginRight: 6 }} />
+              <Text style={styles.websiteButtonText}>Visit Gym Website</Text>
+              <Ionicons name="open-outline" size={12} color={colors.infoText} style={{ marginLeft: 4 }} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* ── Upcoming Runs ───────────────────────────────────────────────────
@@ -1951,12 +2015,19 @@ export default function RunDetailsScreen({ route, navigation }) {
             Now Playing so the Start a Run CTA is prominent near the top.
             Separate from the check-in / presence system — no Firestore schema changes.
         ─────────────────────────────────────────────────────────────────── */}
-        <View style={[styles.runsSection, { marginHorizontal: SPACING.lg }]}>
-          <View style={styles.runsSectionHeader}>
-            <View style={styles.runsSectionTitleRow}>
-              <Ionicons name="basketball-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.runsSectionTitle}>Upcoming Runs</Text>
-            </View>
+        {/* ── Upcoming Runs — Ticket style ────────────────────────────────── */}
+        <View style={styles.ticketSection}>
+          {/* Flat section header */}
+          <View style={styles.ticketSectionHeader}>
+            <Text style={styles.ticketSectionTitle}>
+              UPCOMING RUNS{sortedRuns.length > 0 ? ` · ${sortedRuns.length}` : ''}
+            </Text>
+            <TouchableOpacity
+              onPress={() => withReliabilityGate(() => setRunModalVisible(true))}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.ticketSectionLink, { color: colors.primary }]}>+ New run</Text>
+            </TouchableOpacity>
           </View>
 
           {sortedRuns.length === 0 ? (
@@ -1966,127 +2037,176 @@ export default function RunDetailsScreen({ route, navigation }) {
             </View>
           ) : (
             sortedRuns.map((run) => {
-              const isJoined = joinedRunIds.has(run.id);
+              const isJoined =
+                (joinedRunIds.has(run.id) || optimisticJoinedIds.has(run.id)) &&
+                !optimisticLeftIds.has(run.id);
+              const isHosting = run.creatorId === uid;
               const isLeaving = leavingRunId === run.id;
+
+              // Stripe color
+              const stripeColor = isHosting
+                ? colors.primary
+                : isJoined
+                ? '#22C55E'
+                : 'rgba(255,255,255,0.15)';
+
+              // Status badge (only for going/hosting)
+              const statusBadge = isHosting
+                ? { label: 'HOSTING', bg: `${colors.primary}18`, border: `${colors.primary}40`, text: colors.primary }
+                : isJoined
+                ? { label: 'GOING', bg: 'rgba(34,197,94,0.15)', border: 'rgba(34,197,94,0.3)', text: '#22C55E' }
+                : null;
+
+              // Time headline + relative hint
+              const runDate = run.startTime?.toDate ? run.startTime.toDate() : run.startTime ? new Date(run.startTime) : null;
+              const now = new Date();
+              let timeHeadline = formatRunTime(run.startTime);
+              let timeHint = '';
+              if (runDate) {
+                const diffMs = runDate - now;
+                const diffHr = diffMs / 3600000;
+                if (diffHr >= 0 && diffHr < 24) {
+                  timeHint = `· in ${Math.round(diffHr)} hr`;
+                } else if (diffHr >= 24) {
+                  timeHint = `· ${runDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                }
+              }
+
+              // Type config
+              const level = run.runLevel ?? 'mixed';
+              const typeLabel = level === 'competitive' ? 'Competitive' : level === 'casual' ? 'Casual' : 'Balanced';
+              const typeDot = level === 'competitive' ? '#F87171' : level === 'casual' ? '#22C55E' : '#94A3B8';
+
+              // Avatar stack from participants map
+              const participants = runParticipantsMap[run.id] || [];
+              const visibleAvatars = participants.slice(0, 3);
+              const extraCount = Math.max(0, (run.participantCount || participants.length) - 3);
+
               return (
-                <View key={run.id} style={[styles.runCard, { alignItems: 'flex-start' }]}>
-                  <View style={styles.runCardLeft}>
-                    <Text style={styles.runCardTime}>{formatRunTime(run.startTime)}</Text>
-                    {/* Run level badge — tap to explain what each level means */}
-                    {(() => {
-                      const level = run.runLevel ?? 'mixed';
-                      const levelColor =
-                        level === 'competitive' ? '#EF4444' :
-                        level === 'casual'      ? '#22C55E' : '#94A3B8';
-                      const levelLabel =
-                        level === 'mixed' ? 'Balanced' :
-                        level.charAt(0).toUpperCase() + level.slice(1);
-                      return (
-                        <TouchableOpacity
-                          onPress={() => setInfoSheetType('runLevel')}
-                          activeOpacity={0.7}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <View style={[styles.runLevelBadge, { backgroundColor: levelColor + '18', borderColor: levelColor + '44' }]}>
-                            <Text style={[styles.runLevelBadgeText, { color: levelColor }]}>
-                              {levelLabel}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })()}
-                    {/* Competitive meter — labeled row so it reads as distinct from the badge above */}
-                    {(() => {
-                      const bars = getCompetitiveBars(run.id, run.runLevel, runParticipantsMap, presences);
-                      const barColor =
-                        bars >= 4 ? '#EF4444' :
-                        bars <= 2 ? '#22C55E' : '#94A3B8';
-                      return (
-                        <TouchableOpacity
-                          onPress={() => setInfoSheetType('meter')}
-                          activeOpacity={0.7}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <View style={styles.compMeterLabeledRow}>
-                            <Text style={styles.compMeterLabel}>Intensity</Text>
-                            <View style={styles.compMeterRow}>
-                              {[1, 2, 3, 4, 5].map((i) => (
-                                <View
-                                  key={i}
-                                  style={[
-                                    styles.compMeterBar,
-                                    { backgroundColor: i <= bars ? barColor : colors.border },
-                                  ]}
-                                />
-                              ))}
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })()}
-                    {renderRunParticipantAvatars(run.id)}
-                    {run.creatorName ? (
-                      <Text style={styles.runStartedBy}>Started by {run.creatorName}</Text>
-                    ) : null}
-                  </View>
-                  <View style={[styles.runCardRight, { paddingTop: 2 }]}>
-                    {isJoined ? (
-                      <View style={styles.runJoinedActions}>
-                        <View style={styles.runGoingBadge}>
-                          <Text style={styles.runGoingBadgeText}>Going</Text>
+                <TouchableOpacity
+                  key={run.id}
+                  style={styles.ticketCard}
+                  onPress={() => {/* future: run detail screen */}}
+                  activeOpacity={0.92}
+                >
+                  {/* Colored left stripe */}
+                  <View style={[styles.ticketStripe, { backgroundColor: stripeColor }]} />
+
+                  {/* Card body */}
+                  <View style={styles.ticketBody}>
+                    {/* Header row */}
+                    <View style={styles.ticketHeaderRow}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        {/* Time + hint */}
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                          <Text style={styles.ticketTime}>{timeHeadline}</Text>
+                          {!!timeHint && <Text style={styles.ticketTimeHint}>{timeHint}</Text>}
                         </View>
-                        <TouchableOpacity
-                          style={styles.runLeaveButton}
-                          onPress={() => handleLeaveRun(run.id)}
-                          disabled={isLeaving}
-                        >
-                          {isLeaving ? (
-                            <ActivityIndicator size="small" color={colors.textMuted} />
-                          ) : (
-                            <Text style={styles.runLeaveButtonText}>Leave</Text>
-                          )}
-                        </TouchableOpacity>
+                        {/* Subtitle: type dot + label · by host */}
+                        <View style={styles.ticketSubRow}>
+                          <View style={[styles.ticketTypeDot, { backgroundColor: typeDot }]} />
+                          <Text style={styles.ticketMeta}>{typeLabel}</Text>
+                          <View style={styles.ticketDotSep} />
+                          <Text style={styles.ticketMeta}>by {run.creatorName || 'Unknown'}</Text>
+                        </View>
                       </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={[styles.runJoinButton, joiningRunId === run.id && { opacity: 0.6 }]}
-                        onPress={() => withReliabilityGate(() => handleJoinRun(run))}
-                        disabled={joiningRunId === run.id}
-                      >
-                        {joiningRunId === run.id ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text style={styles.runJoinButtonText}>Join Run</Text>
+                      {/* Status badge */}
+                      {statusBadge && (
+                        <View style={[styles.ticketStatusBadge, {
+                          backgroundColor: statusBadge.bg,
+                          borderColor: statusBadge.border,
+                        }]}>
+                          <Text style={[styles.ticketStatusText, { color: statusBadge.text }]}>
+                            {statusBadge.label}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Footer row */}
+                    <View style={styles.ticketFooter}>
+                      {/* Avatar stack + count */}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: 'row' }}>
+                          {visibleAvatars.map((p, idx) => (
+                            <TouchableOpacity
+                              key={p.userId}
+                              onPress={() => navigation.navigate('UserProfile', { userId: p.userId })}
+                              activeOpacity={0.75}
+                              style={[styles.ticketAvatar, idx > 0 && { marginLeft: -8 }]}
+                            >
+                              {p.userAvatar ? (
+                                <Image source={{ uri: p.userAvatar }} style={styles.ticketAvatarImg} />
+                              ) : (
+                                <View style={styles.ticketAvatarFallback}>
+                                  <Text style={styles.ticketAvatarInitial}>
+                                    {(p.userName || '?')[0].toUpperCase()}
+                                  </Text>
+                                </View>
+                              )}
+                            </TouchableOpacity>
+                          ))}
+                          {extraCount > 0 && (
+                            <View style={[styles.ticketAvatarExtra, { marginLeft: visibleAvatars.length > 0 ? -8 : 0 }]}>
+                              <Text style={styles.ticketAvatarExtraText}>+{extraCount}</Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.ticketGoingCount}>
+                          {' '}{run.participantCount || participants.length} going
+                        </Text>
+                      </View>
+
+                      {/* Action buttons */}
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        {/* Chat — only for participants */}
+                        {isJoined && (
+                          <TouchableOpacity
+                            style={styles.ticketChatBtn}
+                            onPress={() => navigation.navigate('RunChat', {
+                              runId: run.id,
+                              gymId,
+                              gymName: gym?.name || gymName,
+                              startTime: run.startTime ?? null,
+                            })}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Ionicons name="chatbubble-outline" size={14} color="rgba(255,255,255,0.85)" />
+                          </TouchableOpacity>
                         )}
-                      </TouchableOpacity>
-                    )}
-                    {/* Chat button — participants only.
-                        Non-participants cannot enter chat (UI + Firestore rules). */}
-                    {isJoined && (
-                      <TouchableOpacity
-                        onPress={() => navigation.navigate('RunChat', {
-                          runId: run.id,
-                          gymId,
-                          gymName: gym?.name || gymName,
-                          startTime: run.startTime ?? null,
-                        })}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                      >
-                        <Ionicons name="chatbubble-outline" size={15} color={colors.textSecondary} />
-                        <Text style={{ fontSize: FONT_SIZES.xs, color: colors.textSecondary }}>Chat</Text>
-                      </TouchableOpacity>
-                    )}
-                    {/* Report run */}
-                    <TouchableOpacity
-                      onPress={() => { setReportType('run'); setReportTargetId(run.id); setReportVisible(true); }}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      style={{ marginTop: 6 }}
-                    >
-                      <Ionicons name="flag-outline" size={16} color={colors.textMuted} />
-                    </TouchableOpacity>
+
+                        {/* Primary action */}
+                        {isJoined ? (
+                          <TouchableOpacity
+                            style={[styles.ticketActionBtn, {
+                              borderWidth: 1.5,
+                              borderColor: `${colors.primary}80`,
+                              backgroundColor: 'transparent',
+                            }]}
+                            onPress={() => handleLeaveRun(run.id)}
+                            disabled={isLeaving}
+                          >
+                            <Text style={[styles.ticketActionText, { color: colors.primary }]}>
+                              {isLeaving ? '...' : 'Leave'}
+                            </Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <TouchableOpacity
+                            style={[styles.ticketActionBtn, {
+                              backgroundColor: colors.primary,
+                            }]}
+                            onPress={() => withReliabilityGate(() => handleJoinRun(run))}
+                            disabled={joiningRunId === run.id}
+                          >
+                            <Text style={[styles.ticketActionText, { color: '#fff' }]}>
+                              {joiningRunId === run.id ? '...' : 'Join Run'}
+                            </Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
@@ -2117,164 +2237,6 @@ export default function RunDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Reviews — live from Firestore with Leave a Review CTA */}
-        <View style={styles.section}>
-          <View style={styles.reviewsHeaderRow}>
-            <Text style={styles.sectionTitle}>Player Reviews</Text>
-          </View>
-
-          {/* Rating summary — shown above the CTA only when reviews exist */}
-          {reviews.length > 0 && (() => {
-            const avg = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length;
-            return (
-              <View style={styles.ratingSummary}>
-                <Text style={styles.ratingBig}>{avg.toFixed(1)}</Text>
-                <View style={styles.ratingDetails}>
-                  <View style={styles.starsRow}>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <Ionicons
-                        key={star}
-                        name={star <= Math.round(avg) ? 'star' : 'star-outline'}
-                        size={16}
-                        color="#F59E0B"
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.ratingCount}>
-                    {reviews.length} {reviews.length === 1 ? 'review' : 'reviews'}
-                  </Text>
-                </View>
-              </View>
-            );
-          })()}
-
-          {/*
-           * Leave a Review CTA — gated behind two conditions:
-           *   1. User must have a verified visit or run at this gym (hasRunAttended)
-           *   2. User must not have already reviewed this gym (hasReviewed)
-           * If neither condition blocks, show the primary button.
-           */}
-          {!hasRunAttended ? (
-            <View style={styles.reviewGateNote}>
-              <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} style={{ marginRight: 5 }} />
-              <Text style={styles.reviewGateText}>Check in here to leave a review</Text>
-            </View>
-          ) : hasReviewed ? (
-            <View style={styles.reviewGateNote}>
-              <Ionicons name="checkmark-circle-outline" size={14} color={colors.success} style={{ marginRight: 5 }} />
-              <Text style={[styles.reviewGateText, { color: colors.success }]}>You've reviewed this gym</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.leaveReviewButton}
-              onPress={() => setReviewModalVisible(true)}
-            >
-              <Ionicons name="star" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.leaveReviewButtonText}>Leave a Review</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Reviews list — sorted: verified run first, then rating desc, then newest.
-              Empty state shown inline when no reviews exist. */}
-          {reviews.length === 0 ? (
-            <View style={styles.reviewsEmpty}>
-              <Ionicons name="star-outline" size={28} color={colors.textMuted} />
-              <Text style={styles.reviewsEmptyText}>No reviews yet</Text>
-              <Text style={styles.reviewsEmptySubtext}>Be the first to leave one!</Text>
-            </View>
-          ) : (
-            [...reviews]
-              .sort((a, b) => {
-                // Priority 1 — verified run attendees float to the top
-                const aV = a.verifiedAttendee ? 1 : 0;
-                const bV = b.verifiedAttendee ? 1 : 0;
-                if (bV !== aV) return bV - aV;
-                // Priority 2 — higher rating first
-                const ratingDiff = (b.rating || 0) - (a.rating || 0);
-                if (ratingDiff !== 0) return ratingDiff;
-                // Priority 3 — newest first
-                const aMs = a.createdAt?.toMillis?.() ?? 0;
-                const bMs = b.createdAt?.toMillis?.() ?? 0;
-                return bMs - aMs;
-              })
-              .map((review) => (
-                <View key={review.id} style={styles.reviewCard}>
-                  <View style={styles.reviewHeader}>
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={() => navigation.navigate('UserProfile', { userId: review.userId })}
-                    >
-                      {review.userAvatar ? (
-                        <Image source={{ uri: review.userAvatar }} style={styles.reviewAvatar} />
-                      ) : (
-                        <View style={styles.reviewAvatarPlaceholder}>
-                          <Text style={styles.reviewAvatarInitial}>
-                            {(review.userName || 'A')[0].toUpperCase()}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                    <View style={styles.reviewMeta}>
-                      {/* Name + run count on one line */}
-                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          onPress={() => navigation.navigate('UserProfile', { userId: review.userId })}
-                        >
-                          <Text style={styles.reviewerName}>{review.userName || 'Anonymous'}</Text>
-                        </TouchableOpacity>
-                        {(reviewerStatsMap[review.userId]?.totalAttended ?? 0) > 0 && (
-                          <Text style={{ fontSize: 11, color: colors.textMuted }}>
-                            {' \u2022 '}{reviewerStatsMap[review.userId].totalAttended} runs attended
-                          </Text>
-                        )}
-                      </View>
-                      {/* Star rating */}
-                      <View style={styles.reviewStarsRow}>
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Ionicons
-                            key={star}
-                            name={star <= review.rating ? 'star' : 'star-outline'}
-                            size={13}
-                            color="#F59E0B"
-                          />
-                        ))}
-                      </View>
-                      {/* Verified Run badge — below stars, run-completion path only */}
-                      {review.verifiedAttendee && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
-                          <Ionicons name="checkmark-circle" size={12} color="#6366F1" />
-                          <Text style={{ fontSize: 10, color: '#6366F1', fontWeight: '600' }}>Verified Run</Text>
-                        </View>
-                      )}
-                    </View>
-                    {/* Timestamp on the right — replaced by trash icon for own reviews */}
-                    {review.userId === uid ? (
-                      <TouchableOpacity
-                        style={styles.deleteReviewButton}
-                        onPress={() => handleDeleteReview(review.id)}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons name="trash-outline" size={17} color={colors.danger} />
-                      </TouchableOpacity>
-                    ) : (
-                      <Text style={styles.reviewDate}>{timeAgo(review.createdAt)}</Text>
-                    )}
-                  </View>
-                  {/* For own review, show time below the content row */}
-                  {review.userId === uid && (
-                    <Text style={[styles.reviewDate, { marginTop: 2, textAlign: 'right' }]}>
-                      {timeAgo(review.createdAt)}
-                    </Text>
-                  )}
-                  {!!review.text && (
-                    <Text style={styles.reviewComment}>{review.text}</Text>
-                  )}
-                </View>
-              ))
-          )}
-        </View>
-
         {/* Secondary CTA — Plan a Visit */}
         <TouchableOpacity
           style={styles.planButton}
@@ -2285,6 +2247,37 @@ export default function RunDetailsScreen({ route, navigation }) {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
+
+      {/* ── Sticky CTA bar — Check In + Start a Run ─────────────────────── */}
+      <View style={styles.stickyCTA}>
+        {(() => {
+          const effectiveCheckedIn = isCheckedInHere || optimisticCheckedIn;
+          return (
+            <TouchableOpacity
+              style={[styles.ctaCheckIn, effectiveCheckedIn && styles.ctaCheckedIn]}
+              onPress={handleCheckInHere}
+              disabled={effectiveCheckedIn}
+              activeOpacity={0.85}
+            >
+              {effectiveCheckedIn ? (
+                <>
+                  <Ionicons name="checkmark-circle" size={16} color="#fff" style={{ marginRight: 6 }} />
+                  <Text style={styles.ctaBtnText}>You're Checked In</Text>
+                </>
+              ) : (
+                <Text style={styles.ctaBtnText}>Check In</Text>
+              )}
+            </TouchableOpacity>
+          );
+        })()}
+        <TouchableOpacity
+          style={styles.ctaStartRun}
+          onPress={() => withReliabilityGate(() => setRunModalVisible(true))}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.ctaStartRunText}>Start a Run</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Leave a Review modal */}
       <Modal
@@ -3416,13 +3409,252 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   container: {
     flex: 1,
   },
+  // ── V3 Magazine Hero ─────────────────────────────────────────────────────
   heroContainer: {
+    height: 380,
     position: 'relative',
+    backgroundColor: '#111',
   },
   heroImage: {
+    position: 'absolute',
     width: '100%',
-    height: 260,
+    height: '100%',
   },
+  heroNav: {
+    position: 'absolute',
+    top: 14,
+    left: 16,
+    right: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 10,
+  },
+  heroNavBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTitleBlock: {
+    position: 'absolute',
+    bottom: 18,
+    left: 20,
+    right: 20,
+    zIndex: 10,
+  },
+  heroPillRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    gap: 6,
+  },
+  heroPillFree: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: '#22C55E',
+  },
+  heroPillFreeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    color: '#053',
+  },
+  heroPillMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 0.6,
+  },
+  heroGymName: {
+    fontSize: 32,
+    fontWeight: '800',
+    letterSpacing: -1,
+    lineHeight: 34,
+    color: '#fff',
+  },
+  heroSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    flexWrap: 'wrap',
+    gap: 2,
+  },
+  heroSubText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '500',
+  },
+
+  // ── Action toolbar ────────────────────────────────────────────────────────
+  actionToolbar: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    gap: 8,
+    backgroundColor: colors.background,
+  },
+  toolbarBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 5,
+  },
+  toolbarBtnLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+  },
+
+  // ── HAPPENING HERE ────────────────────────────────────────────────────────
+  happeningHeader: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 8,
+    backgroundColor: colors.background,
+  },
+  happeningTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    color: 'rgba(255,255,255,0.55)',
+  },
+  emptyStateCard: {
+    marginHorizontal: 20,
+    padding: 18,
+    backgroundColor: '#141414',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  emptyStateIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyStateTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    color: '#fff',
+  },
+  emptyStateSub: {
+    fontSize: 11.5,
+    color: 'rgba(255,255,255,0.55)',
+    marginTop: 3,
+  },
+
+  // ── Info rows ─────────────────────────────────────────────────────────────
+  infoRows: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 4,
+    backgroundColor: colors.background,
+    gap: 8,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  infoLabel: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.55)',
+  },
+  infoValue: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  hoursWeekExpanded: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#141414',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    gap: 4,
+  },
+
+  // ── Sticky CTA bar ────────────────────────────────────────────────────────
+  stickyCTA: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 20,
+    backgroundColor: 'rgba(10,10,10,0.97)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  ctaCheckIn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  ctaCheckedIn: {
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E',
+  },
+  ctaBtnText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: 0.2,
+  },
+  ctaStartRun: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: `${colors.primary}60`,
+  },
+  ctaStartRunText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.2,
+  },
+
+  // ── Legacy back button (kept for skeleton loader) ─────────────────────────
   backButton: {
     position: 'absolute',
     top: SPACING.lg,
@@ -3756,7 +3988,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
   },
   bottomPadding: {
-    height: SPACING.lg * 2,
+    height: 110, // extra space so content clears the sticky CTA bar
   },
   playerList: {
     gap: SPACING.xs,
@@ -4469,7 +4701,14 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.semibold,
   },
-  // ── Competitive meter (5-bar intensity indicator on run cards) ────────────
+  // ── Run vibe descriptor (plain-English line below the level badge) ───────
+  runVibeText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    marginTop: 3,
+    marginBottom: SPACING.xs,
+  },
+  // ── Competitive meter (used in info sheet only) ───────────────────────────
   compMeterLabeledRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4762,5 +5001,191 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textMuted,
     fontSize: FONT_SIZES.small,
     fontWeight: FONT_WEIGHTS.medium,
+  },
+  autoCheckInBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    width: '100%',
+    backgroundColor: isDark ? '#0A1F10' : '#F0FDF4',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(34,197,94,0.30)' : 'rgba(34,197,94,0.35)',
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+  },
+  autoCheckInBannerContent: {
+    flex: 1,
+  },
+  autoCheckInBannerTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: isDark ? '#4ADE80' : '#16A34A',
+    marginBottom: 3,
+  },
+  autoCheckInBannerSubtitle: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textSecondary,
+    lineHeight: 18,
+  },
+
+  // ── Ticket-style Upcoming Runs ──────────────────────────────────────────────
+  ticketSection: {
+    marginHorizontal: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  ticketSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  ticketSectionTitle: {
+    fontSize: 11,
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 1.2,
+    color: colors.textMuted,
+  },
+  ticketSectionLink: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  ticketCard: {
+    flexDirection: 'row',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)',
+    borderRadius: RADIUS.md,
+    overflow: 'hidden',
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+  },
+  ticketStripe: {
+    width: 4,
+  },
+  ticketBody: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  ticketHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  ticketTime: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+    lineHeight: 20,
+  },
+  ticketTimeHint: {
+    fontSize: 11,
+    color: colors.textMuted,
+    marginTop: 2,
+  },
+  ticketSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 6,
+  },
+  ticketTypeDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  ticketDotSep: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: colors.textMuted,
+    opacity: 0.5,
+    marginHorizontal: 2,
+  },
+  ticketMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  ticketStatusBadge: {
+    borderRadius: 4,
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  ticketStatusText: {
+    fontSize: 10,
+    fontWeight: FONT_WEIGHTS.bold,
+    letterSpacing: 0.6,
+  },
+  ticketFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  ticketAvatar: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: isDark ? '#1a1a1a' : '#fff',
+    overflow: 'hidden',
+  },
+  ticketAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  ticketAvatarFallback: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ticketAvatarInitial: {
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#fff',
+  },
+  ticketAvatarExtra: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: isDark ? '#1a1a1a' : '#fff',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ticketAvatarExtraText: {
+    fontSize: 8,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textSecondary,
+  },
+  ticketGoingCount: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginLeft: 4,
+    flexShrink: 1,
+  },
+  ticketChatBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ticketActionBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ticketActionText: {
+    fontSize: 12,
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 });

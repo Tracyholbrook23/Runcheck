@@ -125,12 +125,16 @@ export const submitReview = async (
       createdAt:        serverTimestamp(),
     });
 
-    // ── Award review points (awaited, not fire-and-forget) ───────────────────
-    // The transactional guard in pointsService (pointsAwarded.reviewedGyms)
-    // ensures at most one reward per user per gym, forever.
-    const pointsResult = await awardPoints(uid, 'review', null, gymId);
+    // ── Award review points (fire-and-forget) ────────────────────────────────
+    // Not awaited so a slow or failing transaction never blocks the modal from
+    // closing. The guard in pointsService (pointsAwarded.reviewedGyms) is a
+    // permanent Firestore transaction — at most one award per user per gym,
+    // even across retries or delete-and-repost. Safe to kick off and move on.
+    awardPoints(uid, 'review', null, gymId).catch((err) => {
+      if (__DEV__) console.error('reviewService: awardPoints failed (non-critical):', err);
+    });
 
-    return { success: true, alreadyReviewed: false, pointsResult };
+    return { success: true, alreadyReviewed: false, pointsResult: null };
   } catch (err) {
     if (__DEV__) console.error('submitReview error:', err);
     return failure;

@@ -35,6 +35,7 @@ import {
   Pressable,
   FlatList,
   Modal,
+  Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -249,6 +250,36 @@ export default function UserProfileScreen({ route, navigation }) {
     }
   };
 
+  // ── Cancel Friend Request handler ────────────────────────────────────────
+  const [cancellingRequest, setCancellingRequest] = useState(false);
+
+  const handleCancelFriendRequest = () => {
+    Alert.alert(
+      'Cancel Request?',
+      'Your friend request will be withdrawn.',
+      [
+        { text: 'Keep It', style: 'cancel' },
+        {
+          text: 'Cancel Request',
+          style: 'destructive',
+          onPress: async () => {
+            setCancellingRequest(true);
+            try {
+              const cancelFn = httpsCallable(getFunctions(), 'cancelFriendRequest');
+              await cancelFn({ friendUserId: userId });
+              setRequestSent(false);
+            } catch (err) {
+              if (__DEV__) console.error('Cancel friend request error:', err);
+              Alert.alert('Error', 'Could not cancel request. Please try again.');
+            } finally {
+              setCancellingRequest(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // ── Message handler — opens or creates a DM conversation ─────────────────
   // openOrCreateConversation is idempotent: returns the existing conversation ID
   // if one already exists, creating only on the first tap between two users.
@@ -256,16 +287,17 @@ export default function UserProfileScreen({ route, navigation }) {
   const handleMessage = async () => {
     if (!currentUid || isOwnProfile || !profile) return;
     try {
+      const profileDisplayName = profile.displayName || profile.name || 'Player';
       const conversationId = await openOrCreateConversation({
         currentUid,
         otherUid: userId,
-        otherName: profile.name || 'Player',
+        otherName: profileDisplayName,
         otherAvatar: profile.photoURL || null,
       });
       navigation.navigate('DMConversation', {
         conversationId,
         otherUserId: userId,
-        otherUserName: profile.name || 'Player',
+        otherUserName: profileDisplayName,
         otherUserAvatar: profile.photoURL || null,
       });
     } catch (err) {
@@ -279,7 +311,7 @@ export default function UserProfileScreen({ route, navigation }) {
     if (!currentUid || !userId) return;
     Alert.alert(
       'Block User',
-      `Block ${profile?.name || 'this user'}? They won't be able to send you messages.`,
+      `Block ${profile?.displayName || profile?.name || 'this user'}? They won't be able to send you messages.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -306,7 +338,7 @@ export default function UserProfileScreen({ route, navigation }) {
     if (!currentUid || !userId) return;
     Alert.alert(
       'Unblock User',
-      `Unblock ${profile?.name || 'this user'}? They will be able to send you messages again.`,
+      `Unblock ${profile?.displayName || profile?.name || 'this user'}? They will be able to send you messages again.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -452,7 +484,7 @@ export default function UserProfileScreen({ route, navigation }) {
               ) : (
                 <View style={[styles.avatarImage, styles.avatarFallback]}>
                   <Text style={styles.avatarInitial}>
-                    {(profile.name || '?')[0].toUpperCase()}
+                    {(profile.displayName || profile.name || '?')[0].toUpperCase()}
                   </Text>
                 </View>
               )}
@@ -460,10 +492,30 @@ export default function UserProfileScreen({ route, navigation }) {
           </LinearGradient>
         </View>
 
-        {/* ── Name ── */}
-        <Text style={styles.name}>{profile.name || 'Player'}</Text>
+        {/* ── Display name + @username ── */}
+        <Text style={styles.name}>{profile.displayName || profile.name || 'Player'}</Text>
         {profile.username ? (
           <Text style={styles.usernameText}>@{profile.username}</Text>
+        ) : null}
+
+        {/* ── Instagram handle ── */}
+        {profile.instagramHandle ? (
+          <TouchableOpacity
+            style={styles.instagramRow}
+            onPress={() => {
+              const handle = profile.instagramHandle.replace(/^@/, '');
+              const appUrl = `instagram://user?username=${handle}`;
+              const webUrl = `https://instagram.com/${handle}`;
+              Linking.canOpenURL(appUrl)
+                .then((supported) => Linking.openURL(supported ? appUrl : webUrl))
+                .catch(() => Linking.openURL(webUrl));
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="logo-instagram" size={15} color="#E1306C" />
+            <Text style={styles.instagramHandle}>@{profile.instagramHandle.replace(/^@/, '')}</Text>
+            <Ionicons name="open-outline" size={12} color={colors.textMuted} />
+          </TouchableOpacity>
         ) : null}
 
         {/* ── Rank badge + skill badge ── */}
@@ -580,22 +632,33 @@ export default function UserProfileScreen({ route, navigation }) {
                 <Text style={[styles.friendButtonText, { color: colors.error ?? '#d9534f' }]}>Remove Friend</Text>
               </TouchableOpacity>
             </View>
+          ) : requestSent ? (
+            // Request already sent — show "Request Sent" + a cancel ×
+            <View style={styles.requestSentRow}>
+              <View style={[styles.friendButton, styles.friendButtonPending, { flex: 1, marginBottom: 0 }]}>
+                <Ionicons name="time-outline" size={18} color={colors.textSecondary} style={{ marginRight: 6 }} />
+                <Text style={[styles.friendButtonText, styles.friendButtonTextPending]}>Request Sent</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.cancelRequestButton}
+                onPress={handleCancelFriendRequest}
+                disabled={cancellingRequest}
+                activeOpacity={0.7}
+              >
+                {cancellingRequest
+                  ? <ActivityIndicator size="small" color={colors.textMuted} />
+                  : <Ionicons name="close" size={18} color={colors.textMuted} />
+                }
+              </TouchableOpacity>
+            </View>
           ) : (
             <TouchableOpacity
-              style={[
-                styles.friendButton,
-                requestSent && styles.friendButtonPending,
-              ]}
+              style={styles.friendButton}
               onPress={handleAddFriend}
-              disabled={requestSent || addingFriend}
+              disabled={addingFriend}
             >
               {addingFriend ? (
                 <ActivityIndicator size="small" color="#fff" />
-              ) : requestSent ? (
-                <>
-                  <Ionicons name="time-outline" size={18} color={colors.textSecondary} style={{ marginRight: 6 }} />
-                  <Text style={[styles.friendButtonText, styles.friendButtonTextPending]}>Request Sent</Text>
-                </>
               ) : (
                 <>
                   <Ionicons name="person-add-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
@@ -1006,7 +1069,23 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.textMuted,
     textAlign: 'center',
+    marginBottom: 6,
+  },
+  instagramRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     marginBottom: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: isDark ? 'rgba(225,48,108,0.10)' : 'rgba(225,48,108,0.07)',
+    alignSelf: 'center',
+  },
+  instagramHandle: {
+    fontSize: FONT_SIZES.small,
+    color: '#E1306C',
+    fontWeight: FONT_WEIGHTS.semibold,
   },
 
   // ── Rank + skill badges ───────────────────────────────────────────────────
@@ -1236,6 +1315,25 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   },
   friendButtonTextPending: {
     color: colors.textSecondary,
+  },
+
+  // ── Cancel request row (Request Sent + × button side by side) ───────────
+  requestSentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    gap: SPACING.sm,
+    marginBottom: SPACING.lg,
+  },
+  cancelRequestButton: {
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceLight,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   // ── Message button ────────────────────────────────────────────────────────

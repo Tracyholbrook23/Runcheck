@@ -40,6 +40,8 @@ import {
   Modal,
   Pressable,
   TextInput,
+  Switch,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -143,10 +145,19 @@ export default function PlanVisitScreen({ navigation }) {
   // Loading guard for "Join Run" on run cards in the "Runs Being Planned" section.
   // Kept separate from startingRun so Step 4 / Step 1 card CTAs stay independent.
   const [joiningRun, setJoiningRun] = useState(false);
+  // Loading guard for leave/cancel run actions — keyed by runId so only the
+  // tapped card shows a loading state, not all joined-run cards simultaneously.
+  const [leavingRunId, setLeavingRunId] = useState(null);
   const [step, setStep] = useState(1);
   // How many OTHER users have scheduled the same gym/slot as the one just created.
   // V1: exact timeSlot key match. Future: ±60-min clustering across nearby slots.
   const [coPlannersCount, setCoPlannersCount] = useState(0);
+
+  // ── Cancel run modal state ────────────────────────────────────────────────
+  const [cancelRunModalVisible, setCancelRunModalVisible] = useState(false);
+  const [cancelRunTarget, setCancelRunTarget] = useState(null); // run object
+  const [cancelReason, setCancelReason] = useState('');
+  const [submittingCancel, setSubmittingCancel] = useState(false);
 
   // ── Step 2 gym filter state ───────────────────────────────────────────────
   const [gymSearch, setGymSearch] = useState('');
@@ -180,6 +191,59 @@ export default function PlanVisitScreen({ navigation }) {
 
   // User profile provides name + avatar for activity feed writes
   const { profile } = useProfile();
+
+  // ── Auto check-in preference — readable + togglable from the confirmation screen ──
+  const autoCheckInEnabled = profile?.preferences?.autoCheckInEnabled ?? true;
+  const [localAutoCheckIn, setLocalAutoCheckIn] = useState(autoCheckInEnabled);
+
+  // Sync when profile first loads
+  useEffect(() => {
+    if (profile?.preferences?.autoCheckInEnabled !== undefined) {
+      setLocalAutoCheckIn(profile.preferences.autoCheckInEnabled);
+    }
+  }, [profile?.preferences?.autoCheckInEnabled]);
+
+  const handleToggleAutoCheckIn = async (val) => {
+    setLocalAutoCheckIn(val);
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    try {
+      await updateDoc(doc(db, 'users', uid), { 'preferences.autoCheckInEnabled': val });
+    } catch (err) {
+      if (__DEV__) console.warn('[PlanVisit] autoCheckIn pref write error:', err);
+    }
+  };
+
+  // ── Auto check-in onboarding modal ───────────────────────────────────────
+  // Fires once, the first time the user reaches Step 4, if they haven't
+  // explicitly set the preference yet. Marks `hasSeenAutoCheckInOnboarding`
+  // on the user doc so it never shows again.
+  const [autoCheckInOnboardingVisible, setAutoCheckInOnboardingVisible] = useState(false);
+
+  // Trigger when step flips to 4 and user hasn't seen the onboarding yet
+  useEffect(() => {
+    if (step === 4 && !profile?.hasSeenAutoCheckInOnboarding) {
+      // Small delay so the confirmation screen renders first
+      const timer = setTimeout(() => setAutoCheckInOnboardingVisible(true), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [step, profile?.hasSeenAutoCheckInOnboarding]);
+
+  const dismissAutoCheckInOnboarding = async (enableFeature) => {
+    setAutoCheckInOnboardingVisible(false);
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    const updates = { hasSeenAutoCheckInOnboarding: true };
+    if (enableFeature) {
+      updates['preferences.autoCheckInEnabled'] = true;
+      setLocalAutoCheckIn(true);
+    }
+    try {
+      await updateDoc(doc(db, 'users', uid), updates);
+    } catch (err) {
+      if (__DEV__) console.warn('[PlanVisit] autoCheckIn onboarding write error:', err);
+    }
+  };
 
   // Hide the default navigation header — this screen uses its own title layout
   useEffect(() => {
@@ -371,29 +435,66 @@ export default function PlanVisitScreen({ navigation }) {
   const followedGymIdSet = useMemo(() => new Set(profile?.followedGyms ?? []), [profile]);
 
   // ── Filtered + relevance-sorted community runs ───────────────────────────
-  // Priority order: matching visit → friend's run → followed/home gym → nearest
+  // Option A+C: only show runs that are relevant to this user, capped at 10.
+  //
+  // Relevance gate (at least one must be true to be shown at all):
+  //   • Gym is followed by the user or is their home court
+  //   • Run was created by a friend
+  //   • Gym is within 25 miles (when location is available)
+  //   • User has a matching scheduled visit for that gym/time
+  //
+  // After gating, runs are sorted by a priority score and capped at 10 results.
+  const MAX_PLAN_RUNS = 10;
+  const PROXIMITY_GATE_MILES = 25;
+
   const filteredAndSortedRuns = useMemo(() => {
     let runs = communityRuns;
 
-    // 1. Distance cap — skip if no location or filter is "Any"
+    // ── User-applied filters (from the Filter sheet) ─────────────────────────
     if (runDistanceFilter !== null && userLocation) {
       runs = runs.filter((run) => {
         const gym = gyms.find((g) => g.id === run.gymId);
-        if (!gym?.location) return true; // no coords — include to be safe
+        if (!gym?.location) return true;
         return calculateDistanceMeters(userLocation, gym.location) / METERS_PER_MILE <= runDistanceFilter;
       });
     }
-
-    // 2. Level filter
     if (runLevelFilter) {
       runs = runs.filter((run) => (run.runLevel ?? 'mixed') === runLevelFilter);
     }
 
-    // 3. Relevance sort — higher score floats to the top
-    return [...runs].sort((a, b) => {
+    // ── Relevance gate (Option A) ────────────────────────────────────────────
+    // Each run must pass at least one relevance criterion to be shown.
+    // If location is unavailable the proximity gate is skipped (don't hide runs
+    // just because we don't have coords yet — new users would see nothing).
+    runs = runs.filter((run) => {
+      // 1. Followed gym or home court
+      if (followedGymIdSet.has(run.gymId) || run.gymId === profile?.homeCourtId) return true;
+      // 2. Friend's run
+      if (run.createdBy && friendIdSet.has(run.createdBy)) return true;
+      // 3. Matching scheduled visit (within ±60 min)
+      const hasVisit = schedules.some((sch) => {
+        if (sch.gymId !== run.gymId) return false;
+        const st = sch.scheduledTime?.toDate?.();
+        const rt = run.startTime?.toDate?.();
+        if (!st || !rt) return false;
+        return Math.abs(st.getTime() - rt.getTime()) <= 60 * 60 * 1000;
+      });
+      if (hasVisit) return true;
+      // 4. Within 25 miles (proximity gate — skipped when no location)
+      if (userLocation) {
+        const gym = gyms.find((g) => g.id === run.gymId);
+        if (gym?.location) {
+          const miles = calculateDistanceMeters(userLocation, gym.location) / METERS_PER_MILE;
+          if (miles <= PROXIMITY_GATE_MILES) return true;
+        }
+      }
+      return false;
+    });
+
+    // ── Relevance sort ────────────────────────────────────────────────────────
+    const scored = [...runs].sort((a, b) => {
       const score = (run) => {
         let s = 0;
-        // Matching scheduled visit for this run — most relevant
         const hasVisit = schedules.some((sch) => {
           if (sch.gymId !== run.gymId) return false;
           const st = sch.scheduledTime?.toDate?.();
@@ -402,11 +503,8 @@ export default function PlanVisitScreen({ navigation }) {
           return Math.abs(st.getTime() - rt.getTime()) <= 60 * 60 * 1000;
         });
         if (hasVisit) s += 100;
-        // Friend started this run
         if (run.createdBy && friendIdSet.has(run.createdBy)) s += 50;
-        // Gym is followed or is home court
         if (followedGymIdSet.has(run.gymId) || run.gymId === profile?.homeCourtId) s += 25;
-        // Proximity bonus — closer gyms score slightly higher (max ~10 pts)
         if (userLocation) {
           const gym = gyms.find((g) => g.id === run.gymId);
           if (gym?.location) {
@@ -418,6 +516,9 @@ export default function PlanVisitScreen({ navigation }) {
       };
       return score(b) - score(a);
     });
+
+    // ── Cap at MAX_PLAN_RUNS (Option C) ───────────────────────────────────────
+    return scored.slice(0, MAX_PLAN_RUNS);
   }, [
     communityRuns, runDistanceFilter, runLevelFilter,
     userLocation, gyms, schedules,
@@ -458,6 +559,95 @@ export default function PlanVisitScreen({ navigation }) {
   };
 
   /**
+   * handleLeaveOrCancelRun — Leave or cancel a run from the Plan screen.
+   *
+   * Rules:
+   *   - Host + only player → "Cancel Run" (confirms, then calls leaveRun which
+   *     empties the run and cleans up the activity doc)
+   *   - Host + other players → "Leave Run" (host departs; run continues; backend
+   *     Cloud Function notifies remaining participants)
+   *   - Non-host → "Leave Run" always
+   */
+  const handleLeaveOrCancelRun = (run) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const isHost = run.createdBy === uid || run.creatorId === uid;
+    const playerCount = run.participantCount ?? 1;
+    const isOnlyPlayer = playerCount <= 1;
+
+    // Host and the only one in the run → open cancel reason modal
+    if (isHost && isOnlyPlayer) {
+      setCancelRunTarget(run);
+      setCancelReason('');
+      setCancelRunModalVisible(true);
+      return;
+    }
+
+    // Host with others, or a regular participant → leave run (it continues)
+    const title = isHost ? 'Leave Run?' : 'Leave Run?';
+    const message = isHost
+      ? `You started this run. If you leave, the ${playerCount - 1} other player${playerCount - 1 !== 1 ? 's' : ''} will be notified but the run will continue without you.`
+      : 'You\'ll be removed from this run.';
+
+    Alert.alert(title, message, [
+      { text: 'Stay In', style: 'cancel' },
+      {
+        text: 'Leave Run',
+        style: 'destructive',
+        onPress: async () => {
+          setLeavingRunId(run.id);
+          try {
+            await leaveRun(run.id);
+          } catch (err) {
+            Alert.alert('Error', err.message || 'Could not leave run.');
+          } finally {
+            setLeavingRunId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  /**
+   * handleSubmitCancelRun — Logs the cancellation reason to Firestore, then
+   * calls leaveRun to empty and clean up the run.
+   *
+   * A Cloud Function (onRunCancelled) watches the `runCancellations` collection
+   * and applies streak-based consequences: warning at 3 in a row, run-start ban
+   * at 5 in a row.
+   */
+  const handleSubmitCancelRun = async () => {
+    if (!cancelRunTarget || submittingCancel) return;
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    setSubmittingCancel(true);
+    try {
+      // Log the cancellation so admins can track patterns
+      await addDoc(collection(db, 'runCancellations'), {
+        runId: cancelRunTarget.id,
+        gymId: cancelRunTarget.gymId,
+        gymName: cancelRunTarget.gymName,
+        hostId: uid,
+        reason: cancelReason.trim() || 'No reason given',
+        cancelledAt: serverTimestamp(),
+      });
+
+      // Leave (which empties and cleans up) the run
+      await leaveRun(cancelRunTarget.id);
+
+      setCancelRunModalVisible(false);
+      setCancelRunTarget(null);
+      setCancelReason('');
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not cancel run. Please try again.');
+    } finally {
+      setSubmittingCancel(false);
+    }
+  };
+
+  /**
    * handleCreateSchedule — Writes the new schedule to Firestore and resets wizard.
    *
    * Calls `createSchedule` with the selected gym's ID, name, and the chosen
@@ -468,54 +658,60 @@ export default function PlanVisitScreen({ navigation }) {
    * time — 15 pts if the check-in fulfils this plan, 10 pts otherwise.
    */
   const handleCreateSchedule = async () => {
-    if (!selectedGym || !selectedSlot) return;
+    if (!selectedGym || !selectedSlot || creating) return; // prevent double-tap
+
+    // ── Pre-compute coPlannersCount from in-memory gym data ──────────────────
+    // selectedSlot.timeSlot is the same key the service will use, so we can
+    // read scheduleCounts before the write and avoid waiting for the round-trip.
+    // Our own write hasn't landed yet so rawCount = other planners (no -1 needed).
+    const planGym = gyms.find((g) => g.id === selectedGym.id);
+    const preWriteCount = planGym?.scheduleCounts?.[selectedSlot.timeSlot] ?? 0;
+    setCoPlannersCount(Math.max(0, preWriteCount));
+
+    // ── Jump to the confirmation screen immediately ───────────────────────────
+    // The write runs in the background. Step 4 already has the gym + slot from
+    // component state so it renders correctly without waiting for Firestore.
+    setStep(4);
+
     try {
       // createSchedule returns { id, ...scheduleData } — capture it so we can
       // store the activity doc ID back on the schedule for precise cleanup later.
       const newSchedule = await createSchedule(selectedGym.id, selectedGym.name, selectedSlot.date);
 
-      // Await the addDoc so we get the DocumentReference and can read its ID.
+      // Activity doc — fire and forget (non-critical display data).
       const uid = auth.currentUser?.uid;
-      try {
-        const activityRef = await addDoc(collection(db, 'activity'), {
-          userId: uid,
-          userName: profile?.name || 'Anonymous',
-          userAvatar: profile?.photoURL || null,
-          action: 'planned a visit to',
-          gymId: selectedGym.id,
-          gymName: selectedGym.name,
-          createdAt: Timestamp.now(),
-          // plannedTime lets the HomeScreen filter out plans whose time has passed.
-          // Without this field, a plan for tomorrow could show in today's feed.
-          plannedTime: Timestamp.fromDate(new Date(selectedSlot.date)),
-        });
-
-        // Backlink: store the activity doc ID on the schedule document so that
-        // handleCancelSchedule can target the exact activity record to delete.
+      addDoc(collection(db, 'activity'), {
+        userId: uid,
+        userName: profile?.name || 'Anonymous',
+        userAvatar: profile?.photoURL || null,
+        action: 'planned a visit to',
+        gymId: selectedGym.id,
+        gymName: selectedGym.name,
+        createdAt: Timestamp.now(),
+        plannedTime: Timestamp.fromDate(new Date(selectedSlot.date)),
+      }).then((activityRef) => {
+        // Backlink: store the activity doc ID on the schedule so that
+        // handleCancelSchedule can target the exact record to delete.
         if (newSchedule?.id) {
           updateDoc(doc(db, 'schedules', newSchedule.id), {
             activityId: activityRef.id,
           }).catch((err) => { if (__DEV__) console.error('activityId backlink error:', err); });
         }
-      } catch (err) {
+      }).catch((err) => {
         // Activity write failure is non-fatal — the schedule itself succeeded.
         if (__DEV__) console.error('Activity write error (plan):', err);
-      }
+      });
 
-      // Compute how many OTHER users are planning the same gym/slot, using the
-      // gyms list already in memory (useGyms real-time subscription).
-      // scheduleCounts includes the current user so subtract 1.
-      // V1: exact timeSlot key match; future: ±60-min clustering.
-      const planGym = gyms.find((g) => g.id === selectedGym.id);
-      const rawCount = planGym?.scheduleCounts?.[newSchedule.timeSlot] ?? 0;
-      setCoPlannersCount(Math.max(0, rawCount - 1));
+      // Refine coPlannersCount now that the gym listener may have updated.
+      // scheduleCounts now includes the current user so subtract 1.
+      const updatedGym = gyms.find((g) => g.id === selectedGym.id);
+      const postWriteCount = updatedGym?.scheduleCounts?.[newSchedule.timeSlot] ?? preWriteCount;
+      setCoPlannersCount(Math.max(0, postWriteCount - 1));
 
-      // Show the confirmation screen instead of a native alert.
-      // Selections are NOT cleared here — Step 4 needs them for display.
-      // They are reset when the user taps "Done" on the confirmation screen.
-      setStep(4);
     } catch (error) {
-      Alert.alert('Error', error.message);
+      // Write failed — send the user back to step 3 so they can retry.
+      setStep(3);
+      Alert.alert('Couldn\'t Schedule Visit', error.message || 'Please try again.');
     }
   };
 
@@ -810,10 +1006,26 @@ export default function PlanVisitScreen({ navigation }) {
                   </TouchableOpacity>
                 </View>
 
+                {/* ── Disclaimer ───────────────────────────────────────────── */}
+                <TouchableOpacity
+                  style={styles.disclaimerBanner}
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL('https://www.theruncheck.app/terms')}
+                >
+                  <Ionicons name="information-circle-outline" size={14} color="rgba(255,255,255,0.45)" style={{ marginRight: 5, flexShrink: 0 }} />
+                  <Text style={styles.disclaimerText}>
+                    Court availability is not guaranteed. Always verify with the gym before heading out.{' '}
+                    <Text style={styles.disclaimerLink}>Terms of Service</Text>
+                  </Text>
+                </TouchableOpacity>
+
                 {filteredAndSortedRuns.length > 0 ? (
                   filteredAndSortedRuns.map((run) => {
                     const runGym = gyms.find((g) => g.id === run.gymId);
                     const isJoined = joinedRunIds.has(run.id);
+                    const uid = auth.currentUser?.uid;
+                    const isHost = isJoined && (run.createdBy === uid || run.creatorId === uid);
+                    const isOnlyPlayer = (run.participantCount ?? 1) <= 1;
                     // "Your Visit" badge: user has a schedule at this gym within
                     // ±60 min of this run. Using find (not some) so we can also
                     // derive the planner count via the schedule's timeSlot key.
@@ -889,6 +1101,28 @@ export default function PlanVisitScreen({ navigation }) {
                               <Text style={styles.yourVisitBadgeText}>Your Visit</Text>
                             </View>
                           )}
+                          {isJoined && (
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              disabled={leavingRunId === run.id}
+                              onPress={() => handleLeaveOrCancelRun(run)}
+                              style={styles.leaveRunRow}
+                            >
+                              <Ionicons
+                                name={isHost && isOnlyPlayer ? 'trash-outline' : 'exit-outline'}
+                                size={11}
+                                color="#EF4444"
+                                style={{ marginRight: 3 }}
+                              />
+                              <Text style={styles.leaveRunLink}>
+                                {leavingRunId === run.id
+                                  ? '...'
+                                  : isHost && isOnlyPlayer
+                                  ? 'Cancel Run'
+                                  : 'Leave Run'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
                         {isJoined && (
                           <TouchableOpacity
@@ -946,20 +1180,25 @@ export default function PlanVisitScreen({ navigation }) {
                     );
                   })
                 ) : communityRuns.length > 0 ? (
-                  // Runs exist but all filtered out — nudge user to adjust filters
+                  // Runs exist but filtered out by relevance gate or user filters
                   <View style={styles.runsEmptyState}>
-                    <Text style={styles.runsEmptyText}>No runs match your filters</Text>
-                    <TouchableOpacity
-                      onPress={() => { setRunDistanceFilter(null); setRunLevelFilter(null); }}
-                    >
-                      <Text style={styles.runsEmptyAction}>Clear filters</Text>
-                    </TouchableOpacity>
+                    <Text style={styles.runsEmptyText}>No nearby runs for you</Text>
+                    <Text style={styles.runsEmptySubtext}>
+                      Follow gyms or add friends to see their runs here
+                    </Text>
+                    {(runDistanceFilter !== null || runLevelFilter !== null) && (
+                      <TouchableOpacity
+                        onPress={() => { setRunDistanceFilter(null); setRunLevelFilter(null); }}
+                      >
+                        <Text style={styles.runsEmptyAction}>Clear filters</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 ) : (
                   <View style={styles.runsEmptyState}>
                     <Text style={styles.runsEmptyText}>No runs planned yet</Text>
                     <Text style={styles.runsEmptySubtext}>
-                      Schedule a visit — when enough players plan the same time, a run can form
+                      Follow gyms or add friends to see their runs here
                     </Text>
                   </View>
                 )}
@@ -972,6 +1211,80 @@ export default function PlanVisitScreen({ navigation }) {
             </ScrollView>
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
+
+        {/* ── Cancel Run — Reason Modal ──────────────────────────────────── */}
+        <Modal
+          visible={cancelRunModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => !submittingCancel && setCancelRunModalVisible(false)}
+        >
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          >
+            <Pressable
+              style={styles.sheetBackdrop}
+              onPress={() => !submittingCancel && setCancelRunModalVisible(false)}
+            />
+            <View style={styles.cancelRunSheet}>
+              <Text style={styles.cancelRunTitle}>Why are you cancelling?</Text>
+              <Text style={styles.cancelRunSubtitle}>
+                This helps us track patterns and keep the community reliable.
+              </Text>
+              {[
+                'Something came up',
+                'Not enough players',
+                'Wrong time / place',
+                'Injury or health issue',
+                'Other',
+              ].map((reason) => (
+                <TouchableOpacity
+                  key={reason}
+                  style={[
+                    styles.cancelReasonOption,
+                    cancelReason === reason && styles.cancelReasonOptionSelected,
+                  ]}
+                  onPress={() => setCancelReason(reason)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.cancelReasonRadio}>
+                    {cancelReason === reason && <View style={styles.cancelReasonRadioFill} />}
+                  </View>
+                  <Text style={[
+                    styles.cancelReasonText,
+                    cancelReason === reason && styles.cancelReasonTextSelected,
+                  ]}>
+                    {reason}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              <View style={styles.cancelRunActions}>
+                <TouchableOpacity
+                  style={styles.cancelRunKeepButton}
+                  onPress={() => setCancelRunModalVisible(false)}
+                  disabled={submittingCancel}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cancelRunKeepText}>Keep Run</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.cancelRunConfirmButton,
+                    !cancelReason && styles.cancelRunConfirmButtonDisabled,
+                  ]}
+                  onPress={handleSubmitCancelRun}
+                  disabled={!cancelReason || submittingCancel}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.cancelRunConfirmText}>
+                    {submittingCancel ? 'Cancelling…' : 'Cancel Run'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
 
         {/* ── Runs Being Planned — Filter Sheet ──────────────────────────── */}
         <Modal
@@ -1448,6 +1761,41 @@ export default function PlanVisitScreen({ navigation }) {
             </Text>
           </View>
 
+          {/* ── Auto Check-In card ───────────────────────────────────────────── */}
+          {localAutoCheckIn ? (
+            /* Already on — compact confirmation line */
+            <View style={styles.autoCheckInConfirmed}>
+              <Ionicons name="checkmark-circle" size={15} color="#22C55E" />
+              <Text style={styles.autoCheckInConfirmedText}>
+                Auto Check-In is on — we'll check you in when you arrive
+              </Text>
+            </View>
+          ) : (
+            /* Off — prominent card with toggle */
+            <View style={styles.autoCheckInCard}>
+              <View style={styles.autoCheckInCardTop}>
+                <View style={styles.autoCheckInCardIconWrap}>
+                  <Ionicons name="location" size={18} color="#22C55E" />
+                </View>
+                <View style={styles.autoCheckInCardText}>
+                  <Text style={styles.autoCheckInCardTitle}>Auto Check-In</Text>
+                  <Text style={styles.autoCheckInCardDesc}>
+                    Arrive at the gym and RunCheck checks you in — no tap needed
+                  </Text>
+                </View>
+                <Switch
+                  value={localAutoCheckIn}
+                  onValueChange={handleToggleAutoCheckIn}
+                  trackColor={{ false: '#3A3A3C', true: '#22C55E' }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+              <Text style={styles.autoCheckInCardNote}>
+                Enable this so you earn your points automatically when you walk in
+              </Text>
+            </View>
+          )}
+
           {/* Run prompt — motivating CTA; copy updates based on co-planners/run state */}
           <View style={styles.confirmationPrompt}>
             <Text style={styles.confirmationPromptTitle}>{promptTitle}</Text>
@@ -1526,6 +1874,69 @@ export default function PlanVisitScreen({ navigation }) {
             <Text style={styles.confirmationSecondaryText}>Done</Text>
           </TouchableOpacity>
         </View>
+
+        {/* ── Auto Check-In Onboarding Modal ─────────────────────────────── */}
+        <Modal
+          visible={autoCheckInOnboardingVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => dismissAutoCheckInOnboarding(false)}
+        >
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => dismissAutoCheckInOnboarding(false)}
+          />
+          <View style={styles.autoCheckInOnboardingSheet}>
+            <View style={styles.sheetHandle} />
+
+            {/* Icon */}
+            <View style={styles.autoCheckInOnboardingIconWrap}>
+              <Ionicons name="location" size={32} color="#22C55E" />
+            </View>
+
+            {/* Title + subtitle */}
+            <Text style={styles.autoCheckInOnboardingTitle}>Auto Check-In</Text>
+            <Text style={styles.autoCheckInOnboardingSubtitle}>
+              Skip the manual tap. RunCheck checks you in the moment you arrive at a gym you've scheduled.
+            </Text>
+
+            {/* How it works bullets */}
+            {[
+              { icon: '📅', text: 'You schedule a visit in advance' },
+              { icon: '🚶', text: 'You walk into the gym during that time window' },
+              { icon: '⚡', text: 'RunCheck detects your location and checks you in — no tap needed' },
+              { icon: '🏆', text: 'You earn points and your reliability score goes up automatically' },
+            ].map(({ icon, text }) => (
+              <View key={text} style={styles.autoCheckInOnboardingRow}>
+                <Text style={styles.autoCheckInOnboardingRowIcon}>{icon}</Text>
+                <Text style={styles.autoCheckInOnboardingRowText}>{text}</Text>
+              </View>
+            ))}
+
+            <Text style={styles.autoCheckInOnboardingNote}>
+              Location is only checked while the app is open. You can turn this off anytime in Settings.
+            </Text>
+
+            {/* CTA buttons */}
+            <TouchableOpacity
+              style={styles.autoCheckInOnboardingPrimary}
+              activeOpacity={0.85}
+              onPress={() => dismissAutoCheckInOnboarding(true)}
+            >
+              <Ionicons name="checkmark-circle-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.autoCheckInOnboardingPrimaryText}>Turn On Auto Check-In</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.autoCheckInOnboardingSecondary}
+              activeOpacity={0.7}
+              onPress={() => dismissAutoCheckInOnboarding(false)}
+            >
+              <Text style={styles.autoCheckInOnboardingSecondaryText}>Not right now</Text>
+            </TouchableOpacity>
+          </View>
+        </Modal>
+
       </SafeAreaView>
       </ImageBackground>
     );
@@ -1879,6 +2290,27 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.semibold,
   },
   // ── Runs Being Planned ──────────────────────────────────
+  disclaimerBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: RADIUS.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 8,
+    marginBottom: SPACING.sm,
+  },
+  disclaimerText: {
+    flex: 1,
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.40)',
+    lineHeight: 16,
+  },
+  disclaimerLink: {
+    color: 'rgba(255,255,255,0.55)',
+    textDecorationLine: 'underline',
+  },
   runsSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1936,6 +2368,17 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   runLevelBadgeText: {
     fontSize: FONT_SIZES.xs,
     fontWeight: FONT_WEIGHTS.semibold,
+  },
+  leaveRunRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5,
+    alignSelf: 'flex-start',
+  },
+  leaveRunLink: {
+    fontSize: FONT_SIZES.xs,
+    color: '#EF4444',
+    fontWeight: FONT_WEIGHTS.medium,
   },
   runCardChatButton: {
     width: 34,
@@ -2351,6 +2794,71 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     marginTop: SPACING.xs,
     marginHorizontal: SPACING.md,
   },
+  autoCheckInConfirmed: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: SPACING.md,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    borderRadius: RADIUS.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.25)',
+    alignSelf: 'stretch',
+  },
+  autoCheckInConfirmedText: {
+    fontSize: FONT_SIZES.small,
+    color: '#4ADE80',
+    fontWeight: FONT_WEIGHTS.medium,
+    flex: 1,
+  },
+  autoCheckInCard: {
+    width: '100%',
+    backgroundColor: isDark ? '#0D2012' : '#F0FDF4',
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.30)',
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  autoCheckInCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  autoCheckInCardIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(34,197,94,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+  },
+  autoCheckInCardText: {
+    flex: 1,
+  },
+  autoCheckInCardTitle: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: isDark ? '#FFFFFF' : '#111827',
+    marginBottom: 2,
+  },
+  autoCheckInCardDesc: {
+    fontSize: FONT_SIZES.small,
+    color: isDark ? 'rgba(255,255,255,0.65)' : '#374151',
+    lineHeight: 17,
+  },
+  autoCheckInCardNote: {
+    fontSize: FONT_SIZES.xs,
+    color: isDark ? 'rgba(255,255,255,0.45)' : '#6B7280',
+    marginTop: SPACING.sm,
+    paddingTop: SPACING.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(34,197,94,0.15)',
+    lineHeight: 16,
+  },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2540,6 +3048,179 @@ const getStyles = (colors, isDark) => StyleSheet.create({
   sheetBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  // ── Cancel Run Modal ──────────────────────────────────────────────────────
+  cancelRunSheet: {
+    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.xl + 16,
+  },
+  cancelRunTitle: {
+    fontSize: FONT_SIZES.subtitle,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: colors.textPrimary,
+    marginBottom: SPACING.xs,
+  },
+  cancelRunSubtitle: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    marginBottom: SPACING.md,
+    lineHeight: 18,
+  },
+  cancelReasonOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    gap: SPACING.sm,
+  },
+  cancelReasonOptionSelected: {
+    // highlight handled by text + radio fill
+  },
+  cancelReasonRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: colors.textMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cancelReasonRadioFill: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#EF4444',
+  },
+  cancelReasonText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+  },
+  cancelReasonTextSelected: {
+    color: colors.textPrimary,
+    fontWeight: FONT_WEIGHTS.semibold,
+  },
+  cancelRunActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  cancelRunKeepButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+  },
+  cancelRunKeepText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textPrimary,
+  },
+  cancelRunConfirmButton: {
+    flex: 1,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: RADIUS.md,
+    backgroundColor: '#EF4444',
+    alignItems: 'center',
+  },
+  cancelRunConfirmButtonDisabled: {
+    backgroundColor: '#EF444466',
+  },
+  cancelRunConfirmText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: '#FFFFFF',
+  },
+  // ── Auto Check-In Onboarding Sheet ─────────────────────────────────────
+  autoCheckInOnboardingSheet: {
+    backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl + 8,
+  },
+  autoCheckInOnboardingIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(34,197,94,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: SPACING.md,
+    marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(34,197,94,0.25)',
+  },
+  autoCheckInOnboardingTitle: {
+    fontSize: FONT_SIZES.h2,
+    fontWeight: FONT_WEIGHTS.extraBold,
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: SPACING.xs,
+  },
+  autoCheckInOnboardingSubtitle: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: SPACING.lg,
+  },
+  autoCheckInOnboardingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  autoCheckInOnboardingRowIcon: {
+    fontSize: 16,
+    lineHeight: 22,
+    width: 24,
+    textAlign: 'center',
+  },
+  autoCheckInOnboardingRowText: {
+    flex: 1,
+    fontSize: FONT_SIZES.body,
+    color: colors.textPrimary,
+    lineHeight: 22,
+  },
+  autoCheckInOnboardingNote: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.lg,
+    fontStyle: 'italic',
+  },
+  autoCheckInOnboardingPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#22C55E',
+    borderRadius: RADIUS.md,
+    paddingVertical: 14,
+    marginBottom: SPACING.sm,
+  },
+  autoCheckInOnboardingPrimaryText: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.bold,
+    color: '#FFFFFF',
+  },
+  autoCheckInOnboardingSecondary: {
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+  },
+  autoCheckInOnboardingSecondaryText: {
+    fontSize: FONT_SIZES.body,
+    color: colors.textMuted,
+    fontWeight: FONT_WEIGHTS.medium,
   },
   sheetContainer: {
     backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',

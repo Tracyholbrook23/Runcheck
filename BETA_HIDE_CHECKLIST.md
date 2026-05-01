@@ -24,7 +24,7 @@ No code changes implied by this list — decisions first, implementation separat
 
 ---
 
-## 2. Premium page + Private Run / Paid Run entry points
+## 2. Premium page + Private Run / Paid Run entry points ✅ Done
 
 **Why hide:** User flagged "Premium page is poorly positioned / users don't feel incentive." `LAUNCH_CHECKLIST.md` explicitly lists "Premium/monetization features (PremiumScreen exists but no billing)" under Post-Launch. Showing paywalled features with no billing wired is confusing.
 
@@ -40,14 +40,9 @@ No code changes implied by this list — decisions first, implementation separat
 
 ---
 
-## 3. Leaderboard "Last Week's Winners" (confusing date copy)
+## 3. Leaderboard date copy — ✅ Fixed
 
-**Why hide:** User flagged the "week of April 20" text as confusing. Ambiguous whether it's the week that just ended or the current week. Small surface, easy to hide until copy is fixed.
-
-**Likely files involved:**
-- `screens/LeaderboardScreen.js` — "Last Week's Winners" section ~lines 393–479; `formatWeekOf` helper ~line 306; `winnersSubtitle` ~line 401
-
-**Recommended action:** **Hide the "Last Week's Winners" section** for beta (wrap the `{weeklyWinners.length > 0 && (...)}` block in a `BETA_FLAGS.weeklyWinnersEnabled` gate). Keep the main leaderboard list and current-week rankings — those are fine. Fix the copy to "Week ending [date]" post-beta and re-enable.
+**Fixed 2026-04-25:** Replaced ambiguous "Week of Apr 20" with a clear date range. `formatWeekRange()` now computes the 7-day window from the `weekOf` end date and displays e.g. "Apr 24 - 30" or "Mar 29 - Apr 4". No hide needed.
 
 ---
 
@@ -78,14 +73,9 @@ No code changes implied by this list — decisions first, implementation separat
 
 ---
 
-## 6. Push Notifications toggle in Settings (placeholder switch)
+## 6. Push Notifications toggle in Settings ✅ Already implemented
 
-**Why hide:** `screens/SettingsScreen.js` ~line 239 renders a Push Notifications toggle that is `disabled` with no handler. Users see a switch they can't interact with — implies broken.
-
-**Likely files involved:**
-- `screens/SettingsScreen.js` lines 239–257
-
-**Recommended action:** **Hide the row** (or remove the toggle and keep a subtitle "Push notifications are on" / "Managed by your device" if that matches reality). Also confirm that the 4 notification types the user expects (run starting soon, run created at followed gym, friend activity, leaderboard updates) are actually delivered. The backend has 5 notification Cloud Functions deployed per ARCHITECTURE_MAP.md Phase 1 table, but "friend activity" and "leaderboard updates" are not listed there — they likely don't exist yet. Separate item, not a hide, but worth flagging.
+**Audited 2026-04-25:** Toggle is fully wired — not a placeholder. `handleToggleNotifications` writes `preferences.notificationsEnabled` to Firestore, calls `registerPushToken()` on enable and `clearPushToken()` on disable. Notification type list dims when off. No action needed.
 
 ---
 
