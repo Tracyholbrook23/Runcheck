@@ -29,6 +29,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -54,6 +55,43 @@ function sanitizeInstagram(raw) {
   return raw.replace(/^@+/, '').replace(/[^a-zA-Z0-9._]/g, '').slice(0, 30);
 }
 
+// ── Editable text field — defined outside component for stable identity ──────
+// IMPORTANT: must stay outside EditProfileScreen. If defined inside, React sees
+// a new component type on every render (every keystroke), causing the TextInput
+// to unmount/remount and lose focus after each character typed.
+const EditableField = ({ label, value, onChangeText, placeholder, hint, autoCapitalize = 'words', maxLength = 40, prefix, styles, colors }) => (
+  <View style={styles.fieldBlock}>
+    <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={styles.inputWrapper}>
+      {prefix ? <Text style={[styles.inputPrefix, { color: colors.textMuted }]}>{prefix}</Text> : null}
+      <TextInput
+        style={[styles.textInput, prefix && styles.textInputWithPrefix]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textMuted}
+        maxLength={maxLength}
+        autoCorrect={false}
+        autoCapitalize={autoCapitalize}
+        returnKeyType="done"
+      />
+    </View>
+    {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+  </View>
+);
+
+// ── Read-only field — defined outside component for stable identity ───────────
+const ReadOnlyField = ({ label, value, hint, styles, colors }) => (
+  <View style={styles.fieldBlock}>
+    <Text style={styles.fieldLabel}>{label}</Text>
+    <View style={styles.readOnlyRow}>
+      <Text style={styles.readOnlyValue}>{value}</Text>
+      <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
+    </View>
+    {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+  </View>
+);
+
 export default function EditProfileScreen({ navigation }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors, isDark), [colors, isDark]);
@@ -72,6 +110,8 @@ export default function EditProfileScreen({ navigation }) {
   const [lastName,  setLastName]  = useState('');
   // Game style
   const [skillLevel, setSkillLevel] = useState('Casual');
+  // Privacy
+  const [friendsListPrivate, setFriendsListPrivate] = useState(false);
 
   const [saving,      setSaving]      = useState(false);
   const [hasChanges,  setHasChanges]  = useState(false);
@@ -84,8 +124,9 @@ export default function EditProfileScreen({ navigation }) {
       setFirstName(profile.firstName ?? '');
       setLastName(profile.lastName ?? '');
       setSkillLevel(profile.skillLevel ?? 'Casual');
+      setFriendsListPrivate(profile.friendsListPrivate ?? false);
     }
-  }, [profile?.displayName, profile?.instagramHandle, profile?.firstName, profile?.lastName, profile?.skillLevel]);
+  }, [profile?.displayName, profile?.instagramHandle, profile?.firstName, profile?.lastName, profile?.skillLevel, profile?.friendsListPrivate]);
 
   // Track whether anything has changed vs. saved values
   useEffect(() => {
@@ -95,9 +136,10 @@ export default function EditProfileScreen({ navigation }) {
       instagramHandle.trim() !== (profile.instagramHandle ?? '').trim()               ||
       firstName.trim()       !== (profile.firstName ?? '').trim()                     ||
       lastName.trim()        !== (profile.lastName  ?? '').trim()                     ||
-      skillLevel             !== (profile.skillLevel ?? 'Casual');
+      skillLevel             !== (profile.skillLevel ?? 'Casual')                     ||
+      friendsListPrivate     !== (profile.friendsListPrivate ?? false);
     setHasChanges(changed);
-  }, [displayName, instagramHandle, firstName, lastName, skillLevel, profile]);
+  }, [displayName, instagramHandle, firstName, lastName, skillLevel, friendsListPrivate, profile]);
 
   // ── Save handler ──────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -118,6 +160,7 @@ export default function EditProfileScreen({ navigation }) {
         displayName: trimmedDisplay,
         instagramHandle: trimmedIG,
         skillLevel,
+        friendsListPrivate,
       };
 
       // Update real name fields only if they have content
@@ -147,40 +190,6 @@ export default function EditProfileScreen({ navigation }) {
     }
   };
 
-  // ── Read-only field row ───────────────────────────────────────────────────
-  const ReadOnlyField = ({ label, value, hint }) => (
-    <View style={styles.fieldBlock}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={styles.readOnlyRow}>
-        <Text style={styles.readOnlyValue}>{value}</Text>
-        <Ionicons name="lock-closed-outline" size={14} color={colors.textMuted} />
-      </View>
-      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
-    </View>
-  );
-
-  // ── Editable text field ───────────────────────────────────────────────────
-  const EditableField = ({ label, value, onChangeText, placeholder, hint, autoCapitalize = 'words', maxLength = 40, prefix }) => (
-    <View style={styles.fieldBlock}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <View style={styles.inputWrapper}>
-        {prefix ? <Text style={[styles.inputPrefix, { color: colors.textMuted }]}>{prefix}</Text> : null}
-        <TextInput
-          style={[styles.textInput, prefix && styles.textInputWithPrefix]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textMuted}
-          maxLength={maxLength}
-          autoCorrect={false}
-          autoCapitalize={autoCapitalize}
-          returnKeyType="done"
-        />
-      </View>
-      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
-    </View>
-  );
-
   return (
     <SafeAreaView style={styles.safe} edges={['bottom']}>
       <KeyboardAvoidingView
@@ -205,6 +214,8 @@ export default function EditProfileScreen({ navigation }) {
               placeholder="Your display name"
               hint="This is what shows on runs, leaderboards, and your profile."
               maxLength={40}
+              styles={styles}
+              colors={colors}
             />
 
             <View style={styles.divider} />
@@ -218,6 +229,8 @@ export default function EditProfileScreen({ navigation }) {
               autoCapitalize="none"
               maxLength={30}
               prefix="@"
+              styles={styles}
+              colors={colors}
             />
 
           </View>
@@ -235,6 +248,8 @@ export default function EditProfileScreen({ navigation }) {
                   onChangeText={(t) => setFirstName(sanitizePersonName(t))}
                   placeholder="First"
                   maxLength={30}
+                  styles={styles}
+                  colors={colors}
                 />
               </View>
               <View style={styles.nameFieldDivider} />
@@ -245,6 +260,8 @@ export default function EditProfileScreen({ navigation }) {
                   onChangeText={(t) => setLastName(sanitizePersonName(t))}
                   placeholder="Last"
                   maxLength={30}
+                  styles={styles}
+                  colors={colors}
                 />
               </View>
             </View>
@@ -255,6 +272,8 @@ export default function EditProfileScreen({ navigation }) {
               label="Email"
               value={email}
               hint="To change your email, contact support."
+              styles={styles}
+              colors={colors}
             />
 
             {username && (
@@ -264,6 +283,8 @@ export default function EditProfileScreen({ navigation }) {
                   label="Username"
                   value={`@${username}`}
                   hint="Usernames can't be changed after signup."
+                  styles={styles}
+                  colors={colors}
                 />
               </>
             )}
@@ -300,6 +321,31 @@ export default function EditProfileScreen({ navigation }) {
                 </TouchableOpacity>
               );
             })}
+          </View>
+
+          {/* ── Section: Privacy ─────────────────────────────────────── */}
+          <Text style={styles.sectionTitle}>Privacy</Text>
+          <View style={styles.card}>
+            <View style={styles.privacyRow}>
+              <View style={styles.privacyRowLeft}>
+                <Ionicons name="people-outline" size={18} color={colors.textSecondary} style={{ marginRight: SPACING.sm }} />
+                <View>
+                  <Text style={styles.privacyRowLabel}>Private Friends List</Text>
+                  <Text style={styles.privacyRowHint}>
+                    {friendsListPrivate
+                      ? 'Only you can see your full friends list'
+                      : 'Anyone can see who you\'re friends with'}
+                  </Text>
+                </View>
+              </View>
+              <Switch
+                value={friendsListPrivate}
+                onValueChange={setFriendsListPrivate}
+                trackColor={{ false: colors.border, true: colors.primary + '66' }}
+                thumbColor={friendsListPrivate ? colors.primary : '#9CA3AF'}
+                ios_backgroundColor={colors.border}
+              />
+            </View>
           </View>
 
           {/* ── Save button ───────────────────────────────────────────── */}
@@ -508,5 +554,28 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontWeight: FONT_WEIGHTS.bold,
     color: '#fff',
     letterSpacing: 0.3,
+  },
+  privacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.sm,
+  },
+  privacyRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: SPACING.md,
+  },
+  privacyRowLabel: {
+    fontSize: FONT_SIZES.body,
+    fontWeight: FONT_WEIGHTS.medium,
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  privacyRowHint: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.textMuted,
+    lineHeight: 16,
   },
 });

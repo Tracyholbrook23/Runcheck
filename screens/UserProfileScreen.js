@@ -87,6 +87,11 @@ export default function UserProfileScreen({ route, navigation }) {
   const [isBlocked, setIsBlocked] = useState(false);
   const [blocking, setBlocking] = useState(false);
 
+  // Friends section
+  const [currentUserFriends, setCurrentUserFriends] = useState([]); // current user's friends UIDs
+  const [friendProfiles, setFriendProfiles] = useState([]);          // mini-profiles of target's friends
+  const [friendsLoading, setFriendsLoading] = useState(false);
+
   if (__DEV__) console.log('[UserProfileScreen] mounted — userId:', userId, '| currentUid:', currentUid);
 
   const { gyms } = useGyms();
@@ -135,6 +140,7 @@ export default function UserProfileScreen({ route, navigation }) {
             const currentData = currentUserSnap.data();
             setRequestSent((currentData.sentRequests || []).includes(userId));
             setIsBlocked((currentData.blockedUsers || []).includes(userId));
+            setCurrentUserFriends(currentData.friends || []);
           }
         } catch (reqErr) {
           if (__DEV__) console.warn('[UserProfileScreen] sentRequests check failed:', reqErr.message);
@@ -145,6 +151,38 @@ export default function UserProfileScreen({ route, navigation }) {
     fetchProfile();
     return () => { cancelled = true; };
   }, [userId, currentUid]);
+
+  // ── Load friend mini-profiles ────────────────────────────────────────────
+  // Only runs once the profile is loaded. Respects the privacy setting:
+  // if friendsListPrivate === true AND viewer is not a friend, skip loading.
+  useEffect(() => {
+    if (!profile) return;
+    const targetFriends = profile.friends || [];
+    if (targetFriends.length === 0) { setFriendProfiles([]); return; }
+
+    const canSeeFullList = !profile.friendsListPrivate || isFriend || isOwnProfile;
+    const uidsToFetch = canSeeFullList
+      ? targetFriends.slice(0, 24) // cap at 24 to avoid excessive reads
+      : targetFriends.filter((uid) => currentUserFriends.includes(uid)).slice(0, 24);
+
+    if (uidsToFetch.length === 0) { setFriendProfiles([]); return; }
+
+    setFriendsLoading(true);
+    Promise.all(
+      uidsToFetch.map((uid) =>
+        getDoc(doc(db, 'users', uid)).then((snap) =>
+          snap.exists()
+            ? { uid, name: snap.data().displayName || snap.data().name || 'Player', photoURL: snap.data().photoURL || null }
+            : null
+        ).catch(() => null)
+      )
+    )
+      .then((results) => {
+        if (!results) return;
+        setFriendProfiles(results.filter(Boolean));
+      })
+      .finally(() => setFriendsLoading(false));
+  }, [profile, isFriend, isOwnProfile, currentUserFriends]);
 
   // ── Hide the default navigation header ──────────────────────────────────
   useEffect(() => {
@@ -862,6 +900,111 @@ export default function UserProfileScreen({ route, navigation }) {
           </View>
         )}
 
+        {/* ── Friends ── */}
+        {(() => {
+          const targetFriends = profile.friends || [];
+          const mutualFriends = friendProfiles.filter((fp) => currentUserFriends.includes(fp.uid));
+          const canSeeFullList = !profile.friendsListPrivate || isFriend || isOwnProfile;
+          const allFriends = canSeeFullList ? friendProfiles : [];
+          const hasAny = friendProfiles.length > 0 || targetFriends.length > 0;
+
+          return (
+            <View style={[styles.section, { marginBottom: SPACING.lg }]}>
+              <View style={styles.friendsSectionHeader}>
+                <Text style={styles.sectionTitle}>
+                  Friends {targetFriends.length > 0 ? `· ${targetFriends.length}` : ''}
+                </Text>
+                {profile.friendsListPrivate && !isFriend && !isOwnProfile && (
+                  <View style={styles.privateBadge}>
+                    <Ionicons name="lock-closed" size={10} color={colors.textMuted} />
+                    <Text style={styles.privateBadgeText}>Private</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Mutual friends — always shown when viewer has friends in common */}
+              {mutualFriends.length > 0 && (
+                <View style={styles.mutualRow}>
+                  <Ionicons name="people" size={13} color={colors.primary} />
+                  <Text style={styles.mutualText}>
+                    {mutualFriends.length === 1
+                      ? `You and ${mutualFriends[0].name} are friends`
+                      : `${mutualFriends.length} mutual friends`}
+                  </Text>
+                </View>
+              )}
+
+              {friendsLoading ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: SPACING.sm }} />
+              ) : profile.friendsListPrivate && !isFriend && !isOwnProfile ? (
+                /* Private + not friends — show only mutual avatars or lock message */
+                mutualFriends.length > 0 ? (
+                  <View style={styles.friendAvatarRow}>
+                    {mutualFriends.slice(0, 8).map((fp) => (
+                      <TouchableOpacity
+                        key={fp.uid}
+                        style={styles.friendAvatarWrap}
+                        onPress={() => navigation.push('UserProfile', { userId: fp.uid })}
+                        activeOpacity={0.75}
+                      >
+                        {fp.photoURL ? (
+                          <Image source={{ uri: fp.photoURL }} style={styles.friendAvatar} />
+                        ) : (
+                          <View style={[styles.friendAvatar, styles.friendAvatarFallback, { backgroundColor: colors.primary + '28' }]}>
+                            <Text style={[styles.friendAvatarInitial, { color: colors.primary }]}>
+                              {fp.name[0].toUpperCase()}
+                            </Text>
+                          </View>
+                        )}
+                        <Text style={styles.friendAvatarName} numberOfLines={1}>{fp.name.split(' ')[0]}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                ) : (
+                  <View style={styles.privateListWrap}>
+                    <Ionicons name="lock-closed-outline" size={20} color={colors.textMuted} />
+                    <Text style={styles.privateListText}>This person's friends list is private</Text>
+                  </View>
+                )
+              ) : allFriends.length > 0 ? (
+                /* Public list or viewer is a friend */
+                <View style={styles.friendAvatarRow}>
+                  {allFriends.slice(0, 8).map((fp) => (
+                    <TouchableOpacity
+                      key={fp.uid}
+                      style={styles.friendAvatarWrap}
+                      onPress={() => navigation.push('UserProfile', { userId: fp.uid })}
+                      activeOpacity={0.75}
+                    >
+                      {fp.photoURL ? (
+                        <Image source={{ uri: fp.photoURL }} style={styles.friendAvatar} />
+                      ) : (
+                        <View style={[styles.friendAvatar, styles.friendAvatarFallback, { backgroundColor: colors.primary + '28' }]}>
+                          <Text style={[styles.friendAvatarInitial, { color: colors.primary }]}>
+                            {fp.name[0].toUpperCase()}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={styles.friendAvatarName} numberOfLines={1}>{fp.name.split(' ')[0]}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  {targetFriends.length > 8 && (
+                    <View style={styles.friendAvatarWrap}>
+                      <View style={[styles.friendAvatar, styles.friendAvatarMore, { backgroundColor: colors.surfaceLight }]}>
+                        <Text style={[styles.friendAvatarMoreText, { color: colors.textSecondary }]}>
+                          +{targetFriends.length - 8}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              ) : targetFriends.length === 0 ? (
+                <Text style={styles.emptyText}>No friends yet</Text>
+              ) : null}
+            </View>
+          );
+        })()}
+
         {/* ── Home Court ── */}
         {homeCourtGym && (
           <View style={[styles.section, { marginBottom: SPACING.lg }]}>
@@ -1410,6 +1553,92 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     color: colors.textMuted,
     fontStyle: 'italic',
   },
+  // ── Friends section ───────────────────────────────────────────────────────
+  friendsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.sm,
+  },
+  privateBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.surfaceLight,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  privateBadgeText: {
+    fontSize: 9,
+    fontWeight: FONT_WEIGHTS.semibold,
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+  },
+  mutualRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginBottom: SPACING.sm,
+  },
+  mutualText: {
+    fontSize: FONT_SIZES.xs,
+    color: colors.primary,
+    fontWeight: FONT_WEIGHTS.medium,
+  },
+  friendAvatarRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.md,
+  },
+  friendAvatarWrap: {
+    alignItems: 'center',
+    width: 56,
+  },
+  friendAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  friendAvatarFallback: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  friendAvatarInitial: {
+    fontSize: 18,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  friendAvatarMore: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  friendAvatarMoreText: {
+    fontSize: FONT_SIZES.small,
+    fontWeight: FONT_WEIGHTS.bold,
+  },
+  friendAvatarName: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    marginTop: 4,
+    textAlign: 'center',
+    maxWidth: 56,
+  },
+  privateListWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: SPACING.md,
+  },
+  privateListText: {
+    fontSize: FONT_SIZES.small,
+    color: colors.textMuted,
+    fontStyle: 'italic',
+  },
+
   // ── Clips section ─────────────────────────────────────────────────────────
   clipsComingSoonWrap: {
     alignItems: 'center',

@@ -30,7 +30,7 @@ export default function OnboardingWelcomeScreen({ navigation }) {
       <View style={styles.container}>
         <Logo size="large" style={{ marginBottom: SPACING.lg }} />
 
-        <Text style={styles.headline}>Find runs.{'\n'}Show up.{'\n'}Hoop.</Text>
+        <Text style={styles.headline}>Real runs.{'\n'}Real players.{'\n'}Real time.</Text>
         <Text style={styles.subtext}>
           See who's playing, check in to your gym, and never miss a good run again.
         </Text>

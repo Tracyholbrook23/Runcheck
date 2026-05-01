@@ -56,7 +56,7 @@ import { usePresence, useGyms, useLivePresenceMap, useFeaturedClip, useProfile, 
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { useWeeklyWinners } from '../hooks/useWeeklyWinners';
 import { useSchedules } from '../hooks/useSchedules';
-import { Logo } from '../components';
+import { Logo, ScreenHelpButton } from '../components';
 import { db, auth } from '../config/firebase';
 import { collection, query, orderBy, limit, where, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { Switch } from 'react-native';
@@ -808,6 +808,9 @@ const HomeScreen = ({ navigation }) => {
             >
               <Ionicons name="logo-instagram" size={24} color="#FFFFFF" />
             </TouchableOpacity>
+            <View style={styles.headerIcon}>
+              <ScreenHelpButton screen="home" />
+            </View>
           </View>
         </View>
 
@@ -1519,7 +1522,7 @@ const HomeScreen = ({ navigation }) => {
 
           {/* Footer tagline */}
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Built for hoopers. Powered by community.</Text>
+            <Text style={styles.footerText}>Real runs. Real players. Real time.</Text>
           </View>
         </ScrollView>
       </SafeAreaView>

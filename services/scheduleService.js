@@ -188,7 +188,7 @@ export const createSchedule = async (odId, gymId, gymName, scheduledTime) => {
  * @returns {Promise<Object>} Cancelled schedule data
  * @throws {Error} If validation fails
  */
-export const cancelSchedule = async (scheduleId) => {
+export const cancelSchedule = async (scheduleId, cancelReason = null) => {
   const scheduleRef = doc(db, 'schedules', scheduleId);
   const scheduleDoc = await getDoc(scheduleRef);
 
@@ -218,6 +218,7 @@ export const cancelSchedule = async (scheduleId) => {
   await updateDoc(scheduleRef, {
     status: SCHEDULE_STATUS.CANCELLED,
     cancelledAt: serverTimestamp(),
+    ...(cancelReason ? { cancelReason } : {}),
   });
 
   // Update gym schedule count

@@ -26,6 +26,7 @@ Nothing in this file should be worked on during a session unless the user explic
 - **Audio messages in DM chat** — record and send voice clips. Needs `expo-av` for recording + playback, waveform/progress UI, Firebase Storage upload. Good feature but low priority for Austin/Lansing launch demographics.
 - **Reply-to-message in DM chat** — quote a specific message above your reply. Stores `replyTo: { messageId, text, senderName }` on the new message doc. Needs quoted preview bubble, scroll-to-referenced-message, and deleted message fallback handling.
 - **Stickers in DM chat** — curated static pack or Giphy `/stickers/search` endpoint. GIF picker already covers the main use case.
+- **Player-to-player ratings** — after a session, players could rate each other on attitude, skill, or reliability. Deferred because: (1) the reliability score already serves as the primary trust signal, (2) rating systems need eligibility rules (must have actually played together), moderation hooks for bad-faith ratings, and display logic on UserProfileScreen — meaningful scope. (3) Need real community data first to know what dimensions to rate on (skill? punctuality? attitude?). Revisit post-launch once user behavior patterns are understood. Would likely integrate with or complement the existing reliability score rather than replace it.
 - "Challenge" system (1v1 or crew vs crew invites)
 - Crew/team creation and management
 - Follow other players (not just gyms)

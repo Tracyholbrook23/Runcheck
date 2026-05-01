@@ -30,8 +30,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
-import { Logo } from '../components';
+import { Logo, ScreenHelpButton } from '../components';
+import RatingPromptModal from '../components/RatingPromptModal';
 import { usePresence, useGyms, useProfile, useLivePresenceMap, useProximityCheckIn } from '../hooks';
+import { useRatingPrompt } from '../hooks/useRatingPrompt';
+import { db } from '../config/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
 import { isLocationGranted } from '../utils/locationUtils';
 import { hapticLight, hapticSuccess } from '../utils/haptics';
@@ -80,6 +84,22 @@ export default function CheckInScreen({ navigation }) {
   const { followedGyms, profile } = useProfile();
   const { gyms } = useGyms();
   const { countMap: liveCountMap } = useLivePresenceMap();
+
+  // ── Rating prompt ─────────────────────────────────────────────────────────
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const { checkForRatingPrompt, handleLoveIt, handleNotReally } = useRatingPrompt();
+
+  const maybePromptRating = useCallback(async () => {
+    try {
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+      const snap = await getDoc(doc(db, 'users', uid));
+      const totalAttended = snap.data()?.reliability?.totalAttended ?? 0;
+      await checkForRatingPrompt(totalAttended, () => setRatingModalVisible(true));
+    } catch {
+      // Never block the check-in flow
+    }
+  }, [checkForRatingPrompt]);
 
   // Read auto check-in preference (default true)
   const autoCheckInEnabled = profile?.preferences?.autoCheckInEnabled ?? true;
@@ -142,6 +162,7 @@ export default function CheckInScreen({ navigation }) {
       setAutoCheckInBanner(gym);
       // Auto-dismiss banner after 4 seconds
       setTimeout(() => setAutoCheckInBanner(null), 4000);
+      maybePromptRating();
     } catch (err) {
       if (__DEV__) console.warn('[AUTO CHECK-IN] Failed:', err?.message);
       // Fall back to a regular alert if auto check-in fails
@@ -168,6 +189,7 @@ export default function CheckInScreen({ navigation }) {
     try {
       await checkIn(nearbyGym.id);
       // nearbyGym clears automatically via the isCheckedIn effect in the hook
+      maybePromptRating();
     } catch (err) {
       Alert.alert(
         'Check-In Failed',
@@ -324,6 +346,7 @@ export default function CheckInScreen({ navigation }) {
     setScheduledCheckingIn(true);
     try {
       await checkIn(gymId);
+      maybePromptRating();
     } catch (err) {
       Alert.alert(
         'Check-In Failed',
@@ -498,6 +521,12 @@ export default function CheckInScreen({ navigation }) {
             </View>
           </View>
         </SafeAreaView>
+        <RatingPromptModal
+          visible={ratingModalVisible}
+          onLoveIt={() => { setRatingModalVisible(false); handleLoveIt(); }}
+          onNotReally={() => { setRatingModalVisible(false); handleNotReally(); }}
+          onDismiss={() => setRatingModalVisible(false)}
+        />
       </ImageBackground>
     );
   }
@@ -611,6 +640,12 @@ export default function CheckInScreen({ navigation }) {
             </View>
           </View>
         </SafeAreaView>
+        <RatingPromptModal
+          visible={ratingModalVisible}
+          onLoveIt={() => { setRatingModalVisible(false); handleLoveIt(); }}
+          onNotReally={() => { setRatingModalVisible(false); handleNotReally(); }}
+          onDismiss={() => setRatingModalVisible(false)}
+        />
       </ImageBackground>
     );
   }
@@ -623,8 +658,9 @@ export default function CheckInScreen({ navigation }) {
       <View style={styles.container}>
         {/* Header */}
         <View style={styles.headerGradient}>
-          <View style={styles.header}>
+          <View style={[styles.header, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}>
             <Text style={styles.screenTitle}>Check In</Text>
+            <ScreenHelpButton screen="checkin" />
           </View>
         </View>
 
@@ -735,6 +771,12 @@ export default function CheckInScreen({ navigation }) {
         </View>
       </View>
     </SafeAreaView>
+    <RatingPromptModal
+      visible={ratingModalVisible}
+      onLoveIt={() => { setRatingModalVisible(false); handleLoveIt(); }}
+      onNotReally={() => { setRatingModalVisible(false); handleNotReally(); }}
+      onDismiss={() => setRatingModalVisible(false)}
+    />
     </ImageBackground>
   );
 }

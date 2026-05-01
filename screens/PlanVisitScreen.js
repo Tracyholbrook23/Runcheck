@@ -53,7 +53,7 @@ import { useTheme } from '../contexts';
 import { useSchedules, useGyms, useProfile, useLivePresenceMap, useLocation } from '../hooks';
 import { useMyRunChats } from '../hooks/useMyRunChats';
 import { GYM_LOCAL_IMAGES } from '../constants/gymAssets';
-import { ReliabilityIntroModal } from '../components';
+import { ReliabilityIntroModal, ScreenHelpButton } from '../components';
 import { calculateDistanceMeters } from '../utils/locationUtils';
 import { subscribeToAllUpcomingRuns, startOrJoinRun, joinExistingRun, leaveRun } from '../services/runService';
 import { auth, db } from '../config/firebase';
@@ -158,6 +158,19 @@ export default function PlanVisitScreen({ navigation }) {
   const [cancelRunTarget, setCancelRunTarget] = useState(null); // run object
   const [cancelReason, setCancelReason] = useState('');
   const [submittingCancel, setSubmittingCancel] = useState(false);
+
+  // ── Cancel visit reason modal state ──────────────────────────────────────
+  const [cancelVisitModalVisible, setCancelVisitModalVisible] = useState(false);
+  const [pendingCancelVisit, setPendingCancelVisit] = useState(null); // { schedule, matchingRun, isInRun }
+  const [visitCancelReason, setVisitCancelReason] = useState('');
+
+  const VISIT_CANCEL_REASONS = [
+    "Can't make it",
+    'Something came up',
+    'Plans changed',
+    'Wrong time selected',
+    'No reason',
+  ];
 
   // ── Step 2 gym filter state ───────────────────────────────────────────────
   const [gymSearch, setGymSearch] = useState('');
@@ -728,8 +741,8 @@ export default function PlanVisitScreen({ navigation }) {
    * removes the corresponding activity feed entry. Called by both cancel
    * paths inside handleCancelSchedule.
    */
-  const cancelVisitOnly = async (schedule) => {
-    await cancelSchedule(schedule.id);
+  const cancelVisitOnly = async (schedule, reason = null) => {
+    await cancelSchedule(schedule.id, reason);
     const uid = auth.currentUser?.uid;
     if (uid) {
       if (schedule.activityId) {
@@ -765,22 +778,28 @@ export default function PlanVisitScreen({ navigation }) {
    * @param {object|null} matchingRun — The run matching this visit slot, if any.
    * @param {boolean} isInRun   — Whether the user has joined that run.
    */
-  const handleCancelSchedule = async (schedule, matchingRun, isInRun) => {
+  const handleCancelSchedule = (schedule, matchingRun, isInRun) => {
+    // Open the reason picker modal first — the actual cancel fires after reason is chosen
+    setPendingCancelVisit({ schedule, matchingRun, isInRun });
+    setVisitCancelReason('');
+    setCancelVisitModalVisible(true);
+  };
+
+  // Called after the user picks a reason in the cancel visit modal
+  const handleConfirmCancelVisit = async () => {
+    if (!pendingCancelVisit) return;
+    const { schedule, matchingRun, isInRun } = pendingCancelVisit;
+    const reason = visitCancelReason || 'No reason';
+    setCancelVisitModalVisible(false);
+
     if (matchingRun && isInRun) {
-      // User is in the run — give them a choice.
       Alert.alert(
-        'Cancel Visit',
-        `You're also in the run at ${schedule.gymName}. Do you want to leave the run too?`,
+        'Also in a Run',
+        `You're also in the run at ${schedule.gymName}. Leave the run too?`,
         [
-          { text: 'Keep Everything', style: 'cancel' },
-          {
-            text: 'Cancel Visit Only',
+          { text: 'Keep Run', style: 'cancel',
             onPress: async () => {
-              try {
-                await cancelVisitOnly(schedule);
-              } catch (error) {
-                Alert.alert('Error', error.message);
-              }
+              try { await cancelVisitOnly(schedule, reason); } catch (e) { Alert.alert('Error', e.message); }
             },
           },
           {
@@ -788,38 +807,20 @@ export default function PlanVisitScreen({ navigation }) {
             style: 'destructive',
             onPress: async () => {
               try {
-                await Promise.all([
-                  cancelVisitOnly(schedule),
-                  leaveRun(matchingRun.id),
-                ]);
-              } catch (error) {
-                Alert.alert('Error', error.message);
-              }
+                await Promise.all([cancelVisitOnly(schedule, reason), leaveRun(matchingRun.id)]);
+              } catch (e) { Alert.alert('Error', e.message); }
             },
           },
         ]
       );
     } else {
-      // No matching run — original single-confirm flow.
-      Alert.alert(
-        'Cancel Visit',
-        `Cancel your planned visit to ${schedule.gymName}?`,
-        [
-          { text: 'Keep', style: 'cancel' },
-          {
-            text: 'Cancel Visit',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                await cancelVisitOnly(schedule);
-              } catch (error) {
-                Alert.alert('Error', error.message);
-              }
-            },
-          },
-        ]
-      );
+      try {
+        await cancelVisitOnly(schedule, reason);
+      } catch (e) {
+        Alert.alert('Error', e.message);
+      }
     }
+    setPendingCancelVisit(null);
   };
 
   if (loading) {
@@ -848,6 +849,7 @@ export default function PlanVisitScreen({ navigation }) {
                 <Text style={styles.title}>Plan a Visit</Text>
                 <Text style={styles.subtitle}>Schedule when you plan to play</Text>
               </View>
+              <ScreenHelpButton screen="plan" />
             </View>
           </View>
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -1284,6 +1286,66 @@ export default function PlanVisitScreen({ navigation }) {
               </View>
             </View>
           </KeyboardAvoidingView>
+        </Modal>
+
+        {/* ── Cancel Visit — Reason Modal ─────────────────────────────────── */}
+        <Modal
+          visible={cancelVisitModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setCancelVisitModalVisible(false)}
+        >
+          <Pressable
+            style={styles.sheetBackdrop}
+            onPress={() => setCancelVisitModalVisible(false)}
+          />
+          <View style={styles.cancelRunSheet}>
+            <Text style={styles.cancelRunTitle}>Why are you cancelling?</Text>
+            <Text style={styles.cancelRunSubtitle}>
+              This gets saved to your session history so you can look back later.
+            </Text>
+            {VISIT_CANCEL_REASONS.map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                style={[
+                  styles.cancelReasonOption,
+                  visitCancelReason === reason && styles.cancelReasonOptionSelected,
+                ]}
+                onPress={() => setVisitCancelReason(reason)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.cancelReasonRadio}>
+                  {visitCancelReason === reason && <View style={styles.cancelReasonRadioFill} />}
+                </View>
+                <Text style={[
+                  styles.cancelReasonText,
+                  visitCancelReason === reason && styles.cancelReasonTextSelected,
+                ]}>
+                  {reason}
+                </Text>
+              </TouchableOpacity>
+            ))}
+            <View style={styles.cancelRunActions}>
+              <TouchableOpacity
+                style={styles.cancelRunKeepButton}
+                onPress={() => { setCancelVisitModalVisible(false); setPendingCancelVisit(null); }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelRunKeepText}>Keep Visit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.cancelRunConfirmButton,
+                  !visitCancelReason && styles.cancelRunConfirmButtonDisabled,
+                ]}
+                onPress={handleConfirmCancelVisit}
+                disabled={!visitCancelReason}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cancelRunConfirmText}>Cancel Visit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
 
         {/* ── Runs Being Planned — Filter Sheet ──────────────────────────── */}

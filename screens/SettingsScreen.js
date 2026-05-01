@@ -318,7 +318,7 @@ export default function SettingsScreen({ navigation }) {
                 color={colors.primary}
               />
             </View>
-            <View>
+            <View style={styles.settingTextWrap}>
               <Text style={styles.settingLabel}>Dark Mode</Text>
               <Text style={styles.settingHint}>Coming soon</Text>
             </View>
@@ -340,7 +340,7 @@ export default function SettingsScreen({ navigation }) {
             <View style={[styles.iconWrap, { backgroundColor: '#FF9F0A22' }]}>
               <Ionicons name="notifications-outline" size={18} color="#FF9F0A" />
             </View>
-            <View>
+            <View style={styles.settingTextWrap}>
               <Text style={styles.settingLabel}>Push Notifications</Text>
               <Text style={styles.settingHint}>
                 {osBlocked
@@ -426,7 +426,7 @@ export default function SettingsScreen({ navigation }) {
             <View style={[styles.iconWrap, { backgroundColor: '#22C55E22' }]}>
               <Ionicons name="location" size={18} color="#22C55E" />
             </View>
-            <View>
+            <View style={styles.settingTextWrap}>
               <Text style={styles.settingLabel}>Auto Check-In</Text>
               <Text style={styles.settingHint}>
                 {autoCheckInEnabled ? 'On — checks you in automatically' : 'Off'}
@@ -498,7 +498,7 @@ export default function SettingsScreen({ navigation }) {
             <View style={[styles.iconWrap, { backgroundColor: '#6366F122' }]}>
               <Ionicons name="people-outline" size={18} color="#6366F1" />
             </View>
-            <View>
+            <View style={styles.settingTextWrap}>
               <Text style={styles.settingLabel}>Community Activity</Text>
               <Text style={styles.settingHint}>Show recent runs on the Home screen</Text>
             </View>
@@ -515,6 +515,26 @@ export default function SettingsScreen({ navigation }) {
       {/* ── MY ACCOUNT ─────────────────────────────────────────────────── */}
       <Text style={styles.sectionTitle}>My Account</Text>
       <View style={styles.card}>
+
+        {/* Help Center */}
+        <TouchableOpacity
+          style={styles.menuRow}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('HelpCenter')}
+        >
+          <View style={styles.menuLeft}>
+            <View style={[styles.iconWrap, { backgroundColor: '#3B82F6' + '22' }]}>
+              <Ionicons name="help-circle-outline" size={18} color="#3B82F6" />
+            </View>
+            <View>
+              <Text style={styles.menuLabel}>Help Center</Text>
+              <Text style={styles.settingHint}>FAQs and how-to guides</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </TouchableOpacity>
+
+        <View style={styles.menuDivider} />
 
         {/* Account Info */}
         <TouchableOpacity
@@ -761,6 +781,7 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
     flex: 1,
+    marginRight: SPACING.md,
   },
   settingLabel: {
     fontSize: FONT_SIZES.body,
@@ -771,6 +792,10 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     fontSize: FONT_SIZES.small,
     color: colors.textMuted,
     marginTop: 1,
+  },
+  settingTextWrap: {
+    flex: 1,
+    flexShrink: 1,
   },
   iconWrap: {
     width: 34,

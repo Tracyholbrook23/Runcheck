@@ -50,7 +50,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { FONT_SIZES, SPACING, SHADOWS, RADIUS, FONT_WEIGHTS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useGyms, useProfile, useLivePresenceMap, useLocation } from '../hooks';
-import { Logo } from '../components';
+import { Logo, ScreenHelpButton } from '../components';
 import { openDirections } from '../utils/openMapsDirections';
 import { calculateDistanceMeters, isLocationGranted } from '../utils/locationUtils';
 import { auth, db } from '../config/firebase';
@@ -833,9 +833,12 @@ export default function ViewRunsScreen({ navigation, route }) {
               <Text style={styles.title}>Find a Run</Text>
               <Text style={styles.subtitle}>See who's playing right now</Text>
             </View>
-            <TouchableOpacity onPress={() => navigation.navigate('GymMap')}>
-              <Ionicons name="map-outline" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              <TouchableOpacity onPress={() => navigation.navigate('GymMap')}>
+                <Ionicons name="map-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <ScreenHelpButton screen="runs" />
+            </View>
           </View>
 
           {/* ── Search bar ────────────────────────────────────────────────── */}

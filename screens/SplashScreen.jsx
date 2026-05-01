@@ -126,7 +126,7 @@ export default function SplashScreen({ navigation }) {
       />
       {/* Tagline fades in after the logo animation completes */}
       <Animated.Text style={[styles.tagline, { opacity: taglineFade }]}>
-        Your City. Your Court. Your People.
+        Real runs. Real players. Real time.
       </Animated.Text>
     </View>
   );

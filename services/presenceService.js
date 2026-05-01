@@ -316,6 +316,25 @@ export const checkIn = async (odId, gymId, userLocation, options = {}) => {
   // Mark schedule as attended (outside transaction - non-critical)
   if (matchingSchedule) {
     await markScheduleAttended(matchingSchedule.id, presenceId);
+  } else {
+    // Direct check-in (no plan) — write an attended record so the session
+    // appears in the user's history modal on their profile.
+    addDoc(collection(db, 'schedules'), {
+      odId,
+      userName,
+      gymId,
+      gymName: gymData.name,
+      status: 'attended',
+      scheduledTime: Timestamp.fromDate(now),
+      attendedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      cancelledAt: null,
+      markedNoShowAt: null,
+      presenceId,
+      directCheckIn: true,   // flag — not a Plan-tab session
+    }).catch((err) => {
+      if (__DEV__) console.warn('[CHECK-IN] Failed to write attendance record:', err);
+    });
   }
 
   // ── Award points for this check-in (client-side, idempotent via sessionKey) ──

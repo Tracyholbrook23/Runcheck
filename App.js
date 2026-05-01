@@ -69,6 +69,7 @@ import AdminFeaturedClipsScreen from './screens/AdminFeaturedClipsScreen';
 import AdminAllClipsScreen from './screens/AdminAllClipsScreen';
 import MyReportsScreen from './screens/MyReportsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
+import HelpCenterScreen from './screens/HelpCenterScreen';
 import CreatePrivateRunScreen from './screens/CreatePrivateRunScreen';
 import RunChatScreen from './screens/RunChatScreen';
 import MessagesScreen from './screens/MessagesScreen';
@@ -213,6 +214,7 @@ function ProfileStack() {
       <Stack.Screen name="MyGymRequests" component={MyGymRequestsScreen} options={{ title: 'My Gym Requests', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="MyReports" component={MyReportsScreen} options={{ title: 'My Reports', headerBackTitle: 'Settings', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Account Info', headerBackTitle: 'Settings', ...themeStyles.NAV_HEADER }} />
+      <Stack.Screen name="HelpCenter" component={HelpCenterScreen} options={{ title: 'Help Center', headerBackTitle: 'Settings', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminTools" component={AdminToolsScreen} options={{ title: 'Admin Tools', headerBackTitle: 'Profile', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequests" component={AdminGymRequestsScreen} options={{ title: 'Gym Requests', headerBackTitle: 'Admin Tools', ...themeStyles.NAV_HEADER }} />
       <Stack.Screen name="AdminGymRequestDetail" component={AdminGymRequestDetailScreen} options={{ title: 'Request Detail', headerBackTitle: 'Requests', ...themeStyles.NAV_HEADER }} />

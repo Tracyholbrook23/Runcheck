@@ -476,6 +476,7 @@ export default function RunDetailsScreen({ route, navigation }) {
   const [startingRun, setStartingRun] = useState(false);
   const [leavingRunId, setLeavingRunId] = useState(null);       // runId being left
   const [joiningRunId, setJoiningRunId] = useState(null);       // runId being joined
+  const [showAvailabilityInfo, setShowAvailabilityInfo] = useState(false);
 
   // ── Optimistic UI state ─────────────────────────────────────────────────────
   // These flip instantly on tap and revert only if the server returns an error,
@@ -1876,6 +1877,13 @@ export default function RunDetailsScreen({ route, navigation }) {
         {/* ── HAPPENING HERE ──────────────────────────────────────────────── */}
         <View style={styles.happeningHeader}>
           <Text style={styles.happeningTitle}>HAPPENING HERE</Text>
+          <TouchableOpacity
+            onPress={() => setShowAvailabilityInfo(true)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.6}
+          >
+            <Ionicons name="warning-outline" size={15} color="rgba(255,180,0,0.7)" />
+          </TouchableOpacity>
         </View>
 
         {playerCount === 0 ? (
@@ -2798,6 +2806,67 @@ export default function RunDetailsScreen({ route, navigation }) {
         }}
       />
 
+      {/* ── Availability Disclaimer Modal ──────────────────────────────────── */}
+      <Modal
+        visible={showAvailabilityInfo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAvailabilityInfo(false)}
+      >
+        <TouchableOpacity
+          style={styles.availModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowAvailabilityInfo(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.availModalCard}>
+            {/* Header */}
+            <View style={styles.availModalHeader}>
+              <Ionicons name="warning" size={18} color="#FBBF24" />
+              <Text style={styles.availModalTitle}>Court Availability Notice</Text>
+              <TouchableOpacity onPress={() => setShowAvailabilityInfo(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close" size={20} color="rgba(255,255,255,0.5)" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Body */}
+            <View style={styles.availModalBody}>
+              <Text style={styles.availModalText}>
+                RunCheck shows you where players are gathering — but we have no control over gym or court availability.
+              </Text>
+
+              <View style={styles.availModalBullets}>
+                {[
+                  'Courts may be occupied by leagues, classes, or other events.',
+                  'Gyms may be closed, have restricted hours, or require a membership.',
+                  'Always call ahead to confirm the court is available before heading out.',
+                ].map((item, i) => (
+                  <View key={i} style={styles.availModalBulletRow}>
+                    <View style={styles.availModalBulletDot} />
+                    <Text style={styles.availModalBulletText}>{item}</Text>
+                  </View>
+                ))}
+              </View>
+
+              <Text style={styles.availModalDisclaimer}>
+                RunCheck is not liable for gyms being unavailable, occupied, or closed. Participation in any run is at your own risk.
+              </Text>
+            </View>
+
+            {/* Footer */}
+            <TouchableOpacity
+              style={styles.availModalToSLink}
+              onPress={() => {
+                setShowAvailabilityInfo(false);
+                Linking.openURL('https://www.theruncheck.app/terms');
+              }}
+            >
+              <Text style={styles.availModalToSText}>Read our full Terms of Service</Text>
+              <Ionicons name="open-outline" size={12} color="rgba(255,255,255,0.4)" />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -3520,12 +3589,99 @@ const getStyles = (colors, isDark) => StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 8,
     backgroundColor: colors.background,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
   },
   happeningTitle: {
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1.2,
     color: 'rgba(255,255,255,0.55)',
+  },
+
+  // ── Availability disclaimer modal ─────────────────────────────────────────
+  availModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  availModalCard: {
+    width: '100%',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+  },
+  availModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  availModalTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: -0.2,
+  },
+  availModalBody: {
+    padding: 18,
+    gap: 14,
+  },
+  availModalText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.70)',
+    lineHeight: 20,
+  },
+  availModalBullets: {
+    gap: 10,
+  },
+  availModalBulletRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  availModalBulletDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#FBBF24',
+    marginTop: 7,
+    flexShrink: 0,
+  },
+  availModalBulletText: {
+    flex: 1,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+    lineHeight: 20,
+  },
+  availModalDisclaimer: {
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.35)',
+    lineHeight: 17,
+    fontStyle: 'italic',
+  },
+  availModalToSLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingVertical: 13,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.07)',
+  },
+  availModalToSText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.40)',
+    textDecorationLine: 'underline',
   },
   emptyStateCard: {
     marginHorizontal: 20,

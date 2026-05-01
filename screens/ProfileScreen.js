@@ -52,7 +52,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { FONT_SIZES, SPACING, FONT_WEIGHTS, RADIUS, SHADOWS } from '../constants/theme';
 import { useTheme } from '../contexts';
 import { useFocusEffect } from '@react-navigation/native';
-import { Logo } from '../components';
+import { Logo, ScreenHelpButton } from '../components';
 import { useAuth, useReliability, useSchedules, usePresence, useGyms, useProfile, useLivePresenceMap, useMyGymRequests, useUserClips, useTaggedClips } from '../hooks';
 import { useConversations } from '../hooks/useConversations';
 import { auth, db, storage } from '../config/firebase';
@@ -71,6 +71,8 @@ import {
   serverTimestamp,
   onSnapshot,
   writeBatch,
+  orderBy,
+  limit,
 } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -224,6 +226,61 @@ export default function ProfileScreen({ navigation }) {
   // row's buttons while the Firestore writes are in-flight.
   const [processingRequestId, setProcessingRequestId] = useState(null);
   const [showReliabilityInfo, setShowReliabilityInfo] = useState(false);
+
+  // ── Session history modal ─────────────────────────────────────────────────
+  const [statHistoryModal, setStatHistoryModal] = useState({ visible: false, type: null, data: [], loading: false });
+
+  const STAT_META = {
+    scheduled: {
+      label: 'Total Scheduled',
+      icon: 'calendar-outline',
+      color: '#F97316',
+      description: 'The total number of gym visits you have ever planned using the Plan tab. This includes sessions you attended, no-showed, or cancelled.',
+      statusFilter: null, // null = all statuses
+    },
+    attended: {
+      label: 'Attended',
+      icon: 'checkmark-circle-outline',
+      color: '#22C55E',
+      description: 'Sessions where you actually showed up and checked in. Every attendance builds your reliability score.',
+      statusFilter: 'attended',
+    },
+    no_show: {
+      label: 'No-Shows',
+      icon: 'close-circle-outline',
+      color: '#EF4444',
+      description: 'Sessions you planned but never checked in for. No-shows reduce your reliability score by 20 points each.',
+      statusFilter: 'no_show',
+    },
+    cancelled: {
+      label: 'Cancelled',
+      icon: 'remove-circle-outline',
+      color: '#6B7280',
+      description: 'Sessions you cancelled before they happened. Late cancellations (within 1 hour) reduce your score by 8 points.',
+      statusFilter: 'cancelled',
+    },
+  };
+
+  const openStatHistory = async (type) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+    setStatHistoryModal({ visible: true, type, data: [], loading: true });
+    try {
+      const meta = STAT_META[type];
+      const constraints = [
+        where('odId', '==', uid),
+        orderBy('scheduledTime', 'desc'),
+        limit(100),
+      ];
+      if (meta.statusFilter) constraints.splice(1, 0, where('status', '==', meta.statusFilter));
+      const snap = await getDocs(query(collection(db, 'schedules'), ...constraints));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setStatHistoryModal(prev => ({ ...prev, data, loading: false }));
+    } catch (err) {
+      if (__DEV__) console.warn('[StatHistory] fetch error:', err);
+      setStatHistoryModal(prev => ({ ...prev, loading: false }));
+    }
+  };
 
   // ── Admin workload badge (all 4 categories visible in Admin Tools) ───────
   const [adminPendingTotal, setAdminPendingTotal] = useState(0);
@@ -750,6 +807,10 @@ export default function ProfileScreen({ navigation }) {
       >
         {/* ── Avatar & User Info ─────────────────────────────────────────── */}
         <View style={styles.headerGradient}>
+        {/* Help button — top-right corner */}
+        <View style={{ alignItems: 'flex-end', paddingHorizontal: 16, paddingTop: 4 }}>
+          <ScreenHelpButton screen="profile" />
+        </View>
         <View style={styles.header}>
           {/* Tappable avatar: shows picked photo, live profile photo, or initials fallback */}
           <TouchableOpacity onPress={handlePickImage} disabled={uploading}>
@@ -903,26 +964,30 @@ export default function ProfileScreen({ navigation }) {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Session Stats</Text>
           <View style={styles.statsGrid}>
-            <View style={styles.statItem}>
+            <TouchableOpacity style={styles.statItem} onPress={() => openStatHistory('scheduled')} activeOpacity={0.7}>
               <Ionicons name="calendar-outline" size={20} color={colors.primary} />
               <Text style={styles.statNumber}>{displayScheduled}</Text>
               <Text style={styles.statLabel}>Scheduled</Text>
-            </View>
-            <View style={styles.statItem}>
+              <Ionicons name="chevron-forward" size={10} color={colors.textMuted} style={{ marginTop: 2 }} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.statItem} onPress={() => openStatHistory('attended')} activeOpacity={0.7}>
               <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
               <Text style={styles.statNumber}>{displayAttended}</Text>
               <Text style={styles.statLabel}>Attended</Text>
-            </View>
-            <View style={styles.statItem}>
+              <Ionicons name="chevron-forward" size={10} color={colors.textMuted} style={{ marginTop: 2 }} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.statItem} onPress={() => openStatHistory('no_show')} activeOpacity={0.7}>
               <Ionicons name="close-circle-outline" size={20} color={colors.danger} />
               <Text style={styles.statNumber}>{displayNoShows}</Text>
               <Text style={styles.statLabel}>No-Shows</Text>
-            </View>
-            <View style={styles.statItem}>
+              <Ionicons name="chevron-forward" size={10} color={colors.textMuted} style={{ marginTop: 2 }} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.statItem} onPress={() => openStatHistory('cancelled')} activeOpacity={0.7}>
               <Ionicons name="remove-circle-outline" size={20} color={colors.textMuted} />
               <Text style={styles.statNumber}>{displayCancelled}</Text>
               <Text style={styles.statLabel}>Cancelled</Text>
-            </View>
+              <Ionicons name="chevron-forward" size={10} color={colors.textMuted} style={{ marginTop: 2 }} />
+            </TouchableOpacity>
           </View>
           {/* Attendance rate — calculated as attended / scheduled */}
           <View style={styles.attendanceRow}>
@@ -1594,6 +1659,80 @@ export default function ProfileScreen({ navigation }) {
             >
               <Text style={styles.reliabilityModalCloseText}>Close</Text>
             </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Session History Modal ──────────────────────────────────────── */}
+      <Modal
+        visible={statHistoryModal.visible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setStatHistoryModal(prev => ({ ...prev, visible: false }))}
+      >
+        <TouchableOpacity
+          style={styles.reliabilityModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setStatHistoryModal(prev => ({ ...prev, visible: false }))}
+        >
+          <TouchableOpacity activeOpacity={1} style={[styles.statHistorySheet, { backgroundColor: colors.surface }]}>
+            {statHistoryModal.type && (() => {
+              const meta = STAT_META[statHistoryModal.type];
+              return (
+                <>
+                  {/* Header */}
+                  <View style={styles.statHistoryHeader}>
+                    <Ionicons name={meta.icon} size={22} color={meta.color} />
+                    <Text style={[styles.statHistoryTitle, { color: colors.textPrimary }]}>{meta.label}</Text>
+                  </View>
+                  <Text style={[styles.statHistoryDesc, { color: colors.textSecondary }]}>{meta.description}</Text>
+                  <View style={[styles.statHistoryDivider, { backgroundColor: colors.border }]} />
+
+                  {/* History list */}
+                  {statHistoryModal.loading ? (
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: SPACING.lg }} />
+                  ) : statHistoryModal.data.length === 0 ? (
+                    <Text style={[styles.statHistoryEmpty, { color: colors.textMuted }]}>No sessions yet.</Text>
+                  ) : (
+                    <FlatList
+                      data={statHistoryModal.data}
+                      keyExtractor={item => item.id}
+                      style={{ maxHeight: 360 }}
+                      showsVerticalScrollIndicator={false}
+                      renderItem={({ item }) => {
+                        const dt = item.scheduledTime?.toDate?.();
+                        const dateStr = dt ? dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+                        const timeStr = dt ? dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+                        const statusColors = { attended: '#22C55E', no_show: '#EF4444', cancelled: '#6B7280', scheduled: '#F97316' };
+                        const statusLabels = { attended: 'Attended', no_show: 'No-Show', cancelled: 'Cancelled', scheduled: 'Scheduled' };
+                        return (
+                          <View style={[styles.statHistoryRow, { borderBottomColor: colors.border }]}>
+                            <View style={styles.statHistoryRowLeft}>
+                              <Text style={[styles.statHistoryGym, { color: colors.textPrimary }]}>{item.gymName || '—'}</Text>
+                              <Text style={[styles.statHistoryDate, { color: colors.textMuted }]}>{dateStr}{timeStr ? ` · ${timeStr}` : ''}</Text>
+                              {item.cancelReason ? (
+                                <Text style={[styles.statHistoryReason, { color: colors.textMuted }]}>Reason: {item.cancelReason}</Text>
+                              ) : null}
+                            </View>
+                            <View style={[styles.statHistoryBadge, { backgroundColor: `${statusColors[item.status]}22` }]}>
+                              <Text style={[styles.statHistoryBadgeText, { color: statusColors[item.status] }]}>
+                                {statusLabels[item.status] || item.status}
+                              </Text>
+                            </View>
+                          </View>
+                        );
+                      }}
+                    />
+                  )}
+                  <TouchableOpacity
+                    style={[styles.reliabilityModalClose, { backgroundColor: colors.primary, marginTop: SPACING.md }]}
+                    onPress={() => setStatHistoryModal(prev => ({ ...prev, visible: false }))}
+                  >
+                    <Text style={styles.reliabilityModalCloseText}>Close</Text>
+                  </TouchableOpacity>
+                </>
+              );
+            })()}
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -2345,6 +2484,71 @@ const getStyles = (colors, isDark) =>
       fontSize: FONT_SIZES.body,
       fontWeight: FONT_WEIGHTS.bold,
       color: '#fff',
+    },
+    // ── Session History Modal ──────────────────────────────────────────────────
+    statHistorySheet: {
+      borderTopLeftRadius: RADIUS.xl,
+      borderTopRightRadius: RADIUS.xl,
+      padding: SPACING.lg,
+      paddingBottom: SPACING.xl + 16,
+      maxHeight: '80%',
+    },
+    statHistoryHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: SPACING.sm,
+      marginBottom: SPACING.xs,
+    },
+    statHistoryTitle: {
+      fontSize: FONT_SIZES.subtitle,
+      fontWeight: FONT_WEIGHTS.bold,
+    },
+    statHistoryDesc: {
+      fontSize: FONT_SIZES.small,
+      lineHeight: 20,
+      marginBottom: SPACING.md,
+    },
+    statHistoryDivider: {
+      height: 1,
+      marginBottom: SPACING.md,
+    },
+    statHistoryEmpty: {
+      textAlign: 'center',
+      marginTop: SPACING.lg,
+      fontSize: FONT_SIZES.small,
+    },
+    statHistoryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: SPACING.sm,
+      borderBottomWidth: 1,
+      gap: SPACING.sm,
+    },
+    statHistoryRowLeft: {
+      flex: 1,
+    },
+    statHistoryGym: {
+      fontSize: FONT_SIZES.body,
+      fontWeight: FONT_WEIGHTS.semibold,
+    },
+    statHistoryDate: {
+      fontSize: FONT_SIZES.xs,
+      marginTop: 2,
+    },
+    statHistoryReason: {
+      fontSize: FONT_SIZES.xs,
+      marginTop: 2,
+      fontStyle: 'italic',
+    },
+    statHistoryBadge: {
+      borderRadius: RADIUS.sm,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+    },
+    statHistoryBadgeText: {
+      fontSize: FONT_SIZES.xs,
+      fontWeight: FONT_WEIGHTS.semibold,
     },
     // ── My Clips section ───────────────────────────────────────────────────────
     clipsSectionHeader: {

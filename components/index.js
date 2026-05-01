@@ -11,3 +11,4 @@ export { Input } from './Input';
 export { Card } from './Card';
 export { default as ReportModal } from './ReportModal';
 export { default as ReliabilityIntroModal } from './ReliabilityIntroModal';
+export { default as ScreenHelpButton } from './ScreenHelpButton';

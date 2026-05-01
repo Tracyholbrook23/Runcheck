@@ -173,7 +173,7 @@ export default function LoginScreen({ navigation }) {
             <View style={styles.brandSection}>
               <Logo size="large" style={{ marginBottom: SPACING.md }} />
               <Text style={styles.title}>Welcome Back</Text>
-              <Text style={styles.tagline}>Your City. Your Court. Your People.</Text>
+              <Text style={styles.tagline}>Real runs. Real players. Real time.</Text>
             </View>
 
             <View style={styles.formCard}>

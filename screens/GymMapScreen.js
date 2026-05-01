@@ -646,6 +646,8 @@ export default function GymMapScreen({ navigation }) {
         minZoomLevel={8}
         testID="gym-map"
         userInterfaceStyle="dark"
+        showsUserLocation
+        showsMyLocationButton={false}
         onPress={selectedGym ? closeCard : undefined}
       >
         {gyms.map((gym, idx) => {
